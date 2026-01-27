@@ -25,8 +25,13 @@ class AlunoProcessor:
     
     @staticmethod
     def process_aluno(aluno_data: Dict) -> Optional[Dict]:
-        """Processa dados de um aluno para formato IMP-010"""
+        """Processa dados de um aluno para formato IMP-010 - APENAS ATIVOS"""
         try:
+            # Verificar se o aluno está ATIVO
+            sit_aluno = aluno_data.get("sit_aluno", "")
+            if sit_aluno != "Ativo":
+                return None
+            
             # Campos obrigatórios
             matricula = aluno_data.get("aluno", "")
             nome_completo = aluno_data.get("nome_compl", "")
@@ -34,6 +39,7 @@ class AlunoProcessor:
             
             # Verificar campos obrigatórios
             if not all([matricula, nome_completo, curso]):
+                print(f"⚠️  Aluno {matricula} sem campos obrigatórios")
                 return None
             
             # Gerar email
@@ -50,7 +56,7 @@ class AlunoProcessor:
                 "codigoCurso": str(curso)[:30],             # Máximo 30 caracteres
                 "turno": turno,
                 "codigoIdentificacaoAVA": None,             # Em branco
-                "sit_aluno": aluno_data.get("sit_aluno", ""),
+                "sit_aluno": sit_aluno,                     # "Ativo" garantido
                 "ativo": True
             }
         except Exception as e:
@@ -59,15 +65,24 @@ class AlunoProcessor:
     
     @staticmethod
     def process_batch(alunos_data: List[Dict]) -> List[Dict]:
-        """Processa um lote de alunos"""
+        """Processa um lote de alunos - APENAS ATIVOS"""
         processed = []
+        total_nao_ativos = 0
         
         for aluno in alunos_data:
+            sit_aluno = aluno.get("sit_aluno", "")
+            if sit_aluno != "Ativo":
+                total_nao_ativos += 1
+                continue
+            
             processed_aluno = AlunoProcessor.process_aluno(aluno)
             if processed_aluno:
                 processed.append(processed_aluno)
         
-        print(f"📦 Alunos processados: {len(processed)}/{len(alunos_data)}")
+        if total_nao_ativos > 0:
+            print(f"⚠️  {total_nao_ativos} alunos não ativos ignorados")
+        
+        print(f"📦 Alunos ativos processados: {len(processed)}/{len(alunos_data)}")
         return processed
 
 class ImportResult:
@@ -78,6 +93,7 @@ class ImportResult:
         self.updated = 0
         self.errors = 0
         self.inactivated = 0
+        self.ignored_non_active = 0  # Novo campo
     
     def add_inserted(self):
         self.inserted += 1
@@ -91,10 +107,14 @@ class ImportResult:
     def add_inactivated(self, count):
         self.inactivated = count
     
+    def add_ignored_non_active(self, count):
+        self.ignored_non_active = count
+    
     def summary(self):
         return {
             "inserted": self.inserted,
             "updated": self.updated,
             "errors": self.errors,
-            "inactivated": self.inactivated
+            "inactivated": self.inactivated,
+            "ignored_non_active": self.ignored_non_active
         }

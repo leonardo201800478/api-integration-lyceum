@@ -18,7 +18,7 @@ class AlunoModel:
             codigoCurso TEXT(30) NOT NULL,
             turno TEXT(1),
             codigoIdentificacaoAVA TEXT(100),
-            sit_aluno TEXT(20),
+            sit_aluno TEXT(20) CHECK (sit_aluno IN ('Ativo', 'Cancelado', 'Formado', 'Transferido', 'Outro')),
             data_importacao DATETIME DEFAULT CURRENT_TIMESTAMP,
             data_atualizacao DATETIME DEFAULT CURRENT_TIMESTAMP,
             ativo BOOLEAN DEFAULT 1
@@ -48,8 +48,20 @@ class AlunoModel:
         return {str(row[0]) for row in results}
     
     @classmethod
+    def get_existing_active_matriculas(cls, db_name="dados_unifoa.db"):
+        """Retorna conjunto de matrículas ativas existentes"""
+        query = f"SELECT matriculaAluno FROM {cls.TABLE_NAME} WHERE ativo = 1"
+        results = fetch_all(query, db_name=db_name)
+        return {str(row[0]) for row in results}
+    
+    @classmethod
     def insert_aluno(cls, aluno_data: dict, db_name="dados_unifoa.db"):
-        """Insere um novo aluno"""
+        """Insere um novo aluno - VERIFICA SE ESTÁ ATIVO"""
+        # Verificar se o aluno está ativo
+        if aluno_data.get('sit_aluno') != 'Ativo':
+            print(f"⚠️  Tentativa de inserir aluno não ativo: {aluno_data.get('matriculaAluno')}")
+            return
+        
         query = f'''
         INSERT INTO {cls.TABLE_NAME} 
         (matriculaAluno, nomeAluno, emailAluno, codigoCurso, turno, 
@@ -65,14 +77,18 @@ class AlunoModel:
             aluno_data.get('turno'),
             aluno_data.get('codigoIdentificacaoAVA'),
             aluno_data.get('sit_aluno'),
-            aluno_data.get('ativo', True)
+            1  # Sempre ativo para novos alunos
         )
         
         execute_query(query, params, db_name=db_name)
     
     @classmethod
     def update_aluno(cls, matricula: str, aluno_data: dict, db_name="dados_unifoa.db"):
-        """Atualiza um aluno existente"""
+        """Atualiza um aluno existente - AJUSTA ATIVO CONFORME SITUAÇÃO"""
+        # Determinar se deve estar ativo baseado na situação
+        sit_aluno = aluno_data.get('sit_aluno', '')
+        ativo = 1 if sit_aluno == 'Ativo' else 0
+        
         query = f'''
         UPDATE {cls.TABLE_NAME} 
         SET nomeAluno = ?, emailAluno = ?, codigoCurso = ?, turno = ?,
@@ -85,8 +101,8 @@ class AlunoModel:
             aluno_data.get('emailAluno'),
             aluno_data.get('codigoCurso'),
             aluno_data.get('turno'),
-            aluno_data.get('sit_aluno'),
-            aluno_data.get('ativo', True),
+            sit_aluno,
+            ativo,
             matricula
         )
         
@@ -94,18 +110,28 @@ class AlunoModel:
     
     @classmethod
     def set_inactive(cls, matriculas_to_keep: set, db_name="dados_unifoa.db"):
-        """Marca alunos como inativos exceto os na lista"""
+        """Marca alunos como inativos exceto os na lista - APENAS OS QUE ESTÃO NO BANCO"""
         if not matriculas_to_keep:
             return 0
         
-        placeholders = ','.join(['?'] * len(matriculas_to_keep))
+        # Primeiro, obter todas as matrículas atuais
+        query_all = f"SELECT matriculaAluno FROM {cls.TABLE_NAME}"
+        all_matriculas = {str(row[0]) for row in fetch_all(query_all, db_name=db_name)}
+        
+        # Matrículas que estão no banco mas não na lista atual
+        matriculas_para_inativar = all_matriculas - matriculas_to_keep
+        
+        if not matriculas_para_inativar:
+            return 0
+        
+        placeholders = ','.join(['?'] * len(matriculas_para_inativar))
         query = f'''
         UPDATE {cls.TABLE_NAME} 
         SET ativo = 0, data_atualizacao = CURRENT_TIMESTAMP
-        WHERE matriculaAluno NOT IN ({placeholders})
+        WHERE matriculaAluno IN ({placeholders})
         '''
         
-        cursor = execute_query(query, list(matriculas_to_keep), db_name=db_name)
+        cursor = execute_query(query, list(matriculas_para_inativar), db_name=db_name)
         return cursor.rowcount
     
     @classmethod
@@ -120,23 +146,27 @@ class AlunoModel:
             cursor.execute(f"SELECT COUNT(*) FROM {cls.TABLE_NAME} WHERE ativo = 1")
             ativos = cursor.fetchone()[0]
             
+            cursor.execute(f"SELECT COUNT(*) FROM {cls.TABLE_NAME} WHERE sit_aluno = 'Ativo'")
+            situacao_ativo = cursor.fetchone()[0]
+            
             cursor.execute(f"SELECT COUNT(DISTINCT codigoCurso) FROM {cls.TABLE_NAME} WHERE ativo = 1")
             cursos = cursor.fetchone()[0]
             
             return {
                 "total_alunos": total,
                 "alunos_ativos": ativos,
+                "situacao_ativo": situacao_ativo,
                 "alunos_inativos": total - ativos,
                 "cursos_distintos": cursos
             }
     
     @classmethod
     def get_recent_alunos(cls, limit=5, db_name="dados_unifoa.db"):
-        """Retorna alunos mais recentes"""
+        """Retorna alunos mais recentes - APENAS ATIVOS"""
         query = f'''
         SELECT matriculaAluno, nomeAluno, emailAluno, codigoCurso, turno
         FROM {cls.TABLE_NAME} 
-        WHERE ativo = 1
+        WHERE ativo = 1 AND sit_aluno = 'Ativo'
         ORDER BY data_importacao DESC 
         LIMIT ?
         '''

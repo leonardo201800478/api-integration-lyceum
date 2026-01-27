@@ -72,26 +72,37 @@ class BaseAPIClient:
             page += 1
             time.sleep(0.5)  # Delay entre páginas
 
-class AlunoAPIClient(BaseAPIClient):
-    """Cliente específico para dados de alunos"""
+class CursoAPIClient(BaseAPIClient):
+    """Cliente específico para dados de cursos"""
     
-    def get_alunos_ativos(self) -> List[Dict]:
-        """Busca todos os alunos ativos"""
-        all_alunos = []
-        endpoint = "/v2/tabela/alunos"
-        filters = {"sit_aluno": "Ativo"}
+    def get_cursos(self) -> List[Dict]:
+        """Busca todos os cursos da API"""
+        all_cursos = []
+        endpoint = "/v2/tabela/cursos"
         
-        print("🔍 Buscando alunos ativos da API...")
+        print("🔍 Buscando cursos da API...")
         
-        for page_data in self.get_all_data(endpoint, filters):
-            all_alunos.extend(page_data)
-            print(f"📄 Página com {len(page_data)} alunos ativos")
+        for page_data in self.get_all_data(endpoint):
+            all_cursos.extend(page_data)
+            print(f"📄 Página com {len(page_data)} cursos")
         
-        print(f"✅ Total de alunos ativos encontrados: {len(all_alunos)}")
-        return all_alunos
+        print(f"✅ Total de cursos encontrados: {len(all_cursos)}")
+        return all_cursos
+
+
+class CurriculoAPIClient(BaseAPIClient):
+    """Cliente específico para dados de currículos"""
     
-    def get_aluno_by_matricula(self, matricula: str) -> Optional[Dict]:
-        """Busca aluno específico por matrícula"""
-        endpoint = "/v2/tabela/alunos"
-        data = self.get_paginated_data(endpoint, 1, 1, {"pk[aluno]": matricula})
-        return data[0] if data else None
+    def get_curriculos(self) -> List[Dict]:
+        """Busca todos os currículos da API"""
+        all_curriculos = []
+        endpoint = "/v2/tabela/curriculos"
+        
+        print("🔍 Buscando currículos da API...")
+        
+        for page_data in self.get_all_data(endpoint):
+            all_curriculos.extend(page_data)
+            print(f"📄 Página com {len(page_data)} currículos")
+        
+        print(f"✅ Total de currículos encontrados: {len(all_curriculos)}")
+        return all_curriculos
