@@ -13,7 +13,7 @@ class BaseAPIClient:
     - size fixo conforme configuração
     """
 
-    def __init__(self):
+    def __init__(self, session: Optional[requests.Session] = None):
         if not all([
             config.LYCEUM_BASE_URL,
             config.LYCEUM_USERNAME,
@@ -26,6 +26,8 @@ class BaseAPIClient:
         self.headers = {
             "Accept": "application/json"
         }
+        # Usar sessão fornecida ou criar uma nova
+        self.session = session or requests.Session()
 
     def get(self, endpoint: str, params: Optional[dict] = None) -> Any:
         """
@@ -35,7 +37,7 @@ class BaseAPIClient:
         url = f"{self.base_url}{endpoint}"
 
         try:
-            response = requests.get(
+            response = self.session.get(
                 url,
                 auth=self.auth,
                 headers=self.headers,
@@ -91,11 +93,6 @@ class BaseAPIClient:
                 results.extend(items)
                 print(f"    📊 Página {page}: {len(items)} registros (total: {len(results)})")
                 
-                # Verifica se há mais páginas (pela resposta total)
-                total_count = data.get('X-Total-Count')  # Vem no header, não no body
-                # Na verdade, o total count vem no header, não no JSON
-                # Vamos confiar na página vazia para determinar o fim
-                
             elif isinstance(data, list):
                 # Formato alternativo: lista direta
                 if len(data) == 0:
@@ -116,6 +113,54 @@ class BaseAPIClient:
         
         print(f"  ✅ Paginação completa: {len(results)} registros no total")
         return results
+    
+    def close(self):
+        """Fecha a sessão HTTP"""
+        if hasattr(self, 'session'):
+            self.session.close()
+
+
+# ==================================================
+# FÁBRICA DE CLIENTES - Garante que cada consulta use uma sessão separada
+# ==================================================
+
+class APIClientFactory:
+    """Fábrica para criar clientes de API com sessões isoladas"""
+    
+    @staticmethod
+    def create_curso_client() -> 'CursoAPIClient':
+        """Cria cliente de cursos com sessão isolada"""
+        return CursoAPIClient()
+    
+    @staticmethod
+    def create_curriculo_client() -> 'CurriculoAPIClient':
+        """Cria cliente de currículos com sessão isolada"""
+        return CurriculoAPIClient()
+    
+    @staticmethod
+    def create_aluno_client() -> 'AlunoAPIClient':
+        """Cria cliente de alunos com sessão isolada"""
+        return AlunoAPIClient()
+    
+    @staticmethod
+    def create_docente_client() -> 'DocenteAPIClient':
+        """Cria cliente de docentes com sessão isolada"""
+        return DocenteAPIClient()
+    
+    @staticmethod
+    def create_disciplina_client() -> 'DisciplinaAPIClient':
+        """Cria cliente de disciplinas com sessão isolada"""
+        return DisciplinaAPIClient()
+    
+    @staticmethod
+    def create_turma_client() -> 'TurmaAPIClient':
+        """Cria cliente de turmas com sessão isolada"""
+        return TurmaAPIClient()
+    
+    @staticmethod
+    def create_turma_docente_client() -> 'TurmaDocenteAPIClient':
+        """Cria cliente de turma-docente com sessão isolada"""
+        return TurmaDocenteAPIClient()
 
 
 # ==================================================
@@ -129,7 +174,19 @@ class CursoAPIClient(BaseAPIClient):
 
 class CurriculoAPIClient(BaseAPIClient):
     def get_curriculos(self) -> List[dict]:
+        """Obtém todos os currículos"""
         return self.get_paginated("/v2/tabela/curriculos")
+    
+    def get_curriculo(self, curriculo_code: str) -> Optional[dict]:
+        """Obtém um currículo específico por código"""
+        endpoint = f"/v2/tabela/curriculos"
+        params = {"pk[curriculo]": curriculo_code}
+        data = self.get(endpoint, params=params)
+        if data and isinstance(data, dict) and 'data' in data:
+            items = data['data']
+            if isinstance(items, list) and len(items) > 0:
+                return items[0]
+        return None
 
 
 class AlunoAPIClient(BaseAPIClient):
@@ -166,3 +223,36 @@ class TurmaAPIClient(BaseAPIClient):
 class TurmaDocenteAPIClient(BaseAPIClient):
     def get_turmas_docentes(self) -> List[dict]:
         return self.get_paginated("/v2/tabela/turma-docente")
+
+
+# ==================================================
+# MÉTODOS DE CONVENIÊNCIA - Mantém compatibilidade
+# ==================================================
+
+def get_curriculo_client() -> CurriculoAPIClient:
+    """Retorna um cliente de currículo com sessão isolada"""
+    return APIClientFactory.create_curriculo_client()
+
+def get_aluno_client() -> AlunoAPIClient:
+    """Retorna um cliente de alunos com sessão isolada"""
+    return APIClientFactory.create_aluno_client()
+
+def get_curso_client() -> CursoAPIClient:
+    """Retorna um cliente de cursos com sessão isolada"""
+    return APIClientFactory.create_curso_client()
+
+def get_docente_client() -> DocenteAPIClient:
+    """Retorna um cliente de docentes com sessão isolada"""
+    return APIClientFactory.create_docente_client()
+
+def get_disciplina_client() -> DisciplinaAPIClient:
+    """Retorna um cliente de disciplinas com sessão isolada"""
+    return APIClientFactory.create_disciplina_client()
+
+def get_turma_client() -> TurmaAPIClient:
+    """Retorna um cliente de turmas com sessão isolada"""
+    return APIClientFactory.create_turma_client()
+
+def get_turma_docente_client() -> TurmaDocenteAPIClient:
+    """Retorna um cliente de turma-docente com sessão isolada"""
+    return APIClientFactory.create_turma_docente_client()
