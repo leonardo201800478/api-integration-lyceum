@@ -1,174 +1,230 @@
-from core.database import execute_query, fetch_all, fetch_one, get_db_connection
-from datetime import datetime
+from core.database import get_db_connection
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class AlunoModel:
-    """Modelo para tabela IMP-010 - Alunos"""
+    TABLE = "LY_ALUNO"
     
-    TABLE_NAME = "imp_010_alunos"
+    # Mapeamento de campos para conversão de tipos
+    INTEGER_FIELDS = {
+        'ano_ingresso', 'anoconcl2g', 'creditos', 'num_chamada',
+        'pessoa', 'sem_ingresso', 'serie', 'dist_aluno_unidade'
+    }
     
-    @classmethod
-    def create_table(cls, db_name="dados_unifoa.db"):
-        """Cria a tabela IMP-010"""
-        query = f'''
-        CREATE TABLE IF NOT EXISTS {cls.TABLE_NAME} (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            matriculaAluno TEXT(12) NOT NULL UNIQUE,
-            nomeAluno TEXT(140) NOT NULL,
-            emailAluno TEXT(200),
-            codigoCurso TEXT(30) NOT NULL,
-            turno TEXT(1),
-            codigoIdentificacaoAVA TEXT(100),
-            sit_aluno TEXT(20) CHECK (sit_aluno IN ('Ativo', 'Cancelado', 'Formado', 'Transferido', 'Outro')),
-            data_importacao DATETIME DEFAULT CURRENT_TIMESTAMP,
-            data_atualizacao DATETIME DEFAULT CURRENT_TIMESTAMP,
-            ativo BOOLEAN DEFAULT 1
-        )
-        '''
+    BOOLEAN_FIELDS = {'representante_turma'}  # Campos que podem ser 'S'/'N'
+    
+    @staticmethod
+    def create_table():
+        """Cria a tabela se não existir, ou atualiza se necessário"""
+        with get_db_connection() as conn:
+            # Primeiro, verifica se a tabela existe
+            cursor = conn.execute(f"""
+                SELECT name FROM sqlite_master 
+                WHERE type='table' AND name='{AlunoModel.TABLE}'
+            """)
+            tabela_existe = cursor.fetchone() is not None
+            
+            if not tabela_existe:
+                # Cria a tabela completa
+                conn.execute(f"""
+                    CREATE TABLE {AlunoModel.TABLE} (
+                        aluno TEXT PRIMARY KEY,
+                        ano_ingresso INTEGER,
+                        anoconcl2g INTEGER,
+                        areacnpq TEXT,
+                        candidato TEXT,
+                        cidade2g TEXT,
+                        classif_aluno TEXT,
+                        cod_cartao TEXT,
+                        concurso TEXT,
+                        cred_educativo TEXT,
+                        creditos INTEGER,
+                        curriculo TEXT,
+                        curso TEXT,
+                        curso_ant TEXT,
+                        discipoutraserie TEXT,
+                        dist_aluno_unidade INTEGER,
+                        dt_ingresso TEXT,
+                        e_mail_interno TEXT,
+                        faculdade_conveniada TEXT,
+                        grupo TEXT,
+                        instituicao TEXT,
+                        nome_abrev TEXT,
+                        nome_compl TEXT,
+                        nome_conjuge TEXT,
+                        nome_social TEXT,
+                        num_chamada INTEGER,
+                        obs_aluno_finan TEXT,
+                        obs_tel_com TEXT,
+                        obs_tel_res TEXT,
+                        outra_faculdade TEXT,
+                        pais2g TEXT,
+                        pessoa INTEGER,
+                        ref_aluno_ant TEXT,
+                        representante_turma TEXT,
+                        sem_ingresso INTEGER,
+                        serie INTEGER,
+                        sit_aluno TEXT,
+                        sit_aprov TEXT,
+                        stamp_atualizacao TEXT,
+                        tipo_aluno TEXT,
+                        tipo_escola TEXT,
+                        tipo_ingresso TEXT,
+                        turma_pref TEXT,
+                        turno TEXT,
+                        unidade_ensino TEXT,
+                        unidade_fisica TEXT,
+                        data_sincronizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                logger.info(f"Tabela {AlunoModel.TABLE} criada com sucesso")
+            else:
+                # Verifica se a coluna data_sincronizacao existe
+                cursor = conn.execute(f"""
+                    PRAGMA table_info({AlunoModel.TABLE})
+                """)
+                colunas = [row[1] for row in cursor.fetchall()]
+                
+                if 'data_sincronizacao' not in colunas:
+                    # Adiciona a coluna faltante
+                    conn.execute(f"""
+                        ALTER TABLE {AlunoModel.TABLE} 
+                        ADD COLUMN data_sincronizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    """)
+                    logger.info(f"Coluna data_sincronizacao adicionada à tabela {AlunoModel.TABLE}")
+                
+                logger.info(f"Tabela {AlunoModel.TABLE} verificada/atualizada")
+    
+    @staticmethod
+    def _normalize_value(key: str, value):
+        """Normaliza valores antes de inserir no banco"""
+        if value is None:
+            return None
         
-        execute_query(query, db_name=db_name)
+        # Converte campos inteiros
+        if key in AlunoModel.INTEGER_FIELDS:
+            try:
+                return int(value)
+            except (ValueError, TypeError):
+                return None
         
-        # Criar índices
-        indexes = [
-            f"CREATE INDEX IF NOT EXISTS idx_{cls.TABLE_NAME}_matricula ON {cls.TABLE_NAME}(matriculaAluno)",
-            f"CREATE INDEX IF NOT EXISTS idx_{cls.TABLE_NAME}_curso ON {cls.TABLE_NAME}(codigoCurso)",
-            f"CREATE INDEX IF NOT EXISTS idx_{cls.TABLE_NAME}_ativo ON {cls.TABLE_NAME}(ativo)",
-            f"CREATE INDEX IF NOT EXISTS idx_{cls.TABLE_NAME}_situacao ON {cls.TABLE_NAME}(sit_aluno)"
-        ]
+        # Converte booleanos 'S'/'N'
+        if key in AlunoModel.BOOLEAN_FIELDS:
+            if isinstance(value, str):
+                return 'S' if value.upper() == 'S' else 'N'
         
-        for index_query in indexes:
-            execute_query(index_query, db_name=db_name)
+        # Converte timestamps para string de data
+        if key in ['dt_ingresso', 'stamp_atualizacao']:
+            if isinstance(value, (int, float)):
+                try:
+                    from datetime import datetime
+                    # Verifica se é timestamp em milissegundos
+                    if value > 1000000000000:
+                        timestamp = value / 1000
+                    else:
+                        timestamp = value
+                    
+                    return datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
+                except Exception:
+                    return str(value)
         
-        print(f"✅ Tabela {cls.TABLE_NAME} criada/verificada")
+        # Para strings, remove espaços extras
+        if isinstance(value, str):
+            return value.strip()
+        
+        return value
     
-    @classmethod
-    def get_existing_matriculas(cls, db_name="dados_unifoa.db"):
-        """Retorna conjunto de matrículas existentes"""
-        query = f"SELECT matriculaAluno FROM {cls.TABLE_NAME}"
-        results = fetch_all(query, db_name=db_name)
-        return {str(row[0]) for row in results}
-    
-    @classmethod
-    def get_existing_active_matriculas(cls, db_name="dados_unifoa.db"):
-        """Retorna conjunto de matrículas ativas existentes"""
-        query = f"SELECT matriculaAluno FROM {cls.TABLE_NAME} WHERE ativo = 1"
-        results = fetch_all(query, db_name=db_name)
-        return {str(row[0]) for row in results}
-    
-    @classmethod
-    def insert_aluno(cls, aluno_data: dict, db_name="dados_unifoa.db"):
-        """Insere um novo aluno - VERIFICA SE ESTÁ ATIVO"""
-        # Verificar se o aluno está ativo
-        if aluno_data.get('sit_aluno') != 'Ativo':
-            print(f"⚠️  Tentativa de inserir aluno não ativo: {aluno_data.get('matriculaAluno')}")
+    @staticmethod
+    def upsert(data: dict):
+        """Insere ou atualiza um aluno"""
+        if not data.get("aluno"):
+            logger.warning(f"Tentativa de upsert sem matrícula: {data}")
             return
         
-        query = f'''
-        INSERT INTO {cls.TABLE_NAME} 
-        (matriculaAluno, nomeAluno, emailAluno, codigoCurso, turno, 
-         codigoIdentificacaoAVA, sit_aluno, ativo)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        '''
+        aluno_matricula = data.get("aluno")
         
-        params = (
-            aluno_data.get('matriculaAluno'),
-            aluno_data.get('nomeAluno'),
-            aluno_data.get('emailAluno'),
-            aluno_data.get('codigoCurso'),
-            aluno_data.get('turno'),
-            aluno_data.get('codigoIdentificacaoAVA'),
-            aluno_data.get('sit_aluno'),
-            1  # Sempre ativo para novos alunos
-        )
+        # Prepara os parâmetros normalizados
+        params = {}
+        for key in [
+            "aluno", "ano_ingresso", "anoconcl2g", "areacnpq", "candidato",
+            "cidade2g", "classif_aluno", "cod_cartao", "concurso",
+            "cred_educativo", "creditos", "curriculo", "curso", "curso_ant",
+            "discipoutraserie", "dist_aluno_unidade", "dt_ingresso",
+            "e_mail_interno", "faculdade_conveniada", "grupo", "instituicao",
+            "nome_abrev", "nome_compl", "nome_conjuge", "nome_social",
+            "num_chamada", "obs_aluno_finan", "obs_tel_com", "obs_tel_res",
+            "outra_faculdade", "pais2g", "pessoa", "ref_aluno_ant",
+            "representante_turma", "sem_ingresso", "serie", "sit_aluno",
+            "sit_aprov", "stamp_atualizacao", "tipo_aluno", "tipo_escola",
+            "tipo_ingresso", "turma_pref", "turno", "unidade_ensino",
+            "unidade_fisica"
+        ]:
+            params[key] = AlunoModel._normalize_value(key, data.get(key))
         
-        execute_query(query, params, db_name=db_name)
+        try:
+            with get_db_connection() as conn:
+                # Prepara a query de UPSERT
+                columns = ", ".join(params.keys())
+                placeholders = ", ".join([f":{key}" for key in params.keys()])
+                update_clause = ", ".join([
+                    f"{key}=excluded.{key}" 
+                    for key in params.keys() 
+                    if key != "aluno"
+                ])
+                
+                # Adiciona data_sincronizacao separadamente
+                query = f"""
+                    INSERT INTO {AlunoModel.TABLE} ({columns}, data_sincronizacao)
+                    VALUES ({placeholders}, CURRENT_TIMESTAMP)
+                    ON CONFLICT(aluno) DO UPDATE SET
+                        {update_clause},
+                        data_sincronizacao = CURRENT_TIMESTAMP
+                """
+                
+                conn.execute(query, params)
+                logger.info(f"Aluno {aluno_matricula} upsert realizado com sucesso")
+                    
+        except Exception as e:
+            logger.error(f"Erro no upsert do aluno {aluno_matricula}: {str(e)}")
+            # Para debug, mostra a query e parâmetros
+            logger.debug(f"Query: {query if 'query' in locals() else 'N/A'}")
+            logger.debug(f"Params: {params}")
+            raise
     
-    @classmethod
-    def update_aluno(cls, matricula: str, aluno_data: dict, db_name="dados_unifoa.db"):
-        """Atualiza um aluno existente - AJUSTA ATIVO CONFORME SITUAÇÃO"""
-        # Determinar se deve estar ativo baseado na situação
-        sit_aluno = aluno_data.get('sit_aluno', '')
-        ativo = 1 if sit_aluno == 'Ativo' else 0
-        
-        query = f'''
-        UPDATE {cls.TABLE_NAME} 
-        SET nomeAluno = ?, emailAluno = ?, codigoCurso = ?, turno = ?,
-            sit_aluno = ?, data_atualizacao = CURRENT_TIMESTAMP, ativo = ?
-        WHERE matriculaAluno = ?
-        '''
-        
-        params = (
-            aluno_data.get('nomeAluno'),
-            aluno_data.get('emailAluno'),
-            aluno_data.get('codigoCurso'),
-            aluno_data.get('turno'),
-            sit_aluno,
-            ativo,
-            matricula
-        )
-        
-        execute_query(query, params, db_name=db_name)
+    @staticmethod
+    def get_all_matriculas():
+        """Retorna todas as matrículas existentes no banco"""
+        with get_db_connection() as conn:
+            cursor = conn.execute(f"SELECT aluno FROM {AlunoModel.TABLE}")
+            return {row[0] for row in cursor.fetchall()}
     
-    @classmethod
-    def set_inactive(cls, matriculas_to_keep: set, db_name="dados_unifoa.db"):
-        """Marca alunos como inativos exceto os na lista - APENAS OS QUE ESTÃO NO BANCO"""
-        if not matriculas_to_keep:
-            return 0
+    @staticmethod
+    def delete_obsoletos(matriculas_atualizadas: set):
+        """Remove alunos que não estão mais na API"""
+        if not matriculas_atualizadas:
+            return
         
-        # Primeiro, obter todas as matrículas atuais
-        query_all = f"SELECT matriculaAluno FROM {cls.TABLE_NAME}"
-        all_matriculas = {str(row[0]) for row in fetch_all(query_all, db_name=db_name)}
-        
-        # Matrículas que estão no banco mas não na lista atual
-        matriculas_para_inativar = all_matriculas - matriculas_to_keep
-        
-        if not matriculas_para_inativar:
-            return 0
-        
-        placeholders = ','.join(['?'] * len(matriculas_para_inativar))
-        query = f'''
-        UPDATE {cls.TABLE_NAME} 
-        SET ativo = 0, data_atualizacao = CURRENT_TIMESTAMP
-        WHERE matriculaAluno IN ({placeholders})
-        '''
-        
-        cursor = execute_query(query, list(matriculas_para_inativar), db_name=db_name)
-        return cursor.rowcount
-    
-    @classmethod
-    def get_summary(cls, db_name="dados_unifoa.db"):
-        """Obtém resumo dos dados"""
-        with get_db_connection(db_name) as conn:
-            cursor = conn.cursor()
+        with get_db_connection() as conn:
+            # Converte o set para lista
+            matriculas_lista = list(matriculas_atualizadas)
+            placeholders = ','.join(['?'] * len(matriculas_lista))
             
-            cursor.execute(f"SELECT COUNT(*) FROM {cls.TABLE_NAME}")
-            total = cursor.fetchone()[0]
+            # Busca os alunos que serão removidos
+            cursor = conn.execute(
+                f"SELECT aluno FROM {AlunoModel.TABLE} WHERE aluno NOT IN ({placeholders})",
+                matriculas_lista
+            )
+            obsoletos = cursor.fetchall()
             
-            cursor.execute(f"SELECT COUNT(*) FROM {cls.TABLE_NAME} WHERE ativo = 1")
-            ativos = cursor.fetchone()[0]
-            
-            cursor.execute(f"SELECT COUNT(*) FROM {cls.TABLE_NAME} WHERE sit_aluno = 'Ativo'")
-            situacao_ativo = cursor.fetchone()[0]
-            
-            cursor.execute(f"SELECT COUNT(DISTINCT codigoCurso) FROM {cls.TABLE_NAME} WHERE ativo = 1")
-            cursos = cursor.fetchone()[0]
-            
-            return {
-                "total_alunos": total,
-                "alunos_ativos": ativos,
-                "situacao_ativo": situacao_ativo,
-                "alunos_inativos": total - ativos,
-                "cursos_distintos": cursos
-            }
-    
-    @classmethod
-    def get_recent_alunos(cls, limit=5, db_name="dados_unifoa.db"):
-        """Retorna alunos mais recentes - APENAS ATIVOS"""
-        query = f'''
-        SELECT matriculaAluno, nomeAluno, emailAluno, codigoCurso, turno
-        FROM {cls.TABLE_NAME} 
-        WHERE ativo = 1 AND sit_aluno = 'Ativo'
-        ORDER BY data_importacao DESC 
-        LIMIT ?
-        '''
-        
-        return fetch_all(query, (limit,), db_name=db_name)
+            if obsoletos:
+                conn.execute(
+                    f"DELETE FROM {AlunoModel.TABLE} WHERE aluno NOT IN ({placeholders})",
+                    matriculas_lista
+                )
+                logger.info(f"Removidos {len(obsoletos)} alunos obsoletos")
+                for aluno in obsoletos[:10]:  # Mostra apenas os primeiros 10
+                    logger.info(f"  - Removido: {aluno[0]}")
+                if len(obsoletos) > 10:
+                    logger.info(f"  ... e mais {len(obsoletos) - 10} alunos")

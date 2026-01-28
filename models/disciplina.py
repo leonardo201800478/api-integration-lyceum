@@ -1,18 +1,17 @@
 from core.database import get_db_connection
 
 
-class CursoModel:
-    TABLE = "LY_CURSO"
+class DisciplinaModel:
+    TABLE = "LY_DISCIPLINA"
 
     @staticmethod
     def create_table():
         with get_db_connection() as conn:
             conn.execute(f"""
-                CREATE TABLE IF NOT EXISTS {CursoModel.TABLE} (
+                CREATE TABLE IF NOT EXISTS {DisciplinaModel.TABLE} (
                     codigo TEXT PRIMARY KEY,
                     nome TEXT,
-                    nivel TEXT,
-                    modalidade TEXT,
+                    carga_horaria INTEGER,
                     situacao TEXT
                 )
             """)
@@ -21,18 +20,16 @@ class CursoModel:
     def upsert(data: dict):
         with get_db_connection() as conn:
             conn.execute(f"""
-                INSERT INTO {CursoModel.TABLE}
-                (codigo, nome, nivel, modalidade, situacao)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO {DisciplinaModel.TABLE}
+                (codigo, nome, carga_horaria, situacao)
+                VALUES (?, ?, ?, ?)
                 ON CONFLICT(codigo) DO UPDATE SET
                     nome=excluded.nome,
-                    nivel=excluded.nivel,
-                    modalidade=excluded.modalidade,
+                    carga_horaria=excluded.carga_horaria,
                     situacao=excluded.situacao
             """, (
-                data.get("curso"),
+                data.get("disciplina"),
                 data.get("nome"),
-                data.get("nivel"),
-                data.get("modalidade"),
+                data.get("cargaHoraria"),
                 data.get("situacao")
             ))

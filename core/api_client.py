@@ -1,108 +1,168 @@
 import requests
-from requests.auth import HTTPBasicAuth
 import time
-import warnings
-from typing import Dict, List, Optional, Generator
-from .config import config
+from typing import List, Optional, Any
+from core.config import config
 
-warnings.filterwarnings('ignore', message='Unverified HTTPS request')
 
 class BaseAPIClient:
-    """Cliente base para API Lyceum"""
-    
+    """
+    Cliente base da API Lyceum
+    - Autenticação: Basic Auth
+    - Método: GET somente
+    - Paginação automática (page 0 → última página válida)
+    - size fixo conforme configuração
+    """
+
     def __init__(self):
-        self.session = requests.Session()
-        self.session.auth = HTTPBasicAuth(config.API_USERNAME, config.API_PASSWORD)
-        self.session.verify = False
-        self.session.headers.update({
-            'Content-Type': 'application/json',
-            'User-Agent': 'LyceumSync/1.0'
-        })
-    
-    def get_paginated_data(self, endpoint: str, page: int = 1, size: int = None, 
-                          filters: Dict = None) -> List[Dict]:
-        """Busca dados paginados da API"""
-        if size is None:
-            size = config.PAGE_SIZE
-        
-        params = {
-            "page": page,
-            "size": size,
-            **(filters or {})
+        if not all([
+            config.LYCEUM_BASE_URL,
+            config.LYCEUM_USERNAME,
+            config.LYCEUM_PASSWORD
+        ]):
+            raise RuntimeError("Credenciais da API Lyceum não carregadas corretamente")
+
+        self.base_url = config.LYCEUM_BASE_URL.rstrip("/")
+        self.auth = (config.LYCEUM_USERNAME, config.LYCEUM_PASSWORD)
+        self.headers = {
+            "Accept": "application/json"
         }
-        
+
+    def get(self, endpoint: str, params: Optional[dict] = None) -> Any:
+        """
+        Executa uma requisição GET simples.
+        Retorna JSON ou None em caso de erro HTTP.
+        """
+        url = f"{self.base_url}{endpoint}"
+
         try:
-            response = self.session.get(
-                f"{config.API_BASE_URL}{endpoint}",
+            response = requests.get(
+                url,
+                auth=self.auth,
+                headers=self.headers,
                 params=params,
-                timeout=30
+                timeout=config.API_TIMEOUT
             )
-            
-            if response.status_code == 200:
-                data = response.json()
-                if isinstance(data, dict) and 'data' in data:
-                    return data['data']
-                return data if isinstance(data, list) else []
-            elif response.status_code == 404:
-                return []
-            else:
-                print(f"⚠️  Status {response.status_code} para {endpoint} página {page}")
-                return []
-                
+
+            if response.status_code != 200:
+                print(f"⚠️ HTTP {response.status_code} → {url}")
+                return None
+
+            return response.json()
         except Exception as e:
-            print(f"❌ Erro ao buscar {endpoint} página {page}: {e}")
-            return []
-    
-    def get_all_data(self, endpoint: str, filters: Dict = None) -> Generator[List[Dict], None, None]:
-        """Busca todos os dados paginadamente"""
-        page = 1
+            print(f"⚠️ Erro na requisição → {url}: {e}")
+            return None
+
+    def get_paginated(self, endpoint: str) -> List[dict]:
+        """
+        Percorre todas as páginas disponíveis da API.
+        A API retorna {'data': [...]} em vez de lista direta.
+        """
+        results: List[dict] = []
+        page = config.API_PAGE_START
         
-        while page <= config.MAX_PAGES:
-            data = self.get_paginated_data(endpoint, page, filters=filters)
+        print(f"  🔄 Iniciando paginação no endpoint: {endpoint}")
+        
+        while True:
+            params = {
+                "page": page,
+                "size": config.API_PAGE_SIZE
+            }
             
+            print(f"    📄 Página {page} (size={config.API_PAGE_SIZE})...")
+            
+            data = self.get(endpoint, params=params)
+            
+            # Fim da paginação
             if not data:
+                print(f"    ⏹️  Página {page} retornou None")
                 break
             
-            yield data
-            
-            # Se veio menos dados que o solicitado, é a última página
-            if len(data) < config.PAGE_SIZE:
+            # Verifica se é um dicionário com chave 'data'
+            if isinstance(data, dict) and 'data' in data:
+                items = data['data']
+                if not isinstance(items, list):
+                    print(f"    ⚠️  'data' não é uma lista: {type(items)}")
+                    break
+                    
+                if len(items) == 0:
+                    print(f"    ✅ Página {page} vazia - fim da paginação")
+                    break
+                    
+                results.extend(items)
+                print(f"    📊 Página {page}: {len(items)} registros (total: {len(results)})")
+                
+                # Verifica se há mais páginas (pela resposta total)
+                total_count = data.get('X-Total-Count')  # Vem no header, não no body
+                # Na verdade, o total count vem no header, não no JSON
+                # Vamos confiar na página vazia para determinar o fim
+                
+            elif isinstance(data, list):
+                # Formato alternativo: lista direta
+                if len(data) == 0:
+                    print(f"    ✅ Página {page} vazia - fim da paginação")
+                    break
+                    
+                results.extend(data)
+                print(f"    📊 Página {page}: {len(data)} registros (total: {len(results)})")
+            else:
+                print(f"    ⚠️  Formato de resposta inesperado: {type(data)}")
+                print(f"    Conteúdo: {str(data)[:200]}...")
                 break
             
             page += 1
-            time.sleep(0.5)  # Delay entre páginas
+
+            # Evita sobrecarga na API
+            time.sleep(config.API_DELAY_BETWEEN_REQUESTS)
+        
+        print(f"  ✅ Paginação completa: {len(results)} registros no total")
+        return results
+
+
+# ==================================================
+# CLIENTES ESPECÍFICOS POR ENTIDADE
+# ==================================================
 
 class CursoAPIClient(BaseAPIClient):
-    """Cliente específico para dados de cursos"""
-    
-    def get_cursos(self) -> List[Dict]:
-        """Busca todos os cursos da API"""
-        all_cursos = []
-        endpoint = "/v2/tabela/cursos"
-        
-        print("🔍 Buscando cursos da API...")
-        
-        for page_data in self.get_all_data(endpoint):
-            all_cursos.extend(page_data)
-            print(f"📄 Página com {len(page_data)} cursos")
-        
-        print(f"✅ Total de cursos encontrados: {len(all_cursos)}")
-        return all_cursos
+    def get_cursos(self) -> List[dict]:
+        return self.get_paginated("/v2/tabela/cursos")
 
 
 class CurriculoAPIClient(BaseAPIClient):
-    """Cliente específico para dados de currículos"""
+    def get_curriculos(self) -> List[dict]:
+        return self.get_paginated("/v2/tabela/curriculos")
+
+
+class AlunoAPIClient(BaseAPIClient):
+    def get_alunos(self) -> List[dict]:
+        return self.get_paginated("/v2/tabela/alunos")
     
-    def get_curriculos(self) -> List[Dict]:
-        """Busca todos os currículos da API"""
-        all_curriculos = []
-        endpoint = "/v2/tabela/curriculos"
-        
-        print("🔍 Buscando currículos da API...")
-        
-        for page_data in self.get_all_data(endpoint):
-            all_curriculos.extend(page_data)
-            print(f"📄 Página com {len(page_data)} currículos")
-        
-        print(f"✅ Total de currículos encontrados: {len(all_curriculos)}")
-        return all_curriculos
+    def get_aluno(self, matricula: str) -> Optional[dict]:
+        """Obtém um aluno específico por matrícula"""
+        endpoint = f"/v2/tabela/alunos"
+        params = {"pk[aluno]": matricula}
+        data = self.get(endpoint, params=params)
+        if data and isinstance(data, dict) and 'data' in data:
+            items = data['data']
+            if isinstance(items, list) and len(items) > 0:
+                return items[0]
+        return None
+
+
+class DocenteAPIClient(BaseAPIClient):
+    def get_docentes(self) -> List[dict]:
+        return self.get_paginated("/v2/tabela/docente")
+
+
+class DisciplinaAPIClient(BaseAPIClient):
+    def get_disciplinas(self) -> List[dict]:
+        return self.get_paginated("/v2/tabela/disciplinas")
+
+
+class TurmaAPIClient(BaseAPIClient):
+    def get_turmas(self) -> List[dict]:
+        return self.get_paginated("/v2/tabela/turmas")
+
+
+class TurmaDocenteAPIClient(BaseAPIClient):
+    def get_turmas_docentes(self) -> List[dict]:
+        return self.get_paginated("/v2/tabela/turma-docente")
