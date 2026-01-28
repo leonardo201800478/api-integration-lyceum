@@ -1,5 +1,5 @@
 Executar a Tabela de Alunos:
-python sync_alunos.py
+python -m sync.sync_alunos --incremental
 
 Executar a Tabela de Cursos:
 python sync_cursos.py

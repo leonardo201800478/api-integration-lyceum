@@ -16,9 +16,9 @@ from core.api_client import (
     TurmaDocenteAPIClient,
 )
 
-from models.aluno import AlunoModel
+from models.ly_aluno import AlunoModel
 from models.curso import CursoModel
-from models.curriculo import CurriculoModel
+from models.ly_curriculo import CurriculoModel
 from models.docente import DocenteModel
 from models.disciplina import DisciplinaModel
 from models.turma import TurmaModel

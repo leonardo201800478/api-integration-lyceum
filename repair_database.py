@@ -26,7 +26,7 @@ def repair_aluno_table():
         if cursor.fetchone() is None:
             print("Tabela LY_ALUNO não existe. Criando...")
             # Aqui você pode copiar o SQL de criação da tabela do aluno.py
-            from models.aluno import AlunoModel
+            from models.ly_aluno import AlunoModel
             AlunoModel.create_table()
             print("Tabela criada com sucesso!")
             return

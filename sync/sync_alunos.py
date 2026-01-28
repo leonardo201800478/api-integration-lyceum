@@ -1,5 +1,5 @@
 from core.api_client import AlunoAPIClient
-from models.aluno import AlunoModel
+from models.ly_aluno import AlunoModel
 import time
 import logging
 
