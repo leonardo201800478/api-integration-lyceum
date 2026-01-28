@@ -12,7 +12,7 @@ class LyCurriculoModel:
     TABLE_NAME = "ly_curriculos"
     
     @classmethod
-    def create_table(cls, db_name="dados_unifoa.db"):
+    def create_table(cls, db_name="lyceum.db"):  # Alterado para usar lyceum.db
         """Cria a tabela LY_CURRICULOS com todos os campos da API"""
         query = f'''
         CREATE TABLE IF NOT EXISTS {cls.TABLE_NAME} (
@@ -141,7 +141,7 @@ class LyCurriculoModel:
         print(f"✅ Tabela {cls.TABLE_NAME} criada/verificada")
     
     @classmethod
-    def insert_curriculo(cls, curriculo_data: dict, db_name="dados_unifoa.db"):
+    def insert_curriculo(cls, curriculo_data: dict, db_name="lyceum.db"):
         """Insere um novo currículo"""
         query = f'''
         INSERT OR REPLACE INTO {cls.TABLE_NAME} 
@@ -257,7 +257,7 @@ class LyCurriculoModel:
         execute_query(query, params, db_name=db_name)
     
     @classmethod
-    def insert_batch(cls, curriculos: List[Dict], db_name="dados_unifoa.db"):
+    def insert_batch(cls, curriculos: List[Dict], db_name="lyceum.db"):
         """Insere múltiplos currículos de uma vez"""
         saved_count = 0
         
@@ -388,7 +388,7 @@ class LyCurriculoModel:
         return saved_count
     
     @classmethod
-    def get_summary(cls, db_name="dados_unifoa.db"):
+    def get_summary(cls, db_name="lyceum.db"):
         """Obtém resumo dos dados"""
         with get_db_connection(db_name) as conn:
             cursor = conn.cursor()
@@ -421,7 +421,7 @@ class LyCurriculoModel:
             }
     
     @classmethod
-    def get_curriculos_por_curso(cls, curso: str, db_name="dados_unifoa.db"):
+    def get_curriculos_por_curso(cls, curso: str, db_name="lyceum.db"):
         """Busca currículos por curso"""
         query = f'''
         SELECT curriculo, turno, prazo_ideal, prazo_max, ano_ini, sem_ini, regime,
@@ -434,7 +434,7 @@ class LyCurriculoModel:
         return fetch_all(query, (curso,), db_name=db_name)
     
     @classmethod
-    def get_maior_curriculo_por_curso(cls, curso: str, db_name="dados_unifoa.db"):
+    def get_maior_curriculo_por_curso(cls, curso: str, db_name="lyceum.db"):
         """Busca o maior currículo (maior ID) por curso"""
         query = f'''
         SELECT curriculo, turno, prazo_ideal, prazo_max, ano_ini, sem_ini, regime,
@@ -466,7 +466,7 @@ class LyCurriculoModel:
         return None
     
     @classmethod
-    def get_cursos_com_curriculos(cls, db_name="dados_unifoa.db"):
+    def get_cursos_com_curriculos(cls, db_name="lyceum.db"):
         """Retorna lista de cursos que têm currículos"""
         query = f'''
         SELECT DISTINCT curso
@@ -478,7 +478,7 @@ class LyCurriculoModel:
         return [row[0] for row in results]
     
     @classmethod
-    def get_curriculos_recentes(cls, limit=10, db_name="dados_unifoa.db"):
+    def get_curriculos_recentes(cls, limit=10, db_name="lyceum.db"):
         """Retorna currículos mais recentes"""
         query = f'''
         SELECT curriculo, curso, turno, prazo_ideal, prazo_max, situacao
@@ -490,7 +490,7 @@ class LyCurriculoModel:
         return fetch_all(query, (limit,), db_name=db_name)
     
     @classmethod
-    def limpar_tabela(cls, db_name="dados_unifoa.db"):
+    def limpar_tabela(cls, db_name="lyceum.db"):
         """Limpa toda a tabela"""
         query = f"DELETE FROM {cls.TABLE_NAME}"
         cursor = execute_query(query, db_name=db_name)

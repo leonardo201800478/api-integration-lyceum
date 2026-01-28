@@ -1,162 +1,28 @@
 #!/usr/bin/env python3
 """
 Script de sincronização para tabela LY_CURRICULOS
-Busca todos os currículos da API /v2/tabela/curriculos
+Utiliza o CurriculoAPIClient do api_client.py
 """
 import sys
-import pandas as pd
+import os
+import time
 from datetime import datetime
 from typing import List, Dict
-import requests
-from requests.auth import HTTPBasicAuth
-import warnings
-import time
-warnings.filterwarnings('ignore')
+from collections import Counter
+
+# CORREÇÃO DO IMPORT - Adiciona diretório raiz ao path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Importações internas
 from core.config import config
+from core.api_client import CurriculoAPIClient
 from models.ly_curriculo import LyCurriculoModel
 
-class LyCurriculoClient:
-    """Cliente para API de currículos do Lyceum"""
-    
-    def __init__(self):
-        self.base_url = config.API_BASE_URL
-        self.auth = HTTPBasicAuth(config.API_USERNAME, config.API_PASSWORD)
-    
-    def buscar_todos_curriculos(self):
-        """
-        Busca TODOS os currículos da API
-        Começa da página 0 e busca todas as páginas com size=100
-        """
-        print("🔍 Buscando TODOS os currículos da API Lyceum (página inicial=0)...")
-        
-        all_curriculos = []
-        page = 0  # PÁGINA INICIAL = 0
-        size = 100
-        max_pages = 100  # Limite de segurança
-        
-        while page < max_pages:
-            try:
-                print(f"  📄 Buscando página {page} (size={size})...")
-                
-                response = requests.get(
-                    f"{self.base_url}/v2/tabela/curriculos",
-                    params={
-                        "page": page,
-                        "size": size
-                    },
-                    auth=self.auth,
-                    timeout=60,
-                    verify=False
-                )
-                
-                if response.status_code != 200:
-                    print(f"  ❌ Status {response.status_code} na página {page}")
-                    print(f"  📄 Resposta: {response.text[:200]}")
-                    break
-                
-                data = response.json()
-                
-                # Verificar estrutura da resposta
-                if not isinstance(data, dict):
-                    print(f"  ⚠️  Estrutura inesperada: {type(data)}")
-                    break
-                
-                if 'data' not in data:
-                    print(f"  ⚠️  Campo 'data' não encontrado. Campos disponíveis: {list(data.keys())}")
-                    
-                    # Tentar outras estruturas possíveis
-                    if isinstance(data, list):
-                        curriculos = data
-                        print(f"  ✅ Dados como lista direta: {len(curriculos)} itens")
-                    else:
-                        # Procurar por listas nos dados
-                        for key, value in data.items():
-                            if isinstance(value, list):
-                                curriculos = value
-                                print(f"  ✅ Encontrado em campo '{key}': {len(curriculos)} itens")
-                                break
-                        else:
-                            print("  ❌ Nenhuma lista de dados encontrada")
-                            break
-                else:
-                    curriculos = data['data']
-                
-                if not curriculos:
-                    print(f"  📭 Página {page} vazia - fim dos dados")
-                    break
-                
-                all_curriculos.extend(curriculos)
-                print(f"  ✅ Página {page}: {len(curriculos)} currículos (total: {len(all_curriculos)})")
-                
-                # Mostrar amostra da primeira página
-                if page == 0 and curriculos:
-                    print(f"  📋 Amostra da primeira página:")
-                    for i, curriculo in enumerate(curriculos[:3]):
-                        curso = curriculo.get('curso', 'N/A')
-                        curriculo_id = curriculo.get('curriculo', 'N/A')
-                        prazo_ideal = curriculo.get('prazo_ideal', 'N/A')
-                        prazo_max = curriculo.get('prazo_max', 'N/A')
-                        turno = curriculo.get('turno', 'N/A')
-                        situacao = curriculo.get('situacao', 'N/A')
-                        print(f"     {i+1}. Curso: {curso}, Currículo: {curriculo_id}, "
-                              f"Turno: {turno}, Prazo Ideal: {prazo_ideal}, "
-                              f"Prazo Máx: {prazo_max}, Situação: {situacao}")
-                
-                # Se veio menos que o solicitado, é a última página
-                if len(curriculos) < size:
-                    print(f"  📭 Última página (menos de {size} itens)")
-                    break
-                
-                page += 1
-                
-                # Pequeno delay para não sobrecarregar a API
-                time.sleep(0.5)
-                    
-            except Exception as e:
-                print(f"  ❌ Erro na página {page}: {e}")
-                import traceback
-                traceback.print_exc()
-                break
-        
-        if all_curriculos:
-            print(f"\n✅ TOTAL DE CURRÍCULOS ENCONTRADOS: {len(all_curriculos)}")
-            
-            # Estatísticas
-            cursos_unicos = set(str(c.get('curso', '')).strip() for c in all_curriculos)
-            cursos_unicos = {c for c in cursos_unicos if c}  # Remover vazios
-            
-            print(f"📊 Cursos distintos encontrados: {len(cursos_unicos)}")
-            
-            # Contar currículos por curso
-            from collections import Counter
-            cursos_counter = Counter(str(c.get('curso', '')).strip() for c in all_curriculos)
-            
-            # Remover entradas vazias
-            if '' in cursos_counter:
-                del cursos_counter['']
-            
-            print("📋 Top 10 cursos com mais currículos:")
-            for curso, count in cursos_counter.most_common(10):
-                print(f"  Curso {curso}: {count} currículos")
-            
-            # Contar por situação
-            situacoes_counter = Counter(str(c.get('situacao', 'N/A')).strip() for c in all_curriculos)
-            print("\n📋 Distribuição por situação:")
-            for situacao, count in situacoes_counter.most_common():
-                print(f"  {situacao}: {count}")
-            
-            return all_curriculos
-        else:
-            print("\n❌ NENHUM CURRÍCULO ENCONTRADO")
-            return []
-
 class LyCurriculoSync:
-    """Sincronizador da tabela LY_CURRICULOS"""
+    """Sincronizador da tabela LY_CURRICULOS usando api_client"""
     
     def __init__(self):
-        self.client = LyCurriculoClient()
+        self.client = CurriculoAPIClient()
         
         # Resultados
         self.total_curriculos = 0
@@ -183,18 +49,57 @@ class LyCurriculoSync:
         return summary
     
     def buscar_curriculos(self):
-        """Busca currículos da API"""
+        """Busca currículos da API usando o cliente já paginado"""
         print(f"\n{'='*50}")
         print("BUSCANDO CURRÍCULOS DA API LYCEUM")
         print(f"{'='*50}")
         
-        curriculos = self.client.buscar_todos_curriculos()
+        curriculos = self.client.get_curriculos()
         
         if not curriculos:
             print("❌ Nenhum currículo encontrado na API")
             return None
         
         self.total_curriculos = len(curriculos)
+        print(f"✅ Total de currículos encontrados: {self.total_curriculos}")
+        
+        # Estatísticas
+        cursos_unicos = set(str(c.get('curso', '')).strip() for c in curriculos)
+        cursos_unicos = {c for c in cursos_unicos if c}
+        
+        print(f"📊 Cursos distintos encontrados: {len(cursos_unicos)}")
+        
+        # Contar currículos por curso
+        cursos_counter = Counter(str(c.get('curso', '')).strip() for c in curriculos)
+        
+        # Remover entradas vazias
+        if '' in cursos_counter:
+            del cursos_counter['']
+        
+        print("📋 Top 10 cursos com mais currículos:")
+        for curso, count in cursos_counter.most_common(10):
+            print(f"  Curso {curso}: {count} currículos")
+        
+        # Contar por situação
+        situacoes_counter = Counter(str(c.get('situacao', 'N/A')).strip() for c in curriculos)
+        print("\n📋 Distribuição por situação:")
+        for situacao, count in situacoes_counter.most_common():
+            print(f"  {situacao}: {count}")
+        
+        # Mostrar amostra da primeira página
+        if curriculos and len(curriculos) > 0:
+            print(f"\n📋 Amostra dos primeiros currículos:")
+            for i, curriculo in enumerate(curriculos[:3]):
+                curso = curriculo.get('curso', 'N/A')
+                curriculo_id = curriculo.get('curriculo', 'N/A')
+                prazo_ideal = curriculo.get('prazo_ideal', 'N/A')
+                prazo_max = curriculo.get('prazo_max', 'N/A')
+                turno = curriculo.get('turno', 'N/A')
+                situacao = curriculo.get('situacao', 'N/A')
+                print(f"     {i+1}. Curso: {curso}, Currículo: {curriculo_id}, "
+                      f"Turno: {turno}, Prazo Ideal: {prazo_ideal}, "
+                      f"Prazo Máx: {prazo_max}, Situação: {situacao}")
+        
         return curriculos
     
     def processar_curriculos(self, curriculos: List[Dict]):
@@ -258,32 +163,6 @@ class LyCurriculoSync:
             if i < total_batches - 1:
                 time.sleep(0.3)
     
-    def exportar_para_csv(self, curriculos: List[Dict]):
-        """Exporta dados para CSV"""
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"ly_curriculos_completo_{timestamp}.csv"
-        
-        df = pd.DataFrame(curriculos)
-        
-        # Selecionar colunas principais para exportação
-        colunas_principais = [
-            'curriculo', 'curso', 'turno', 'prazo_ideal', 'prazo_max',
-            'ano_ini', 'sem_ini', 'regime', 'aulas_previstas', 'creditos',
-            'situacao', 'modalidade', 'servico', 'valor', 'classificacao'
-        ]
-        
-        # Filtrar colunas que existem
-        colunas_disponiveis = [col for col in colunas_principais if col in df.columns]
-        df = df[colunas_disponiveis]
-        
-        # Ordenar por curso e currículo
-        if 'curso' in df.columns and 'curriculo' in df.columns:
-            df = df.sort_values(['curso', 'curriculo'])
-        
-        df.to_csv(filename, index=False, encoding='utf-8-sig')
-        print(f"✅ Dados exportados para: {filename}")
-        return filename
-    
     def mostrar_exemplos(self):
         """Mostra exemplos de currículos importados"""
         print(f"\n{'='*50}")
@@ -291,7 +170,7 @@ class LyCurriculoSync:
         print(f"{'='*50}")
         
         # Buscar currículos recentes
-        curriculos_recentes = LyCurriculoModel.get_curriculos_recentes(limit=5)
+        curriculos_recentes = LyCurriculoModel.get_curriculos_recentes(limit=5, db_name=config.DB_NAME)
         
         if not curriculos_recentes:
             print("⚠️  Nenhum currículo encontrado no banco")
@@ -307,68 +186,17 @@ class LyCurriculoSync:
             print(f"     Situação: {curriculo[5]}")
         
         # Mostrar estatísticas por curso
-        cursos_com_curriculos = LyCurriculoModel.get_cursos_com_curriculos()
+        cursos_com_curriculos = LyCurriculoModel.get_cursos_com_curriculos(db_name=config.DB_NAME)
         if cursos_com_curriculos:
             print(f"\n📊 Cursos com currículos disponíveis: {len(cursos_com_curriculos)}")
             print("📋 Primeiros 10 cursos:")
             for i, curso in enumerate(cursos_com_curriculos[:10]):
                 print(f"  {i+1}. Curso {curso}")
     
-    def atualizar_cursos_com_curriculos(self):
-        """Atualiza a tabela de cursos com os períodos dos currículos"""
-        print(f"\n{'='*50}")
-        print("ATUALIZANDO CURSOS COM PERÍODOS DOS CURRÍCULOS")
-        print(f"{'='*50}")
-        
-        try:
-            from models.curso import CursoModel
-            
-            # Buscar todos os cursos ativos
-            cursos_ativos = CursoModel.get_cursos_ativos()
-            
-            if not cursos_ativos:
-                print("⚠️  Nenhum curso ativo encontrado")
-                return
-            
-            cursos_atualizados = 0
-            
-            for curso in cursos_ativos:
-                codigo_curso = curso[0]  # codigoCurso é o primeiro campo
-                
-                # Buscar maior currículo para este curso
-                maior_curriculo = LyCurriculoModel.get_maior_curriculo_por_curso(codigo_curso)
-                
-                if maior_curriculo and maior_curriculo.get('prazo_ideal') is not None:
-                    try:
-                        prazo_ideal = maior_curriculo['prazo_ideal']
-                        
-                        # Converter para inteiro
-                        if isinstance(prazo_ideal, (int, float)):
-                            quant_periodos = int(float(prazo_ideal))
-                        else:
-                            quant_periodos = int(prazo_ideal)
-                        
-                        # Atualizar curso
-                        CursoModel.update_quant_periodos(codigo_curso, quant_periodos, config.DB_NAME)
-                        cursos_atualizados += 1
-                        
-                        print(f"✅ Curso {codigo_curso}: prazo_ideal={prazo_ideal} → quantPeriodos={quant_periodos}")
-                        
-                    except (ValueError, TypeError) as e:
-                        print(f"⚠️  Curso {codigo_curso}: erro ao converter prazo_ideal: {e}")
-            
-            print(f"\n📊 Cursos atualizados com períodos: {cursos_atualizados}/{len(cursos_ativos)}")
-            
-        except ImportError:
-            print("⚠️  Modelo de cursos não disponível para atualização")
-        except Exception as e:
-            print(f"❌ Erro ao atualizar cursos: {e}")
-    
     def run(self):
         """Executa o processo completo de sincronização"""
         print("="*60)
         print("SISTEMA DE SINCRONIZAÇÃO DE CURRÍCULOS - LY_CURRICULOS")
-        print("API: /v2/tabela/curriculos (página inicial=0)")
         print(f"Data/Hora: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
         print("="*60)
         
@@ -414,18 +242,7 @@ class LyCurriculoSync:
             print(f"   Total de currículos: {resumo_inicial['total_curriculos']} → {resumo_final['total_curriculos']}")
             print(f"   Diferença: {resumo_final['total_curriculos'] - resumo_inicial['total_curriculos']}")
             
-            # 7. Atualizar cursos com períodos (opcional)
-            atualizar = input("\n🔄 Atualizar cursos com períodos dos currículos? (s/n): ").strip().lower()
-            if atualizar == 's':
-                self.atualizar_cursos_com_curriculos()
-            
-            # 8. Exportar CSV (opcional)
-            if curriculos_processados:
-                exportar = input("\n💾 Exportar dados para CSV? (s/n): ").strip().lower()
-                if exportar == 's':
-                    self.exportar_para_csv(curriculos_processados)
-            
-            # 9. Mostrar exemplos
+            # 7. Mostrar exemplos
             self.mostrar_exemplos()
             
             print(f"\n{'='*60}")
