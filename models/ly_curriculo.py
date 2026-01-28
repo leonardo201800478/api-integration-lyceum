@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Modelo para tabela LY_CURRICULO usando o core.database existente
+SEM CHAVE PRIMÁRIA - para permitir múltiplos registros com o mesmo currículo/curso
 """
 import logging
 from typing import List, Dict, Any, Optional
@@ -11,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 class LyCurriculoModel:
-    """Modelo para tabela LY_CURRICULO"""
+    """Modelo para tabela LY_CURRICULO SEM chave primária"""
     
     TABLE_NAME = "LY_CURRICULO"
     
@@ -63,7 +64,7 @@ class LyCurriculoModel:
     
     @classmethod
     def create_table(cls):
-        """Cria a tabela LY_CURRICULO se não existir"""
+        """Cria a tabela LY_CURRICULO sem chave primária"""
         # Verificar se a tabela já existe
         table_exists_query = """
         SELECT name FROM sqlite_master 
@@ -76,10 +77,11 @@ class LyCurriculoModel:
             logger.info(f"Tabela {cls.TABLE_NAME} já existe")
             return True
         
-        # SQL para criar a tabela
+        # SQL para criar a tabela SEM chave primária
         sql = f"""
         CREATE TABLE {cls.TABLE_NAME} (
-            curriculo TEXT PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            curriculo TEXT NOT NULL,
             curso TEXT NOT NULL,
             turno TEXT,
             prazo_ideal INTEGER,
@@ -167,9 +169,9 @@ class LyCurriculoModel:
         try:
             execute_query(sql, db_path=config.DB_LYCEUM_PATH)
             
-            # Criar índices para melhor performance
+            # Criar índices para melhor performance (mas não únicos)
             indexes = [
-                f"CREATE INDEX idx_curriculo_curso ON {cls.TABLE_NAME}(curso)",
+                f"CREATE INDEX idx_curriculo_curso ON {cls.TABLE_NAME}(curriculo, curso)",
                 f"CREATE INDEX idx_curriculo_situacao ON {cls.TABLE_NAME}(situacao)",
                 f"CREATE INDEX idx_curriculo_turno ON {cls.TABLE_NAME}(turno)",
                 f"CREATE INDEX idx_curriculo_ano_ini ON {cls.TABLE_NAME}(ano_ini)",
@@ -181,7 +183,7 @@ class LyCurriculoModel:
                 except Exception as e:
                     logger.warning(f"Erro ao criar índice: {e}")
             
-            logger.info(f"Tabela {cls.TABLE_NAME} criada com sucesso")
+            logger.info(f"Tabela {cls.TABLE_NAME} criada com sucesso (sem chave primária)")
             return True
             
         except Exception as e:
@@ -189,8 +191,20 @@ class LyCurriculoModel:
             return False
     
     @classmethod
-    def upsert(cls, data: Dict) -> bool:
-        """Insere ou atualiza um único currículo"""
+    def clear_table(cls):
+        """Limpa a tabela completamente (para sincronizações completas)"""
+        try:
+            sql = f"DELETE FROM {cls.TABLE_NAME}"
+            execute_query(sql, db_path=config.DB_LYCEUM_PATH)
+            logger.info(f"Tabela {cls.TABLE_NAME} limpa")
+            return True
+        except Exception as e:
+            logger.error(f"Erro ao limpar tabela {cls.TABLE_NAME}: {e}")
+            return False
+    
+    @classmethod
+    def insert(cls, data: Dict) -> bool:
+        """Insere um novo currículo (não verifica duplicatas)"""
         try:
             # Verificar campos obrigatórios
             curriculo_id = cls._normalize_value(data.get('curriculo'))
@@ -203,7 +217,6 @@ class LyCurriculoModel:
             # Preparar colunas e valores
             columns = ['curriculo', 'curso']
             values = [curriculo_id, curso_id]
-            placeholders = ['?', '?']
             
             # Adicionar outros campos
             for field in cls.API_FIELDS:
@@ -212,43 +225,26 @@ class LyCurriculoModel:
                     if value is not None:
                         columns.append(field)
                         values.append(value)
-                        placeholders.append('?')
             
-            # Adicionar campos de metadados
-            columns.append('data_atualizacao')
-            values.append('CURRENT_TIMESTAMP')
-            placeholders.append('CURRENT_TIMESTAMP')
-            
-            # Construir query de upsert
+            # Construir query de INSERT simples
             columns_str = ', '.join(columns)
-            placeholders_str = ', '.join(placeholders)
-            
-            # Para o UPDATE, precisamos de uma lista de assignments
-            update_assignments = []
-            for col in columns:
-                if col not in ['curriculo', 'curso', 'data_atualizacao']:
-                    update_assignments.append(f"{col} = excluded.{col}")
-            
-            update_assignments.append("data_atualizacao = CURRENT_TIMESTAMP")
-            update_str = ', '.join(update_assignments)
+            placeholders = ', '.join(['?' for _ in values])
             
             sql = f"""
-            INSERT INTO {cls.TABLE_NAME} ({columns_str})
-            VALUES ({placeholders_str})
-            ON CONFLICT(curriculo) DO UPDATE SET
-                {update_str}
+            INSERT INTO {cls.TABLE_NAME} ({columns_str}, data_atualizacao)
+            VALUES ({placeholders}, CURRENT_TIMESTAMP)
             """
             
-            execute_query(sql, tuple(values[:len(values)-1]), db_path=config.DB_LYCEUM_PATH)
+            execute_query(sql, tuple(values), db_path=config.DB_LYCEUM_PATH)
             return True
             
         except Exception as e:
-            logger.error(f"Erro ao upsert currículo {data.get('curriculo')}: {e}")
+            logger.error(f"Erro ao inserir currículo {data.get('curriculo')}: {e}")
             return False
     
     @classmethod
-    def batch_upsert(cls, data_list: List[Dict]) -> int:
-        """Insere ou atualiza múltiplos currículos em lote"""
+    def batch_insert(cls, data_list: List[Dict]) -> int:
+        """Insere múltiplos currículos em lote (permite duplicatas)"""
         if not data_list:
             return 0
         
@@ -272,7 +268,6 @@ class LyCurriculoModel:
                     # Preparar colunas e valores
                     columns = ['curriculo', 'curso']
                     values = [curriculo_id, curso_id]
-                    placeholders = ['?', '?']
                     
                     # Adicionar outros campos
                     for field in cls.API_FIELDS:
@@ -281,44 +276,27 @@ class LyCurriculoModel:
                             if value is not None:
                                 columns.append(field)
                                 values.append(value)
-                                placeholders.append('?')
                     
-                    # Adicionar campos de metadados
-                    columns.append('data_atualizacao')
-                    values.append('CURRENT_TIMESTAMP')
-                    placeholders.append('CURRENT_TIMESTAMP')
-                    
-                    # Construir query de upsert
+                    # Construir query de INSERT simples
                     columns_str = ', '.join(columns)
-                    placeholders_str = ', '.join(placeholders)
-                    
-                    # Para o UPDATE, precisamos de uma lista de assignments
-                    update_assignments = []
-                    for col in columns:
-                        if col not in ['curriculo', 'curso', 'data_atualizacao']:
-                            update_assignments.append(f"{col} = excluded.{col}")
-                    
-                    update_assignments.append("data_atualizacao = CURRENT_TIMESTAMP")
-                    update_str = ', '.join(update_assignments)
+                    placeholders = ', '.join(['?' for _ in values])
                     
                     sql = f"""
-                    INSERT INTO {cls.TABLE_NAME} ({columns_str})
-                    VALUES ({placeholders_str})
-                    ON CONFLICT(curriculo) DO UPDATE SET
-                        {update_str}
+                    INSERT INTO {cls.TABLE_NAME} ({columns_str}, data_atualizacao)
+                    VALUES ({placeholders}, CURRENT_TIMESTAMP)
                     """
                     
-                    cursor.execute(sql, tuple(values[:len(values)-1]))
+                    cursor.execute(sql, tuple(values))
                     success_count += 1
                     
                 except Exception as e:
-                    logger.error(f"Erro ao processar currículo {data.get('curriculo')}: {e}")
+                    logger.error(f"Erro ao inserir currículo {data.get('curriculo')}: {e}")
                     error_count += 1
                     continue
             
             conn.commit()
         
-        logger.info(f"Batch upsert: {success_count} sucessos, {error_count} erros, total {len(data_list)}")
+        logger.info(f"Batch insert: {success_count} sucessos, {error_count} erros, total {len(data_list)}")
         return success_count
     
     @classmethod
@@ -328,6 +306,7 @@ class LyCurriculoModel:
             queries = {
                 'total_curriculos': f"SELECT COUNT(*) FROM {cls.TABLE_NAME}",
                 'cursos_distintos': f"SELECT COUNT(DISTINCT curso) FROM {cls.TABLE_NAME}",
+                'curriculos_distintos': f"SELECT COUNT(DISTINCT curriculo) FROM {cls.TABLE_NAME}",
                 'situacoes_distintas': f"SELECT COUNT(DISTINCT situacao) FROM {cls.TABLE_NAME} WHERE situacao IS NOT NULL",
                 'ultima_atualizacao': f"SELECT MAX(data_atualizacao) FROM {cls.TABLE_NAME}"
             }
@@ -345,59 +324,3 @@ class LyCurriculoModel:
         except Exception as e:
             logger.error(f"Erro ao obter resumo: {e}")
             return {}
-    
-    @classmethod
-    def get_all_curriculos(cls) -> List[Dict]:
-        """Retorna todos os currículos da tabela"""
-        try:
-            sql = f"SELECT * FROM {cls.TABLE_NAME} ORDER BY curso, curriculo"
-            results = fetch_all(sql, db_path=config.DB_LYCEUM_PATH)
-            
-            # Converter para lista de dicionários
-            curriculos = []
-            for row in results:
-                curriculo = {}
-                # Obter nomes das colunas
-                with get_db_connection(db_path=config.DB_LYCEUM_PATH) as conn:
-                    cursor = conn.cursor()
-                    cursor.execute(f"PRAGMA table_info({cls.TABLE_NAME})")
-                    columns = [col[1] for col in cursor.fetchall()]
-                
-                for i, col in enumerate(columns):
-                    if i < len(row):
-                        curriculo[col] = row[i]
-                
-                curriculos.append(curriculo)
-            
-            return curriculos
-            
-        except Exception as e:
-            logger.error(f"Erro ao buscar currículos: {e}")
-            return []
-    
-    @classmethod
-    def get_by_curso(cls, curso: str) -> List[Dict]:
-        """Retorna currículos por curso"""
-        try:
-            sql = f"SELECT * FROM {cls.TABLE_NAME} WHERE curso = ? ORDER BY curriculo"
-            results = fetch_all(sql, (curso,), db_path=config.DB_LYCEUM_PATH)
-            
-            curriculos = []
-            for row in results:
-                curriculo = {}
-                with get_db_connection(db_path=config.DB_LYCEUM_PATH) as conn:
-                    cursor = conn.cursor()
-                    cursor.execute(f"PRAGMA table_info({cls.TABLE_NAME})")
-                    columns = [col[1] for col in cursor.fetchall()]
-                
-                for i, col in enumerate(columns):
-                    if i < len(row):
-                        curriculo[col] = row[i]
-                
-                curriculos.append(curriculo)
-            
-            return curriculos
-            
-        except Exception as e:
-            logger.error(f"Erro ao buscar currículos por curso {curso}: {e}")
-            return []

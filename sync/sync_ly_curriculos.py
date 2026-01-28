@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Sincronização simples da tabela LY_CURRICULO
+SEM chave primária - permite duplicatas
 """
 import sys
 import os
@@ -28,7 +29,7 @@ logger = logging.getLogger(__name__)
 def sincronizar_curriculos():
     """Executa a sincronização completa"""
     print("=" * 60)
-    print("SINCRONIZAÇÃO DA TABELA LY_CURRICULO")
+    print("SINCRONIZAÇÃO DA TABELA LY_CURRICULO (SEM CHAVE PRIMÁRIA)")
     print(f"Início: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
     print("=" * 60)
     
@@ -69,7 +70,7 @@ def sincronizar_curriculos():
             print("   ⚠️  Nenhum registro válido encontrado")
             return True  # Considera sucesso, mas sem dados
         
-        # Mostrar amostra
+        # Mostrar amostra e estatísticas
         if curriculos_validos:
             primeiro = curriculos_validos[0]
             print(f"   📋 Amostra do primeiro registro:")
@@ -77,17 +78,32 @@ def sincronizar_curriculos():
             print(f"      Curso: {primeiro.get('curso')}")
             print(f"      Turno: {primeiro.get('turno', 'N/A')}")
             print(f"      Situação: {primeiro.get('situacao', 'N/A')}")
+            
+            # Analisar duplicatas nos dados da API
+            curriculos_set = set()
+            for c in curriculos_validos:
+                chave = f"{c.get('curriculo')}-{c.get('curso')}"
+                curriculos_set.add(chave)
+            
+            print(f"   🔍 Análise de duplicatas na API:")
+            print(f"      Registros totais: {len(curriculos_validos)}")
+            print(f"      Pares únicos (curriculo-curso): {len(curriculos_set)}")
+            print(f"      Duplicatas: {len(curriculos_validos) - len(curriculos_set)}")
         
-        # 3. Inserir/Atualizar no banco
-        print(f"\n[3/4] 💾 Gravando {len(curriculos_validos)} registros no banco...")
+        # 3. Limpar tabela existente (opcional - sincronização completa)
+        print(f"\n[3/4] 🧹 Limpando tabela existente...")
+        LyCurriculoModel.clear_table()
         
-        total_processados = LyCurriculoModel.batch_upsert(curriculos_validos)
+        # 4. Inserir no banco
+        print(f"\n[4/4] 💾 Inserindo {len(curriculos_validos)} registros no banco...")
         
-        # 4. Resumo final
+        total_processados = LyCurriculoModel.batch_insert(curriculos_validos)
+        
+        # 5. Resumo final
         tempo_total = time.time() - start_time
         resumo_final = LyCurriculoModel.get_summary()
         
-        print(f"\n[4/4] 📊 Gerando resumo...")
+        print(f"\n[5/5] 📊 Gerando resumo...")
         
         print("\n" + "=" * 60)
         print("RESUMO DA SINCRONIZAÇÃO")
@@ -98,7 +114,7 @@ def sincronizar_curriculos():
         print(f"   Válidos para processamento: {len(curriculos_validos)}")
         
         print(f"\n🗃️  OPERAÇÕES NO BANCO:")
-        print(f"   Processados com sucesso: {total_processados}")
+        print(f"   Inseridos com sucesso: {total_processados}")
         if len(curriculos_validos) > total_processados:
             print(f"   Registros com erro: {len(curriculos_validos) - total_processados}")
         
@@ -106,6 +122,7 @@ def sincronizar_curriculos():
         print(f"   Antes da sincronização: {resumo_inicial.get('total_curriculos', 0)} registros")
         print(f"   Após a sincronização: {resumo_final.get('total_curriculos', 0)} registros")
         print(f"   Cursos distintos: {resumo_final.get('cursos_distintos', 0)}")
+        print(f"   Currículos distintos: {resumo_final.get('curriculos_distintos', 0)}")
         
         if resumo_final.get('ultima_atualizacao'):
             print(f"   Última atualização: {resumo_final['ultima_atualizacao']}")
@@ -137,7 +154,7 @@ def sincronizar_curriculos():
 
 def main():
     """Função principal"""
-    print("🚀 Iniciando sincronização de currículos...")
+    print("🚀 Iniciando sincronização de currículos (sem chave primária)...")
     
     try:
         # Verificar configurações
