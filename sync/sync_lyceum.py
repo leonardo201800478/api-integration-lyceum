@@ -17,12 +17,12 @@ from core.api_client import (
 )
 
 from models.ly_aluno import AlunoModel
-from models.curso import CursoModel
+from models.ly_curso import CursoModel
 from models.ly_curriculo import CurriculoModel
 from models.docente import DocenteModel
-from models.disciplina import DisciplinaModel
-from models.turma import TurmaModel
-from models.turma_docente import TurmaDocenteModel
+from models.ly_disciplina import DisciplinaModel
+from models.ly_turma import TurmaModel
+from models.ly_turma_docente import TurmaDocenteModel
 
 
 # ==========================================================
