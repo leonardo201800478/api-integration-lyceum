@@ -1,6 +1,6 @@
 import requests
 import time
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Dict
 from core.config import config
 
 
@@ -54,25 +54,36 @@ class BaseAPIClient:
             print(f"⚠️ Erro na requisição → {url}: {e}")
             return None
 
-    def get_paginated(self, endpoint: str) -> List[dict]:
+    def get_paginated(self, endpoint: str, params: Optional[Dict] = None) -> List[dict]:
         """
         Percorre todas as páginas disponíveis da API.
         A API retorna {'data': [...]} em vez de lista direta.
+        
+        Args:
+            endpoint: Endpoint da API
+            params: Parâmetros adicionais para a requisição (opcional)
         """
         results: List[dict] = []
         page = config.API_PAGE_START
         
         print(f"  🔄 Iniciando paginação no endpoint: {endpoint}")
+        if params:
+            print(f"  📋 Parâmetros: {params}")
         
         while True:
-            params = {
+            # Base parameters - página e tamanho
+            request_params = {
                 "page": page,
                 "size": config.API_PAGE_SIZE
             }
             
+            # Adicionar parâmetros extras se fornecidos
+            if params:
+                request_params.update(params)
+            
             print(f"    📄 Página {page} (size={config.API_PAGE_SIZE})...")
             
-            data = self.get(endpoint, params=params)
+            data = self.get(endpoint, params=request_params)
             
             # Fim da paginação
             if not data:
@@ -161,6 +172,11 @@ class APIClientFactory:
     def create_turma_docente_client() -> 'TurmaDocenteAPIClient':
         """Cria cliente de turma-docente com sessão isolada"""
         return TurmaDocenteAPIClient()
+    
+    @staticmethod
+    def create_matricula_client() -> 'MatriculaAPIClient':
+        """Cria cliente de matrículas com sessão isolada"""
+        return MatriculaAPIClient()
 
 
 # ==================================================
@@ -218,11 +234,65 @@ class DisciplinaAPIClient(BaseAPIClient):
 class TurmaAPIClient(BaseAPIClient):
     def get_turmas(self) -> List[dict]:
         return self.get_paginated("/v2/tabela/turmas")
+    
+    def get_turmas_filtradas(self, ano: Optional[int] = None, semestre: Optional[int] = None) -> List[dict]:
+        """Obtém turmas com filtros opcionais de ano e semestre"""
+        params = {}
+        if ano is not None:
+            params["ano"] = ano
+        if semestre is not None:
+            params["semestre"] = semestre
+        return self.get_paginated("/v2/tabela/turmas", params=params)
 
 
 class TurmaDocenteAPIClient(BaseAPIClient):
     def get_turmas_docentes(self) -> List[dict]:
         return self.get_paginated("/v2/tabela/turma-docente")
+    
+    def get_turmas_docentes_filtradas(self, ano: Optional[int] = None, semestre: Optional[int] = None) -> List[dict]:
+        """Obtém turma-docente com filtros opcionais de ano e semestre"""
+        params = {}
+        if ano is not None:
+            params["ano"] = ano
+        if semestre is not None:
+            params["semestre"] = semestre
+        return self.get_paginated("/v2/tabela/turma-docente", params=params)
+
+
+class MatriculaAPIClient(BaseAPIClient):
+    def get_matriculas(self) -> List[dict]:
+        """Obtém todas as matrículas (sem filtros)"""
+        return self.get_paginated("/v2/tabela/matriculas")
+    
+    def get_matriculas_filtradas(self, ano: Optional[int] = None, semestre: Optional[int] = None) -> List[dict]:
+        """
+        Obtém matrículas com filtros opcionais de ano e semestre
+        
+        Args:
+            ano: Ano para filtrar (opcional)
+            semestre: Semestre para filtrar (opcional)
+            
+        Returns:
+            Lista de matrículas filtradas
+        """
+        params = {}
+        if ano is not None:
+            params["ano"] = ano
+        if semestre is not None:
+            params["semestre"] = semestre
+        
+        print(f"🔍 Buscando matrículas com filtros: ano={ano}, semestre={semestre}")
+        return self.get_paginated("/v2/tabela/matriculas", params=params)
+    
+    def get_matriculas_by_aluno(self, aluno_code: str) -> List[dict]:
+        """Obtém matrículas de um aluno específico"""
+        params = {"pk[aluno]": aluno_code}
+        return self.get_paginated("/v2/tabela/matriculas", params=params)
+    
+    def get_matriculas_by_turma(self, turma_code: str) -> List[dict]:
+        """Obtém matrículas de uma turma específica"""
+        params = {"pk[turma]": turma_code}
+        return self.get_paginated("/v2/tabela/matriculas", params=params)
 
 
 # ==================================================
@@ -256,3 +326,7 @@ def get_turma_client() -> TurmaAPIClient:
 def get_turma_docente_client() -> TurmaDocenteAPIClient:
     """Retorna um cliente de turma-docente com sessão isolada"""
     return APIClientFactory.create_turma_docente_client()
+
+def get_matricula_client() -> MatriculaAPIClient:
+    """Retorna um cliente de matrículas com sessão isolada"""
+    return APIClientFactory.create_matricula_client()
