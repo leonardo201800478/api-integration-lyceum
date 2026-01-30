@@ -239,7 +239,7 @@ def validar_formato_email(email):
     email_str = str(email).lower().strip()
     
     # Verifica se é um email institucional (termina com .edu ou .org.br ou similar)
-    dominios_validos = ['.edu', '.org.br', '.com.br', '.br']
+    dominios_validos = ['foa.org.br', 'unifoa.edu.br', 'etecfoa.com.br']
     
     if not any(email_str.endswith(dominio) for dominio in dominios_validos):
         return False, "Email não parece ser institucional"
@@ -329,11 +329,7 @@ def validar_registro_docente(registro):
         if not validar_email(registro['email']):
             erros.append(f"Email inválido: {registro['email']}")
     
-    # Validar CPF se existir
-    if 'cpf' in registro and registro['cpf']:
-        if not validar_cpf(registro['cpf']):
-            erros.append(f"CPF inválido: {registro['cpf']}")
-    
+  
     return len(erros) == 0, erros
 
 
@@ -400,26 +396,6 @@ def validar_campo_numerico(valor, nome_campo, valor_min=None, valor_max=None):
         return False, f"Campo '{nome_campo}' deve ser um número"
 
 
-def validar_codigo_disciplina(codigo):
-    """
-    Valida formato de código de disciplina
-    
-    Args:
-        codigo (str): Código da disciplina
-    
-    Returns:
-        bool: True se o código é válido, False caso contrário
-    """
-    if not codigo:
-        return False
-    
-    codigo_str = str(codigo).strip()
-    
-    # Código deve ter formato como "MAT101", "ENG201", etc.
-    if len(codigo_str) < 3:
-        return False
-    
-    return True
 
 
 def validar_sigla_curso(sigla):
@@ -481,19 +457,95 @@ def validar_nome_curso(nome):
 
 def validar_quant_periodos(quantidade):
     """
-    Valida quantidade de períodos
-    
+    Valida e normaliza a quantidade de períodos.
+
+    Regras:
+    - Aceita valores entre 0 e 99
+    - Se o valor for 0, normaliza para 1
+    - Rejeita None, vazio ou valores não numéricos
+
     Args:
         quantidade: Quantidade de períodos
-    
+
     Returns:
-        bool: True se a quantidade é válida, False caso contrário
+        int | None: Valor normalizado (1 a 99) ou None se inválido
     """
     if quantidade is None:
+        return None
+
+    try:
+        num = int(quantidade)
+    except (ValueError, TypeError):
+        return None
+
+    if not 0 <= num <= 99:
+        return None
+
+    # Regra de negócio: período 0 vira 1
+    return 1 if num == 0 else num
+
+
+    
+def validar_codigo_disciplina(codigo):
+    """
+    Valida código da disciplina
+    
+    Args:
+        codigo (str): Código da disciplina
+    
+    Returns:
+        bool: True se o código é válido, False caso contrário
+    """
+    if not codigo:
+        return False
+    
+    codigo_str = str(codigo).strip()
+    return len(codigo_str) > 0 and len(codigo_str) <= 30
+
+def validar_nome_disciplina(nome):
+    """
+    Valida e normaliza o nome da disciplina.
+    
+    - Remove espaços extras
+    - Encurta para 100 caracteres se exceder
+    - Garante que o nome não fique vazio
+    
+    Args:
+        nome (str): Nome da disciplina
+    
+    Returns:
+        str | None: Nome válido (possivelmente truncado) ou None se inválido
+    """
+    if not nome:
+        return None
+
+    nome_str = str(nome).strip()
+
+    if not nome_str:
+        return None
+
+    # Encurta automaticamente se passar de 100 caracteres
+    if len(nome_str) > 100:
+        nome_str = nome_str[:100]
+
+    return nome_str
+
+
+def validar_periodo(periodo):
+    """
+    Valida período da disciplina
+    
+    Args:
+        periodo: Período da disciplina
+    
+    Returns:
+        bool: True se o período é válido, False caso contrário
+    """
+    if periodo is None:
         return False
     
     try:
-        num = int(quantidade)
+        num = int(periodo)
         return 1 <= num <= 99  # Supondo que seja entre 1 e 99 períodos
     except (ValueError, TypeError):
         return False
@@ -510,9 +562,12 @@ VALIDACOES = {
     'ativo': validar_ativo,
     'genero': validar_genero,
     'situacao': validar_situacao_aluno,
-    'codigo_disciplina': validar_codigo_disciplina,
+    'codigo_disciplina_antigo': validar_codigo_disciplina,
     'sigla_curso': validar_sigla_curso,
     'codigo_curso': validar_codigo_curso,
     'nome_curso': validar_nome_curso,
     'quant_periodos': validar_quant_periodos,
+    'codigo_disciplina': validar_codigo_disciplina,
+    'nome_disciplina': validar_nome_disciplina,
+    'periodo': validar_periodo,
 }

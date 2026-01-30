@@ -10,6 +10,7 @@ from pathlib import Path
 # Importações do projeto
 from qstione.config.tabelas import TABELAS_CONFIG
 from qstione.importadores.imp_001_cursos import ImportadorCursos
+from qstione.importadores.imp_002_disciplina import ImportadorDisciplinas
 from qstione.importadores.imp_006_usuarios import ImportadorUsuarios
 from qstione.exportadores.excel import ExportadorExcel
 from qstione.exportadores.sql import ExportadorSQL
@@ -47,6 +48,32 @@ class GestorQstione:
             
             # Armazenar dados para exportação
             self.dados_exportar['imp_001_cursos'] = dados_transformados
+            
+            # Fechar conexões
+            con_lyceum.close()
+            con_qstione.close()
+            
+            return True
+            
+        except Exception as e:
+            print(f"Erro na importação: {e}")
+            return False
+    
+    def importar_tabela_disciplinas(self):
+        """Importa dados para a tabela imp_002_disciplina"""
+        try:
+            # Conectar aos bancos
+            con_lyceum = sqlite3.connect(self.caminho_lyceum)
+            con_qstione = sqlite3.connect(self.caminho_qstione)
+            
+            # Criar importador
+            importador = ImportadorDisciplinas(con_lyceum, con_qstione)
+            
+            # Executar importação
+            dados_transformados = importador.executar_importacao()
+            
+            # Armazenar dados para exportação
+            self.dados_exportar['imp_002_disciplina'] = dados_transformados
             
             # Fechar conexões
             con_lyceum.close()
@@ -151,6 +178,25 @@ class GestorQstione:
                         print(f"    Períodos: {reg[2]}")
                         print(f"    Unidade: {reg[3]}")
                         print()
+            elif nome_tabela == 'imp_002_disciplina':
+                # Obter amostra para disciplinas
+                cursor.execute(f"""
+                    SELECT codigoDisciplina, nomeDisciplina, codigoCurso, periodo
+                    FROM {nome_tabela}
+                    ORDER BY data_atualizacao DESC
+                    LIMIT 3
+                """)
+                
+                registros = cursor.fetchall()
+                
+                if registros:
+                    print("\nÚltimos 3 registros:")
+                    for reg in registros:
+                        print(f"  Código: {reg[0]}")
+                        print(f"    Nome: {reg[1][:30]}...")
+                        print(f"    Curso: {reg[2]}")
+                        print(f"    Período: {reg[3]}")
+                        print()
             else:
                 # Obter amostra para usuários
                 cursor.execute(f"""
@@ -192,50 +238,56 @@ class GestorQstione:
         while True:
             print(f"\n📋 MENU PRINCIPAL:")
             print("  1. Importar tabela imp_001_cursos")
-            print("  2. Importar tabela imp_006_usuarios")
-            print("  3. Exportar para Excel (planilhas de carga)")
-            print("  4. Exportar backup SQL")
-            print("  5. Verificar tabelas importadas")
-            print("  6. Executar tudo (importar + exportar Excel + backup)")
-            print("  7. Sair")
+            print("  2. Importar tabela imp_002_disciplina")
+            print("  3. Importar tabela imp_006_usuarios")
+            print("  4. Exportar para Excel (planilhas de carga)")
+            print("  5. Exportar backup SQL")
+            print("  6. Verificar tabelas importadas")
+            print("  7. Executar tudo (importar + exportar Excel + backup)")
+            print("  8. Sair")
             
-            opcao = input("\nEscolha uma opção (1-7): ").strip()
+            opcao = input("\nEscolha uma opção (1-8): ").strip()
             
             if opcao == '1':
                 self.importar_tabela_cursos()
             
             elif opcao == '2':
-                self.importar_tabela_usuarios()
+                self.importar_tabela_disciplinas()
             
             elif opcao == '3':
+                self.importar_tabela_usuarios()
+            
+            elif opcao == '4':
                 arquivos = self.exportar_para_excel()
                 if arquivos:
                     print(f"\nArquivos gerados:")
                     for arquivo in arquivos:
                         print(f"  ✓ {os.path.basename(arquivo)}")
             
-            elif opcao == '4':
+            elif opcao == '5':
                 arquivo = self.exportar_para_sql()
                 if arquivo:
                     print(f"Backup gerado: {arquivo}")
             
-            elif opcao == '5':
-                tabela = input("Digite o nome da tabela (ex: imp_001_cursos, imp_006_usuarios): ").strip()
+            elif opcao == '6':
+                tabela = input("Digite o nome da tabela (ex: imp_001_cursos, imp_002_disciplina, imp_006_usuarios): ").strip()
                 if tabela:
                     self.verificar_tabela(tabela)
                 else:
                     print("Tabela não especificada.")
             
-            elif opcao == '6':
+            elif opcao == '7':
                 print("\nExecutando todas as operações...")
                 self.importar_tabela_cursos()
+                self.importar_tabela_disciplinas()
                 self.importar_tabela_usuarios()
                 self.exportar_para_excel()
                 self.exportar_para_sql()
                 self.verificar_tabela('imp_001_cursos')
+                self.verificar_tabela('imp_002_disciplina')
                 self.verificar_tabela('imp_006_usuarios')
             
-            elif opcao == '7':
+            elif opcao == '8':
                 print("\nSaindo do Gestor Qstione...")
                 break
             

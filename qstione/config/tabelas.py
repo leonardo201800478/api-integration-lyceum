@@ -42,6 +42,45 @@ TABELAS_CONFIG = {
         'tipo_carga': 'Incremental',
         'escopo_carga': 'Instituicao'
     },
+    'imp_002_disciplina': {
+        'nome_planilha': 'IMP-002 - Disciplinas',
+        'tabela_origem': 'LY_GRADE',
+        'descricao': 'Importação de disciplinas',
+        'campos': [
+            {
+                'nome_qstione': 'codigoDisciplina',
+                'tipo': 'CHAR(30)',
+                'obrigatorio': True,
+                'origem': 'disciplina',
+                'transformacao': None
+            },
+            {
+                'nome_qstione': 'nomeDisciplina',
+                'tipo': 'CHAR(100)',
+                'obrigatorio': True,
+                'origem': 'nome_compl',
+                'transformacao': None
+            },
+            {
+                'nome_qstione': 'codigoCurso',
+                'tipo': 'CHAR(30)',
+                'obrigatorio': True,
+                'origem': 'curso',
+                'transformacao': None
+            },
+            {
+                'nome_qstione': 'periodo',
+                'tipo': 'INTEGER(2)',
+                'obrigatorio': True,
+                'origem': 'serie_ideal',
+                'transformacao': 'converter_inteiro'
+            }
+        ],
+        'condicoes': "c.ativo = 'S' AND c.faculdade IN ('001', '002', '004')",
+        'agrupamento': None,
+        'tipo_carga': 'Incremental',
+        'escopo_carga': 'Instituicao'
+    },
     'imp_006_usuarios': {
         'nome_planilha': 'IMP-006 - Usuários',
         'tabela_origem': 'LY_DOCENTE',
@@ -77,7 +116,7 @@ TABELAS_CONFIG = {
             }
         ],
         'condicoes': "ativo = 'S'",
-        'agrupamento': 'nome_compl',
+        'agrupamento': 'cpf',
         'tipo_carga': 'Incremental',
         'escopo_carga': 'Instituicao'
     }
@@ -87,5 +126,6 @@ TABELAS_CONFIG = {
 # Ordem das colunas na planilha Excel
 ORDEM_COLUNAS_PLANILHA = {
     'imp_001_cursos': ['codigoCurso', 'nomeCurso', 'quantPeriodos', 'codigoUnidadeOrganizacional'],
+    'imp_002_disciplina': ['codigoDisciplina', 'nomeDisciplina', 'codigoCurso', 'periodo'],
     'imp_006_usuarios': ['matriculaUsuario', 'codigoUsuario', 'emailUsuario', 'nomeUsuario']
 }
