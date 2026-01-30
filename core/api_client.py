@@ -177,6 +177,11 @@ class APIClientFactory:
     def create_matricula_client() -> 'MatriculaAPIClient':
         """Cria cliente de matrículas com sessão isolada"""
         return MatriculaAPIClient()
+    
+    @staticmethod
+    def create_grade_client() -> 'GradeAPIClient':
+        """Cria cliente de grades com sessão isolada"""
+        return GradeAPIClient()
 
 
 # ==================================================
@@ -293,6 +298,11 @@ class MatriculaAPIClient(BaseAPIClient):
         """Obtém matrículas de uma turma específica"""
         params = {"pk[turma]": turma_code}
         return self.get_paginated("/v2/tabela/matriculas", params=params)
+    
+class GradeAPIClient(BaseAPIClient):
+    def get_grades(self) -> List[dict]:
+        """Obtém todas as grades"""
+        return self.get_paginated("/v2/tabela/grades")
 
 
 # ==================================================
@@ -330,3 +340,7 @@ def get_turma_docente_client() -> TurmaDocenteAPIClient:
 def get_matricula_client() -> MatriculaAPIClient:
     """Retorna um cliente de matrículas com sessão isolada"""
     return APIClientFactory.create_matricula_client()
+
+def get_grade_client() -> GradeAPIClient:
+    """Retorna um cliente de grades com sessão isolada"""
+    return APIClientFactory.create_grade_client()
