@@ -11,6 +11,7 @@ from pathlib import Path
 from qstione.config.tabelas import TABELAS_CONFIG
 from qstione.importadores.imp_001_cursos import ImportadorCursos
 from qstione.importadores.imp_002_disciplina import ImportadorDisciplinas
+from qstione.importadores.imp_005_ofertas import ImportadorOfertas
 from qstione.importadores.imp_006_usuarios import ImportadorUsuarios
 from qstione.exportadores.excel import ExportadorExcel
 from qstione.exportadores.sql import ExportadorSQL
@@ -74,6 +75,32 @@ class GestorQstione:
             
             # Armazenar dados para exportação
             self.dados_exportar['imp_002_disciplina'] = dados_transformados
+            
+            # Fechar conexões
+            con_lyceum.close()
+            con_qstione.close()
+            
+            return True
+            
+        except Exception as e:
+            print(f"Erro na importação: {e}")
+            return False
+    
+    def importar_tabela_ofertas(self):
+        """Importa dados para a tabela imp_005_ofertas"""
+        try:
+            # Conectar aos bancos
+            con_lyceum = sqlite3.connect(self.caminho_lyceum)
+            con_qstione = sqlite3.connect(self.caminho_qstione)
+            
+            # Criar importador
+            importador = ImportadorOfertas(con_lyceum, con_qstione)
+            
+            # Executar importação
+            dados_transformados = importador.executar_importacao()
+            
+            # Armazenar dados para exportação
+            self.dados_exportar['imp_005_ofertas'] = dados_transformados
             
             # Fechar conexões
             con_lyceum.close()
@@ -197,6 +224,25 @@ class GestorQstione:
                         print(f"    Curso: {reg[2]}")
                         print(f"    Período: {reg[3]}")
                         print()
+            elif nome_tabela == 'imp_005_ofertas':
+                # Obter amostra para ofertas
+                cursor.execute(f"""
+                    SELECT codigoOferta, nomeOferta, codigoDisciplina, codigoTipoOferta
+                    FROM {nome_tabela}
+                    ORDER BY data_atualizacao DESC
+                    LIMIT 3
+                """)
+                
+                registros = cursor.fetchall()
+                
+                if registros:
+                    print("\nÚltimos 3 registros:")
+                    for reg in registros:
+                        print(f"  Código: {reg[0]}")
+                        print(f"    Nome: {reg[1][:30]}...")
+                        print(f"    Disciplina: {reg[2]}")
+                        print(f"    Tipo: {reg[3]}")
+                        print()
             else:
                 # Obter amostra para usuários
                 cursor.execute(f"""
@@ -239,14 +285,15 @@ class GestorQstione:
             print(f"\n📋 MENU PRINCIPAL:")
             print("  1. Importar tabela imp_001_cursos")
             print("  2. Importar tabela imp_002_disciplina")
-            print("  3. Importar tabela imp_006_usuarios")
-            print("  4. Exportar para Excel (planilhas de carga)")
-            print("  5. Exportar backup SQL")
-            print("  6. Verificar tabelas importadas")
-            print("  7. Executar tudo (importar + exportar Excel + backup)")
-            print("  8. Sair")
+            print("  3. Importar tabela imp_005_ofertas")
+            print("  4. Importar tabela imp_006_usuarios")
+            print("  5. Exportar para Excel (planilhas de carga)")
+            print("  6. Exportar backup SQL")
+            print("  7. Verificar tabelas importadas")
+            print("  8. Executar tudo (importar + exportar Excel + backup)")
+            print("  9. Sair")
             
-            opcao = input("\nEscolha uma opção (1-8): ").strip()
+            opcao = input("\nEscolha uma opção (1-9): ").strip()
             
             if opcao == '1':
                 self.importar_tabela_cursos()
@@ -255,39 +302,44 @@ class GestorQstione:
                 self.importar_tabela_disciplinas()
             
             elif opcao == '3':
-                self.importar_tabela_usuarios()
+                self.importar_tabela_ofertas()
             
             elif opcao == '4':
+                self.importar_tabela_usuarios()
+            
+            elif opcao == '5':
                 arquivos = self.exportar_para_excel()
                 if arquivos:
                     print(f"\nArquivos gerados:")
                     for arquivo in arquivos:
                         print(f"  ✓ {os.path.basename(arquivo)}")
             
-            elif opcao == '5':
+            elif opcao == '6':
                 arquivo = self.exportar_para_sql()
                 if arquivo:
                     print(f"Backup gerado: {arquivo}")
             
-            elif opcao == '6':
-                tabela = input("Digite o nome da tabela (ex: imp_001_cursos, imp_002_disciplina, imp_006_usuarios): ").strip()
+            elif opcao == '7':
+                tabela = input("Digite o nome da tabela (ex: imp_001_cursos, imp_002_disciplina, imp_005_ofertas, imp_006_usuarios): ").strip()
                 if tabela:
                     self.verificar_tabela(tabela)
                 else:
                     print("Tabela não especificada.")
             
-            elif opcao == '7':
+            elif opcao == '8':
                 print("\nExecutando todas as operações...")
                 self.importar_tabela_cursos()
                 self.importar_tabela_disciplinas()
+                self.importar_tabela_ofertas()
                 self.importar_tabela_usuarios()
                 self.exportar_para_excel()
                 self.exportar_para_sql()
                 self.verificar_tabela('imp_001_cursos')
                 self.verificar_tabela('imp_002_disciplina')
+                self.verificar_tabela('imp_005_ofertas')
                 self.verificar_tabela('imp_006_usuarios')
             
-            elif opcao == '8':
+            elif opcao == '9':
                 print("\nSaindo do Gestor Qstione...")
                 break
             

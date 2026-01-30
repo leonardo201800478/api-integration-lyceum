@@ -2,6 +2,8 @@
 Configuração das tabelas do Qstione
 """
 
+from qstione.core.transformacoes import truncar_texto
+
 TABELAS_CONFIG = {
     'imp_001_cursos': {
         'nome_planilha': 'IMP-001 - Cursos',
@@ -52,14 +54,14 @@ TABELAS_CONFIG = {
                 'tipo': 'CHAR(30)',
                 'obrigatorio': True,
                 'origem': 'disciplina',
-                'transformacao': None
+                'transformacao': 'gerar_codigo_disciplina_curso'
             },
             {
                 'nome_qstione': 'nomeDisciplina',
                 'tipo': 'CHAR(100)',
                 'obrigatorio': True,
                 'origem': 'nome_compl',
-                'transformacao': None
+                'transformacao': 'truncar_texto'
             },
             {
                 'nome_qstione': 'codigoCurso',
@@ -77,6 +79,78 @@ TABELAS_CONFIG = {
             }
         ],
         'condicoes': "c.ativo = 'S' AND c.faculdade IN ('001', '002', '004')",
+        'agrupamento': None,
+        'tipo_carga': 'Incremental',
+        'escopo_carga': 'Instituicao'
+    },
+    'imp_005_ofertas': {
+        'nome_planilha': 'IMP-005 - Ofertas de Disciplinas',
+        'tabela_origem': 'LY_TURMA',
+        'descricao': 'Importação de ofertas de disciplinas',
+        'campos': [
+            {
+                'nome_qstione': 'codigoOferta',
+                'tipo': 'CHAR(30)',
+                'obrigatorio': True,
+                'origem': None,
+                'transformacao': 'gerar_codigo_oferta'
+            },
+            {
+                'nome_qstione': 'nomeOferta',
+                'tipo': 'CHAR(100)',
+                'obrigatorio': True,
+                'origem': 'turma',
+                'transformacao': None
+            },
+            {
+                'nome_qstione': 'codigoDisciplina',
+                'tipo': 'CHAR(30)',
+                'obrigatorio': True,
+                'origem': None,
+                'transformacao': 'gerar_codigo_disciplina_oferta'
+            },
+            {
+                'nome_qstione': 'semestreOferta',
+                'tipo': 'CHAR(6)',
+                'obrigatorio': True,
+                'origem': None,
+                'transformacao': 'valor_fixo_2026.2'
+            },
+            {
+                'nome_qstione': 'codigoTipoOferta',
+                'tipo': 'CHAR(3)',
+                'obrigatorio': True,
+                'origem': None,
+                'transformacao': 'gerar_codigo_tipo_oferta'
+            },
+            {
+                'nome_qstione': 'codigoOfertaOrigem',
+                'tipo': 'CHAR(30)',
+                'obrigatorio': False,
+                'origem': None,
+                'transformacao': 'gerar_codigo_oferta_origem'
+            },
+            {
+                'nome_qstione': 'turno',
+                'tipo': 'CHAR(1)',
+                'obrigatorio': False,
+                'origem': 'turno',
+                'transformacao': 'mapear_turno'
+            },
+            {
+                'nome_qstione': 'codigoIdentificacaoAVA',
+                'tipo': 'CHAR(100)',
+                'obrigatorio': False,
+                'origem': None,
+                'transformacao': 'valor_fixo_vazio'
+            }
+        ],
+        'condicoes': """t.ano = 2026 
+            AND t.semestre IN ('21', '22', '2') 
+            AND t.sit_turma = 'aberta'
+            AND d.faculdade IN ('001', '002', '004')
+            AND (d.area_conhecimento IN ('Obrigatória', 'Disciplinas Obrigatórias', 'Optativa', 'Pesquisa Curricularizada') 
+                 OR d.area_conhecimento IS NULL)""",
         'agrupamento': None,
         'tipo_carga': 'Incremental',
         'escopo_carga': 'Instituicao'
@@ -116,16 +190,17 @@ TABELAS_CONFIG = {
             }
         ],
         'condicoes': "ativo = 'S'",
-        'agrupamento': 'cpf',
+        'agrupamento': 'nomeUsuario',
         'tipo_carga': 'Incremental',
         'escopo_carga': 'Instituicao'
     }
-    # Adicionar novas tabelas aqui...
 }
 
 # Ordem das colunas na planilha Excel
 ORDEM_COLUNAS_PLANILHA = {
     'imp_001_cursos': ['codigoCurso', 'nomeCurso', 'quantPeriodos', 'codigoUnidadeOrganizacional'],
     'imp_002_disciplina': ['codigoDisciplina', 'nomeDisciplina', 'codigoCurso', 'periodo'],
+    'imp_005_ofertas': ['codigoOferta', 'nomeOferta', 'codigoDisciplina', 'semestreOferta', 
+                        'codigoTipoOferta', 'codigoOfertaOrigem', 'turno', 'codigoIdentificacaoAVA'],
     'imp_006_usuarios': ['matriculaUsuario', 'codigoUsuario', 'emailUsuario', 'nomeUsuario']
 }

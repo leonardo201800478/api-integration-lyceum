@@ -5,7 +5,7 @@ Importador para tabela imp_002_disciplina
 import sqlite3
 from qstione.core.transformacoes import (
     converter_inteiro,
-    truncar_texto
+    gerar_codigo_disciplina_curso
 )
 from qstione.core.validacoes import (
     validar_codigo_disciplina,
@@ -30,6 +30,7 @@ class ImportadorDisciplinas:
                 g.disciplina,
                 d.nome_compl,
                 g.curso,
+                c.nome as nome_curso,
                 g.serie_ideal
             FROM LY_GRADE g
             INNER JOIN LY_DISCIPLINA d
@@ -51,14 +52,15 @@ class ImportadorDisciplinas:
         dados_transformados = []
         
         for registro in dados_lyceum:
-            disciplina, nome_compl, curso, serie_ideal = registro
+            disciplina, nome_compl, curso, nome_curso, serie_ideal = registro
             
             # Validar campos obrigatórios usando as funções de validação
             if not validar_codigo_disciplina(disciplina):
                 print(f"  ⚠️  Código da disciplina inválido: {disciplina}")
                 continue
                 
-            if not validar_nome_disciplina(nome_compl):
+            nome_disciplina = validar_nome_disciplina(nome_compl)
+            if nome_disciplina is None:
                 print(f"  ⚠️  Nome da disciplina inválido: {nome_compl}")
                 continue
                 
@@ -77,10 +79,15 @@ class ImportadorDisciplinas:
             if periodo == 0:
                 periodo = 1
 
-            nome_disciplina = truncar_texto(nome_compl, 100)
+            # Gerar código da disciplina formatado
+            codigo_disciplina_final = gerar_codigo_disciplina_curso(
+                disciplina, 
+                nome_curso, 
+                curso
+            )
 
             dados_transformados.append({
-                'codigoDisciplina': str(disciplina)[:30],
+                'codigoDisciplina': codigo_disciplina_final,
                 'nomeDisciplina': nome_disciplina,
                 'codigoCurso': str(curso)[:30],
                 'periodo': periodo
