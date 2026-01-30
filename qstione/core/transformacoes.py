@@ -3,6 +3,7 @@ Funções de transformação de dados
 """
 
 import re
+import unicodedata
 
 def extrair_usuario_email(email):
     """
@@ -31,6 +32,20 @@ def converter_minusculas(texto):
         return str(texto).lower()
     return texto
 
+def converter_inteiro(valor):
+    """Converte valor para inteiro"""
+    if valor is None:
+        return None
+    
+    try:
+        return int(float(valor))
+    except (ValueError, TypeError):
+        return None
+
+def valor_fixo_4000000001(texto):
+    """Retorna valor fixo '4000000001'"""
+    return '4000000001'
+
 def formatar_cpf(cpf):
     """Formata CPF para o padrão 000.000.000-00"""
     if not cpf:
@@ -54,7 +69,6 @@ def remover_acentos(texto):
     if not texto:
         return texto
     
-    import unicodedata
     texto = unicodedata.normalize('NFD', str(texto))
     texto = texto.encode('ascii', 'ignore').decode('utf-8')
     return texto

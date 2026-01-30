@@ -447,6 +447,56 @@ def validar_sigla_curso(sigla):
     
     return True
 
+def validar_codigo_curso(codigo):
+    """
+    Valida código do curso
+    
+    Args:
+        codigo (str): Código do curso
+    
+    Returns:
+        bool: True se o código é válido, False caso contrário
+    """
+    if not codigo:
+        return False
+    
+    codigo_str = str(codigo).strip()
+    return len(codigo_str) > 0 and len(codigo_str) <= 30
+
+def validar_nome_curso(nome):
+    """
+    Valida nome do curso
+    
+    Args:
+        nome (str): Nome do curso
+    
+    Returns:
+        bool: True se o nome é válido, False caso contrário
+    """
+    if not nome:
+        return False
+    
+    nome_str = str(nome).strip()
+    return len(nome_str) > 0 and len(nome_str) <= 64
+
+def validar_quant_periodos(quantidade):
+    """
+    Valida quantidade de períodos
+    
+    Args:
+        quantidade: Quantidade de períodos
+    
+    Returns:
+        bool: True se a quantidade é válida, False caso contrário
+    """
+    if quantidade is None:
+        return False
+    
+    try:
+        num = int(quantidade)
+        return 1 <= num <= 99  # Supondo que seja entre 1 e 99 períodos
+    except (ValueError, TypeError):
+        return False
 
 # Dicionário de funções de validação para uso genérico
 VALIDACOES = {
@@ -462,4 +512,7 @@ VALIDACOES = {
     'situacao': validar_situacao_aluno,
     'codigo_disciplina': validar_codigo_disciplina,
     'sigla_curso': validar_sigla_curso,
+    'codigo_curso': validar_codigo_curso,
+    'nome_curso': validar_nome_curso,
+    'quant_periodos': validar_quant_periodos,
 }
