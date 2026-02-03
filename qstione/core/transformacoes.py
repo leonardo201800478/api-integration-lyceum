@@ -210,6 +210,27 @@ def gerar_codigo_oferta_origem(disciplina, turma, ano, semestre, turmas_regulare
     
     return ''
 
+def determinar_papel_usuario(num_func, curso, coordenadores_dict):
+    """
+    Determina o papel do usuário: 1 para coordenador (C), 2 para professor (P)
+    
+    Args:
+        num_func (str): Número do funcionário
+        curso (str): Código do curso
+        coordenadores_dict (dict): Dicionário com coordenadores {(num_func, curso): True}
+    
+    Returns:
+        int: 1 para coordenador, 2 para professor
+    """
+    if not num_func or not curso:
+        return 'P'  # Default para professor
+    
+    # Verifica se o par (num_func, curso) está no dicionário de coordenadores
+    if (str(num_func), str(curso)) in coordenadores_dict:
+        return 'C'  # Coordenador
+    
+    return 'P'  # Professor
+
 def mapear_turno(turno):
     """
     Mapeia o turno para os valores possíveis: M, T, N, I, O

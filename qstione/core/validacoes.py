@@ -549,6 +549,25 @@ def validar_periodo(periodo):
         return 1 <= num <= 99  # Supondo que seja entre 1 e 99 períodos
     except (ValueError, TypeError):
         return False
+    
+def validar_papel_usuario(papel):
+    """
+    Valida o papel do usuário
+    
+    Args:
+        papel: Papel do usuário ('C' ou 'P')
+    
+    Returns:
+        bool: True se o papel é válido, False caso contrário
+    """
+    if papel is None:
+        return False
+    
+    try:
+        papel_str = str(papel)
+        return papel_str in ['C', 'P']  # C = Coordenador, P = Professor
+    except (ValueError, TypeError):
+        return False
 
 # Dicionário de funções de validação para uso genérico
 VALIDACOES = {
@@ -570,4 +589,5 @@ VALIDACOES = {
     'codigo_disciplina': validar_codigo_disciplina,
     'nome_disciplina': validar_nome_disciplina,
     'periodo': validar_periodo,
+    'papel_usuario': validar_papel_usuario,
 }

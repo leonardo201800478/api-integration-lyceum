@@ -61,7 +61,7 @@ TABELAS_CONFIG = {
                 'tipo': 'CHAR(100)',
                 'obrigatorio': True,
                 'origem': 'nome_compl',
-                'transformacao': 'truncar_texto'
+                'transformacao': truncar_texto
             },
             {
                 'nome_qstione': 'codigoCurso',
@@ -193,6 +193,38 @@ TABELAS_CONFIG = {
         'agrupamento': 'nomeUsuario',
         'tipo_carga': 'Incremental',
         'escopo_carga': 'Instituicao'
+    },
+    'imp_007_usuarios_cursos': {
+        'nome_planilha': 'IMP-007 - Usuários Cursos',
+        'tabela_origem': 'LY_TURMA_DOCENTE',
+        'descricao': 'Associação de usuários aos cursos',
+        'campos': [
+            {
+                'nome_qstione': 'codigoCurso',
+                'tipo': 'CHAR(30)',
+                'obrigatorio': True,
+                'origem': None,
+                'transformacao': None
+            },
+            {
+                'nome_qstione': 'emailUsuario',
+                'tipo': 'CHAR(100)',
+                'obrigatorio': True,
+                'origem': None,
+                'transformacao': 'converter_minusculas'
+            },
+            {
+                'nome_qstione': 'papelUsuario',
+                'tipo': 'INTEGER(1)',
+                'obrigatorio': True,
+                'origem': None,
+                'transformacao': 'determinar_papel_usuario'
+            }
+        ],
+        'condicoes': "td.ano = 2026 AND td.periodo = '21'",
+        'agrupamento': None,
+        'tipo_carga': 'Incremental',
+        'escopo_carga': 'Instituicao'
     }
 }
 
@@ -202,5 +234,6 @@ ORDEM_COLUNAS_PLANILHA = {
     'imp_002_disciplina': ['codigoDisciplina', 'nomeDisciplina', 'codigoCurso', 'periodo'],
     'imp_005_ofertas': ['codigoOferta', 'nomeOferta', 'codigoDisciplina', 'semestreOferta', 
                         'codigoTipoOferta', 'codigoOfertaOrigem', 'turno', 'codigoIdentificacaoAVA'],
-    'imp_006_usuarios': ['matriculaUsuario', 'codigoUsuario', 'emailUsuario', 'nomeUsuario']
+    'imp_006_usuarios': ['matriculaUsuario', 'codigoUsuario', 'emailUsuario', 'nomeUsuario'],
+    'imp_007_usuarios_cursos': ['codigoCurso', 'emailUsuario', 'papelUsuario']
 }

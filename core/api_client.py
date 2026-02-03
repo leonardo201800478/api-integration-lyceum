@@ -182,6 +182,11 @@ class APIClientFactory:
     def create_grade_client() -> 'GradeAPIClient':
         """Cria cliente de grades com sessão isolada"""
         return GradeAPIClient()
+    
+    @staticmethod
+    def create_coordenacao_client() -> 'CoordenacaoAPIClient':
+        """Cria cliente de coordenações com sessão isolada"""
+        return CoordenacaoAPIClient()
 
 
 # ==================================================
@@ -305,6 +310,28 @@ class GradeAPIClient(BaseAPIClient):
         return self.get_paginated("/v2/tabela/grades")
 
 
+class CoordenacaoAPIClient(BaseAPIClient):
+    def get_coordenacoes(self) -> List[dict]:
+        """
+        Obtém todas as coordenações via paginação
+        Começa da página 0 com tamanho config.API_PAGE_SIZE (padrão: 100)
+        Continua até a última página com dados presentes
+        """
+        return self.get_paginated("/v2/tabela/coordenacao")
+    
+    def get_coordenacoes_filtradas(self, ano: Optional[int] = None, semestre: Optional[int] = None) -> List[dict]:
+        """
+        Obtém coordenações com filtros opcionais de ano e semestre
+        Segue o mesmo padrão dos outros clientes (TurmaAPIClient, TurmaDocenteAPIClient, etc.)
+        """
+        params = {}
+        if ano is not None:
+            params["ano"] = ano
+        if semestre is not None:
+            params["semestre"] = semestre
+        return self.get_paginated("/v2/tabela/coordenacao", params=params)
+
+
 # ==================================================
 # MÉTODOS DE CONVENIÊNCIA - Mantém compatibilidade
 # ==================================================
@@ -344,3 +371,7 @@ def get_matricula_client() -> MatriculaAPIClient:
 def get_grade_client() -> GradeAPIClient:
     """Retorna um cliente de grades com sessão isolada"""
     return APIClientFactory.create_grade_client()
+
+def get_coordenacao_client() -> CoordenacaoAPIClient:
+    """Retorna um cliente de coordenações com sessão isolada"""
+    return APIClientFactory.create_coordenacao_client()

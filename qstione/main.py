@@ -13,6 +13,7 @@ from qstione.importadores.imp_001_cursos import ImportadorCursos
 from qstione.importadores.imp_002_disciplina import ImportadorDisciplinas
 from qstione.importadores.imp_005_ofertas import ImportadorOfertas
 from qstione.importadores.imp_006_usuarios import ImportadorUsuarios
+from qstione.importadores.imp_007_usuarios_cursos import ImportadorUsuariosCursos
 from qstione.exportadores.excel import ExportadorExcel
 from qstione.exportadores.sql import ExportadorSQL
 
@@ -138,6 +139,32 @@ class GestorQstione:
             print(f"Erro na importação: {e}")
             return False
     
+    def importar_tabela_usuarios_cursos(self):
+        """Importa dados para a tabela imp_007_usuarios_cursos"""
+        try:
+            # Conectar aos bancos
+            con_lyceum = sqlite3.connect(self.caminho_lyceum)
+            con_qstione = sqlite3.connect(self.caminho_qstione)
+            
+            # Criar importador
+            importador = ImportadorUsuariosCursos(con_lyceum, con_qstione)
+            
+            # Executar importação
+            dados_transformados = importador.executar_importacao()
+            
+            # Armazenar dados para exportação
+            self.dados_exportar['imp_007_usuarios_cursos'] = dados_transformados
+            
+            # Fechar conexões
+            con_lyceum.close()
+            con_qstione.close()
+            
+            return True
+            
+        except Exception as e:
+            print(f"Erro na importação: {e}")
+            return False
+    
     def exportar_para_excel(self):
         """Exporta dados para planilhas Excel"""
         print("\n" + "="*60)
@@ -243,7 +270,7 @@ class GestorQstione:
                         print(f"    Disciplina: {reg[2]}")
                         print(f"    Tipo: {reg[3]}")
                         print()
-            else:
+            elif nome_tabela == 'imp_006_usuarios':
                 # Obter amostra para usuários
                 cursor.execute(f"""
                     SELECT matriculaUsuario, codigoUsuario, emailUsuario, 
@@ -264,6 +291,39 @@ class GestorQstione:
                         print(f"    Nome: {reg[3][:30]}...")
                         print(f"    Atualizado em: {reg[4]}")
                         print()
+            elif nome_tabela == 'imp_007_usuarios_cursos':
+                # Obter amostra para usuários cursos
+                cursor.execute(f"""
+                    SELECT codigoCurso, emailUsuario, papelUsuario,
+                           DATE(data_atualizacao)
+                    FROM {nome_tabela}
+                    ORDER BY data_atualizacao DESC
+                    LIMIT 5
+                """)
+                
+                registros = cursor.fetchall()
+                
+                if registros:
+                    print("\nÚltimos 5 registros:")
+                    for reg in registros:
+                        papel = "Coordenador" if reg[2] == 1 else "Professor"
+                        print(f"  Curso: {reg[0]}")
+                        print(f"    Email: {reg[1]}")
+                        print(f"    Papel: {reg[2]} ({papel})")
+                        print(f"    Atualizado em: {reg[3]}")
+                        print()
+                    
+                    # Contar por papel
+                    cursor.execute("""
+                        SELECT papelUsuario, COUNT(*)
+                        FROM imp_007_usuarios_cursos
+                        GROUP BY papelUsuario
+                    """)
+                    contagem = cursor.fetchall()
+                    print("📊 Distribuição por papel:")
+                    for papel, count in contagem:
+                        papel_desc = "Coordenadores" if papel == 1 else "Professores"
+                        print(f"  {papel_desc}: {count}")
             
             cursor.close()
             con_qstione.close()
@@ -287,13 +347,14 @@ class GestorQstione:
             print("  2. Importar tabela imp_002_disciplina")
             print("  3. Importar tabela imp_005_ofertas")
             print("  4. Importar tabela imp_006_usuarios")
-            print("  5. Exportar para Excel (planilhas de carga)")
-            print("  6. Exportar backup SQL")
-            print("  7. Verificar tabelas importadas")
-            print("  8. Executar tudo (importar + exportar Excel + backup)")
-            print("  9. Sair")
+            print("  5. Importar tabela imp_007_usuarios_cursos")
+            print("  6. Exportar para Excel (planilhas de carga)")
+            print("  7. Exportar backup SQL")
+            print("  8. Verificar tabelas importadas")
+            print("  9. Executar tudo (importar + exportar Excel + backup)")
+            print(" 10. Sair")
             
-            opcao = input("\nEscolha uma opção (1-9): ").strip()
+            opcao = input("\nEscolha uma opção (1-10): ").strip()
             
             if opcao == '1':
                 self.importar_tabela_cursos()
@@ -308,38 +369,43 @@ class GestorQstione:
                 self.importar_tabela_usuarios()
             
             elif opcao == '5':
+                self.importar_tabela_usuarios_cursos()
+            
+            elif opcao == '6':
                 arquivos = self.exportar_para_excel()
                 if arquivos:
                     print(f"\nArquivos gerados:")
                     for arquivo in arquivos:
                         print(f"  ✓ {os.path.basename(arquivo)}")
             
-            elif opcao == '6':
+            elif opcao == '7':
                 arquivo = self.exportar_para_sql()
                 if arquivo:
                     print(f"Backup gerado: {arquivo}")
             
-            elif opcao == '7':
-                tabela = input("Digite o nome da tabela (ex: imp_001_cursos, imp_002_disciplina, imp_005_ofertas, imp_006_usuarios): ").strip()
+            elif opcao == '8':
+                tabela = input("Digite o nome da tabela (ex: imp_001_cursos, imp_002_disciplina, imp_005_ofertas, imp_006_usuarios, imp_007_usuarios_cursos): ").strip()
                 if tabela:
                     self.verificar_tabela(tabela)
                 else:
                     print("Tabela não especificada.")
             
-            elif opcao == '8':
+            elif opcao == '9':
                 print("\nExecutando todas as operações...")
                 self.importar_tabela_cursos()
                 self.importar_tabela_disciplinas()
                 self.importar_tabela_ofertas()
                 self.importar_tabela_usuarios()
+                self.importar_tabela_usuarios_cursos()
                 self.exportar_para_excel()
                 self.exportar_para_sql()
                 self.verificar_tabela('imp_001_cursos')
                 self.verificar_tabela('imp_002_disciplina')
                 self.verificar_tabela('imp_005_ofertas')
                 self.verificar_tabela('imp_006_usuarios')
+                self.verificar_tabela('imp_007_usuarios_cursos')
             
-            elif opcao == '9':
+            elif opcao == '10':
                 print("\nSaindo do Gestor Qstione...")
                 break
             
