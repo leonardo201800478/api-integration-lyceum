@@ -22,16 +22,23 @@ Integrar dados acadêmicos + dados de questionários (Qstione)
 ✔ Execução isolada por módulo
 ✔ Logs completos por execução
 
-🧱 Estrutura Completa do Projeto
 aluno-sync/
 │
-├── core/                      # Infraestrutura base
-│   ├── api_client.py          # Cliente HTTP (GET-only)
-│   └── config.py              # Configuração (.env)
+├── core/                               # Infraestrutura base do projeto
+│   ├── __init__.py
+│   ├── api_client.py                  # Cliente HTTP (somente GET – Lyceum)
+│   ├── config.py                      # Carregamento de variáveis (.env)
+│   ├── database.py                    # Conexão e utilidades SQLite
+│   └── logger.py                      # Configuração central de logs
 │
-├── models/                    # Modelos SQLite (Lyceum)
-│   ├── base.py
+├── backups/                           # Backups automáticos dos bancos
+│
+├── exportacoes/                       # Arquivos exportados (CSV / XLSX)
+│
+├── models/                            # Modelos SQLite – domínio Lyceum
+│   ├── __init__.py
 │   ├── ly_aluno.py
+│   ├── ly_coordenacao.py
 │   ├── ly_curso.py
 │   ├── ly_curriculo.py
 │   ├── ly_disciplina.py
@@ -41,7 +48,8 @@ aluno-sync/
 │   ├── ly_grade.py
 │   └── ly_matricula.py
 │
-├── sync/                      # Sincronizadores Lyceum
+├── sync/                              # Sincronizadores Lyceum
+│   ├── __init__.py
 │   ├── sync_ly_cursos.py
 │   ├── sync_ly_curriculos.py
 │   ├── sync_ly_disciplinas.py
@@ -53,33 +61,42 @@ aluno-sync/
 │   ├── sync_ly_grades.py
 │   └── sync_ly_matriculas.py
 │
-├── qstione/                   # 🔴 MÓDULO DE QUESTIONÁRIOS
-│   ├── core/                  # Infraestrutura própria
-│   │   ├── api_client.py      # Cliente GET Qstione
-│   │   └── config.py
+├── qstione/                           # 🔴 Módulo de Questionários
 │   │
-│   ├── models/                # Modelos SQLite (Qstione)
-│   │   ├── base.py
-│   │   ├── questionario.py
-│   │   ├── pergunta.py
-│   │   ├── resposta.py
-│   │   └── avaliacao.py
+│   ├── config/                        # Configurações e mapeamentos
+│   │   └── tabelas.py                 # Definição de tabelas e schemas
 │   │
-│   ├── sync/                  # Syncs Qstione
-│   │   ├── sync_questionarios.py
-│   │   ├── sync_perguntas.py
-│   │   ├── sync_respostas.py
-│   │   └── sync_avaliacoes.py
+│   ├── core/                          # Núcleo de regras do Qstione
+│   │   ├── __init__.py
+│   │   ├── transformacoes.py          # Normalização e transformação de dados
+│   │   └── validacoes.py              # Validações de integridade
 │   │
-│   └── README.md              # Documentação específica Qstione
+│   ├── exportadores/                  # Exportação de dados
+│   │   ├── excel.py                   # Exportação XLSX
+│   │   └── sql.py                     # Exportação SQL
+│   │
+│   ├── importadores/                  # Importação de dados externos
+│   │   ├── imp_001_cursos.py
+│   │   ├── imp_002_disciplinas.py
+│   │   ├── imp_005_ofertas.py
+│   │   ├── imp_006_usuarios.py
+│   │   └── imp_007_usuarios_cursos.py
+│   │
+│   └── main.py                        # Entry-point do módulo Qstione
 │
 ├── logs/
-│   └── execucoes/             # Logs por execução
+│   └── execucoes/                     # Logs estruturados por execução
 │
-├── run_all.py                 # Runner unificado
-├── requirements.txt
-├── .env.example
-└── README.md
+├── venv/                              # Ambiente virtual (não versionado)
+│
+├── .gitignore
+├── .env                               # Variáveis de ambiente (local)
+├── .env.example                       # Modelo de configuração
+├── requirements.txt                  # Dependências do projeto
+├── run_all.py                         # Runner unificado Lyceum
+├── lyceum.db                          # Banco SQLite Lyceum
+├── qstione.db                         # Banco SQLite Qstione
+└── README.md                          # Documentação principal
 
 🔁 Módulo qstione — Visão Geral
 
