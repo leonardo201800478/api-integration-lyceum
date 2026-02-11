@@ -1,244 +1,197 @@
 #!/usr/bin/env python3
 """
 Sincronização da tabela LY_DOCENTE
-SEM chave primária fixa - seguindo o padrão LY_TURMA
+
+- Sincronização COMPLETA (full refresh)
+- API Lyceum: SOMENTE GET
+- Banco local: clear + batch insert
+- Sem chave primária fixa (padrão LY_TURMA)
 """
+
 import sys
 import os
 import time
 import logging
 from datetime import datetime
 from collections import Counter
+from typing import List, Dict
 
-# Adiciona diretório raiz ao path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Garante import do projeto
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, PROJECT_ROOT)
 
-# Importações internas
 from core.config import config
 from core.api_client import DocenteAPIClient
 from models.ly_docente import LyDocenteModel
 
-# Configuração de logging
+
+# -----------------------------------------------------------------------------
+# Logging
+# -----------------------------------------------------------------------------
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
 )
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("sync_ly_docente")
 
 
-def sincronizar_docentes():
-    """Executa a sincronização completa da tabela LY_DOCENTE"""
-    print("=" * 60)
-    print("SINCRONIZAÇÃO DA TABELA LY_DOCENTE")
-    print(f"Início: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
-    print("=" * 60)
-    
-    start_time = time.time()
-    
-    try:
-        # 1. Criar/verificar tabela
-        print("\n[1/4] 📋 Criando/verificando tabela LY_DOCENTE...")
-        LyDocenteModel.create_table()
-        
-        # Resumo inicial
-        resumo_inicial = LyDocenteModel.get_summary()
-        print(f"   Total inicial: {resumo_inicial.get('total_docentes', 0)} docentes")
-        print(f"   Docentes ativos: {resumo_inicial.get('ativos', 0)}")
-        print(f"   Departamentos distintos: {resumo_inicial.get('deptos_distintos', 0)}")
-        
-        # 2. Buscar dados da API
-        print("\n[2/4] 🔗 Conectando e buscando dados da API...")
-        print(f"   URL: {config.LYCEUM_BASE_URL}")
-        print(f"   Endpoint: /v2/tabela/docente")
-        print(f"   Paginação: page=0, size={config.API_PAGE_SIZE}")
-        
-        client = DocenteAPIClient()
-        docentes = client.get_docentes()
-        
-        if not docentes:
-            print("   ❌ Nenhum dado retornado pela API")
-            return False
-        
-        print(f"   ✅ Total retornado pela API: {len(docentes)} docentes")
-        
-        # Filtrar registros válidos (com campos obrigatórios)
-        docentes_validos = []
-        docentes_invalidos = 0
-        
-        for d in docentes:
-            # Campos obrigatórios: cpf, num_func
-            if all([d.get('cpf'), d.get('num_func')]):
-                docentes_validos.append(d)
-            else:
-                docentes_invalidos += 1
-        
-        if docentes_invalidos > 0:
-            print(f"   ⚠️  Docentes inválidos (sem campos obrigatórios): {docentes_invalidos}")
-        
-        print(f"   📊 Docentes válidos para processamento: {len(docentes_validos)}")
-        
-        if len(docentes_validos) == 0:
-            print("   ⚠️  Nenhum docente válido encontrado")
-            return True  # Considera sucesso, mas sem dados
-        
-        # Mostrar amostra e estatísticas
-        if docentes_validos:
-            primeiro = docentes_validos[0]
-            print(f"   📋 Amostra do primeiro docente:")
-            print(f"      CPF: {primeiro.get('cpf')}")
-            print(f"      Número Funcional: {primeiro.get('num_func')}")
-            print(f"      Nome: {primeiro.get('nome_compl', 'N/A')}")
-            print(f"      Email: {primeiro.get('email', 'N/A')}")
-            print(f"      Departamento: {primeiro.get('depto', 'N/A')}")
-            print(f"      Ativo: {primeiro.get('ativo', 'N/A')}")
-            print(f"      Titulação: {primeiro.get('titulacao', 'N/A')}")
-            
-            # Estatísticas básicas
-            ativos = sum(1 for d in docentes_validos if d.get('ativo') == 'S')
-            inativos = len(docentes_validos) - ativos
-            
-            print(f"   📈 Estatísticas dos dados:")
-            print(f"      Total: {len(docentes_validos)}")
-            print(f"      Ativos: {ativos}")
-            print(f"      Inativos: {inativos}")
-            
-            # Contar por departamento
-            deptos = Counter()
-            for d in docentes_validos:
-                depto = d.get('depto', 'Não informado')
-                deptos[depto] += 1
-            
-            print(f"   🏢 Distribuição por departamento (top 10):")
-            for depto, count in deptos.most_common(10):
-                print(f"      {depto}: {count} docentes")
-            
-            # Contar por titulação
-            titulacoes = Counter()
-            for d in docentes_validos:
-                titulacao = d.get('titulacao', 'Não informado')
-                titulacoes[titulacao] += 1
-            
-            print(f"   🎓 Distribuição por titulação (top 5):")
-            for titulacao, count in titulacoes.most_common(5):
-                print(f"      {titulacao}: {count} docentes")
-            
-            # Analisar combinações únicas
-            combinacoes = set()
-            for d in docentes_validos:
-                chave = f"{d.get('cpf')}-{d.get('num_func')}"
-                combinacoes.add(chave)
-            
-            print(f"   🔍 Análise de combinações únicas:")
-            print(f"      Registros totais: {len(docentes_validos)}")
-            print(f"      Combinações únicas (cpf-num_func): {len(combinacoes)}")
-            print(f"      Duplicatas: {len(docentes_validos) - len(combinacoes)}")
-            
-            # Mostrar duplicatas mais frequentes (se houver)
-            if len(docentes_validos) > len(combinacoes):
-                combinacoes_counter = Counter()
-                for d in docentes_validos:
-                    chave = f"{d.get('cpf')}-{d.get('num_func')}"
-                    combinacoes_counter[chave] += 1
-                
-                print(f"   🔢 Docentes com múltiplas ocorrências (top 5):")
-                for chave, count in combinacoes_counter.most_common(5):
-                    if count > 1:
-                        print(f"      {chave}: {count} ocorrências")
-        
-        # 3. Limpar tabela existente (sincronização completa)
-        print(f"\n[3/4] 🧹 Limpando tabela existente...")
-        LyDocenteModel.clear_table()
-        
-        # 4. Inserir no banco
-        print(f"\n[4/4] 💾 Inserindo {len(docentes_validos)} docentes no banco...")
-        
-        total_processados = LyDocenteModel.batch_insert(docentes_validos)
-        
-        # 5. Resumo final
-        tempo_total = time.time() - start_time
-        resumo_final = LyDocenteModel.get_summary()
-        
-        print(f"\n[5/5] 📊 Gerando resumo...")
-        
-        print("\n" + "=" * 60)
-        print("RESUMO DA SINCRONIZAÇÃO")
-        print("=" * 60)
-        
-        print(f"\n📈 DADOS DA API:")
-        print(f"   Total retornado: {len(docentes)} docentes")
-        print(f"   Válidos para processamento: {len(docentes_validos)}")
-        if docentes_invalidos > 0:
-            print(f"   Inválidos (sem campos obrigatórios): {docentes_invalidos}")
-        
-        print(f"\n🗃️  OPERAÇÕES NO BANCO:")
-        print(f"   Inseridos com sucesso: {total_processados}")
-        if len(docentes_validos) > total_processados:
-            print(f"   Docentes com erro: {len(docentes_validos) - total_processados}")
-        
-        print(f"\n📊 SITUAÇÃO DO BANCO:")
-        print(f"   Antes da sincronização: {resumo_inicial.get('total_docentes', 0)} docentes")
-        print(f"   Após a sincronização: {resumo_final.get('total_docentes', 0)} docentes")
-        print(f"   Docentes ativos: {resumo_final.get('ativos', 0)}")
-        print(f"   Docentes inativos: {resumo_final.get('inativos', 0)}")
-        print(f"   Departamentos distintos: {resumo_final.get('deptos_distintos', 0)}")
-        print(f"   CPFs distintos: {resumo_final.get('cpfs_distintos', 0)}")
-        print(f"   Números funcionais distintos: {resumo_final.get('num_func_distintos', 0)}")
-        
-        if resumo_final.get('ultima_atualizacao'):
-            print(f"   Última atualização: {resumo_final['ultima_atualizacao']}")
-        
-        print(f"\n⏱️  PERFORMANCE:")
-        print(f"   Tempo total: {tempo_total:.2f} segundos")
-        
-        if len(docentes_validos) > 0:
-            taxa = len(docentes_validos) / tempo_total
-            print(f"   Taxa: {taxa:.2f} docentes/segundo")
-        
-        print("\n" + "=" * 60)
-        
-        if total_processados == len(docentes_validos):
-            print("✅ SINCRONIZAÇÃO CONCLUÍDA COM SUCESSO!")
+# -----------------------------------------------------------------------------
+# Funções auxiliares
+# -----------------------------------------------------------------------------
+def validar_docentes(docentes: List[Dict]) -> tuple[list[Dict], int]:
+    """
+    Filtra docentes válidos.
+
+    Regras:
+    - cpf obrigatório
+    - num_func obrigatório
+    """
+    validos = []
+    invalidos = 0
+
+    for d in docentes:
+        if d.get("cpf") and d.get("num_func"):
+            validos.append(d)
         else:
-            print(f"⚠️  SINCRONIZAÇÃO PARCIALMENTE CONCLUÍDA ({total_processados}/{len(docentes_validos)})")
-        
-        print("=" * 60)
-        
+            invalidos += 1
+
+    return validos, invalidos
+
+
+def log_estatisticas(docentes: List[Dict]) -> None:
+    """Gera estatísticas descritivas para auditoria."""
+    ativos = sum(1 for d in docentes if d.get("ativo") == "S")
+    inativos = len(docentes) - ativos
+
+    logger.info("Estatísticas gerais:")
+    logger.info(" - Total: %s", len(docentes))
+    logger.info(" - Ativos: %s", ativos)
+    logger.info(" - Inativos: %s", inativos)
+
+    deptos = Counter(d.get("depto", "Não informado") for d in docentes)
+    logger.info("Top 10 departamentos:")
+    for depto, qtd in deptos.most_common(10):
+        logger.info(" - %s: %s", depto, qtd)
+
+    titulacoes = Counter(d.get("titulacao", "Não informado") for d in docentes)
+    logger.info("Top 5 titulações:")
+    for tit, qtd in titulacoes.most_common(5):
+        logger.info(" - %s: %s", tit, qtd)
+
+    chaves = [f"{d.get('cpf')}-{d.get('num_func')}" for d in docentes]
+    unicos = set(chaves)
+
+    logger.info("Combinações cpf-num_func:")
+    logger.info(" - Registros: %s", len(chaves))
+    logger.info(" - Únicos: %s", len(unicos))
+    logger.info(" - Duplicados: %s", len(chaves) - len(unicos))
+
+
+# -----------------------------------------------------------------------------
+# Sincronização principal
+# -----------------------------------------------------------------------------
+def sincronizar_docentes() -> bool:
+    """
+    Executa a sincronização completa da tabela LY_DOCENTE.
+
+    Fluxo:
+    1. Cria/verifica tabela
+    2. Busca dados via GET na API Lyceum
+    3. Valida registros
+    4. Limpa tabela local
+    5. Insere dados válidos
+    """
+    logger.info("=" * 70)
+    logger.info("INICIANDO SINCRONIZAÇÃO DA TABELA LY_DOCENTE")
+    logger.info("Início: %s", datetime.now().strftime("%d/%m/%Y %H:%M:%S"))
+    logger.info("=" * 70)
+
+    inicio = time.time()
+
+    # 1. Tabela
+    LyDocenteModel.create_table()
+    resumo_inicial = LyDocenteModel.get_summary()
+
+    logger.info("Resumo inicial: %s", resumo_inicial)
+
+    # 2. API (GET)
+    client = DocenteAPIClient()
+    docentes_api = client.get_docentes()
+
+    if not docentes_api:
+        logger.warning("Nenhum docente retornado pela API")
+        return False
+
+    logger.info("Total retornado pela API: %s", len(docentes_api))
+
+    # 3. Validação
+    docentes_validos, docentes_invalidos = validar_docentes(docentes_api)
+
+    logger.info("Docentes válidos: %s", len(docentes_validos))
+    if docentes_invalidos:
+        logger.warning("Docentes inválidos descartados: %s", docentes_invalidos)
+
+    if not docentes_validos:
+        logger.warning("Nenhum docente válido para inserção")
         return True
-        
-    except Exception as e:
-        print(f"\n❌ ERRO NA SINCRONIZAÇÃO: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
+
+    # Amostra
+    amostra = docentes_validos[0]
+    logger.info(
+        "Amostra | CPF=%s | NUM_FUNC=%s | NOME=%s",
+        amostra.get("cpf"),
+        amostra.get("num_func"),
+        amostra.get("nome_compl"),
+    )
+
+    log_estatisticas(docentes_validos)
+
+    # 4. Banco local
+    logger.info("Limpando tabela LY_DOCENTE")
+    LyDocenteModel.clear_table()
+
+    logger.info("Inserindo %s docentes", len(docentes_validos))
+    inseridos = LyDocenteModel.batch_insert(docentes_validos)
+
+    # 5. Resumo final
+    tempo_total = time.time() - inicio
+    resumo_final = LyDocenteModel.get_summary()
+
+    logger.info("=" * 70)
+    logger.info("RESUMO FINAL")
+    logger.info("Inseridos: %s", inseridos)
+    logger.info("Resumo final: %s", resumo_final)
+    logger.info("Tempo total: %.2f s", tempo_total)
+    logger.info("Taxa: %.2f docentes/s", inseridos / tempo_total)
+    logger.info("=" * 70)
+
+    return inseridos == len(docentes_validos)
 
 
-def main():
-    """Função principal"""
-    print("🚀 Iniciando sincronização de docentes...")
-    
+# -----------------------------------------------------------------------------
+# Entry point
+# -----------------------------------------------------------------------------
+def main() -> int:
+    """Ponto de entrada do script."""
+    if not all(
+        [config.LYCEUM_BASE_URL, config.LYCEUM_USERNAME, config.LYCEUM_PASSWORD]
+    ):
+        logger.error("Configurações da API Lyceum incompletas (.env)")
+        return 1
+
     try:
-        # Verificar configurações
-        if not all([config.LYCEUM_BASE_URL, config.LYCEUM_USERNAME, config.LYCEUM_PASSWORD]):
-            print("❌ Configurações da API incompletas no arquivo .env")
-            print("   Verifique: API_BASE_URL, API_USERNAME, API_PASSWORD")
-            return False
-        
-        # Executar sincronização
         sucesso = sincronizar_docentes()
-        
-        if sucesso:
-            print("\n✨ Processo concluído!")
-            return True
-        else:
-            print("\n💥 Falha no processo!")
-            return False
-            
+        return 0 if sucesso else 1
+
     except KeyboardInterrupt:
-        print("\n\n⚠️  Processo interrompido pelo usuário")
-        return False
+        logger.warning("Processo interrompido pelo usuário")
+        return 1
+
+    except Exception:
+        logger.exception("Erro inesperado na sincronização")
+        return 1
 
 
 if __name__ == "__main__":
-    sucesso = main()
-    sys.exit(0 if sucesso else 1)
+    sys.exit(main())

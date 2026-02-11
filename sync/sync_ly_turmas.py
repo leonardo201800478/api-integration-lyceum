@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """
 Sincronização da tabela LY_TURMA
-SEM chave primária fixa - similar a LY_CURRICULO e LY_DISCIPLINA
+- APENAS método GET na API Lyceum
+- Sincronização completa (full refresh)
+- Sem chave primária fixa (similar a LY_CURRICULO e LY_DISCIPLINA)
 """
+
 import sys
 import os
 import time
@@ -10,247 +13,159 @@ import logging
 from datetime import datetime
 from collections import Counter
 
-# Adiciona diretório raiz ao path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Adiciona diretório raiz ao PYTHONPATH
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, BASE_DIR)
 
-# Importações internas
+# Imports internos
 from core.config import config
 from core.api_client import TurmaAPIClient
 from models.ly_turma import LyTurmaModel
 
-# Configuração de logging
+# -----------------------------------------------------------------------------
+# LOGGING
+# -----------------------------------------------------------------------------
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
 )
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("sync_ly_turma")
 
 
-def sincronizar_turmas():
-    """Executa a sincronização completa da tabela LY_TURMA"""
-    print("=" * 60)
-    print("SINCRONIZAÇÃO DA TABELA LY_TURMA")
-    print(f"Início: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
-    print("=" * 60)
-    
+# -----------------------------------------------------------------------------
+# FUNÇÃO PRINCIPAL DE SINCRONIZAÇÃO
+# -----------------------------------------------------------------------------
+def run() -> bool:
+    logger.info("=" * 80)
+    logger.info("INICIANDO SINCRONIZAÇÃO - LY_TURMA")
+    logger.info("Modo: FULL REFRESH | API: GET ONLY | Banco produção: IMUTÁVEL")
+    logger.info("Início: %s", datetime.now().strftime("%d/%m/%Y %H:%M:%S"))
+    logger.info("=" * 80)
+
     start_time = time.time()
-    
+
     try:
-        # 1. Criar/verificar tabela
-        print("\n[1/4] 📋 Criando/verificando tabela LY_TURMA...")
+        # ---------------------------------------------------------------------
+        # 1. Criar/verificar tabela local
+        # ---------------------------------------------------------------------
+        logger.info("[1/4] Criando/verificando tabela LY_TURMA (LOCAL)")
         LyTurmaModel.create_table()
-        
-        # Resumo inicial
+
         resumo_inicial = LyTurmaModel.get_summary()
-        print(f"   Total inicial: {resumo_inicial.get('total_turmas', 0)} turmas")
-        print(f"   Turmas ativas: {resumo_inicial.get('turmas_ativas', 0)}")
-        print(f"   Anos distintos: {resumo_inicial.get('anos_distintos', 0)}")
-        
-        # 2. Buscar dados da API
-        print("\n[2/4] 🔗 Conectando e buscando dados da API...")
-        print(f"   URL: {config.LYCEUM_BASE_URL}")
-        print(f"   Endpoint: /v2/tabela/turmas")
-        print(f"   Paginação: page=0, size={config.API_PAGE_SIZE}")
-        
+        logger.info(
+            "Resumo inicial | Total: %s | Ativas: %s | Anos: %s",
+            resumo_inicial.get("total_turmas", 0),
+            resumo_inicial.get("turmas_ativas", 0),
+            resumo_inicial.get("anos_distintos", 0),
+        )
+
+        # ---------------------------------------------------------------------
+        # 2. Buscar dados da API (APENAS GET)
+        # ---------------------------------------------------------------------
+        logger.info("[2/4] Buscando dados da API Lyceum (GET)")
+        logger.info("Endpoint: /v2/tabela/turmas")
+
         client = TurmaAPIClient()
-        turmas = client.get_turmas()
-        
+        turmas = client.get_turmas()  # 🔒 GET ONLY
+
         if not turmas:
-            print("   ❌ Nenhum dado retornado pela API")
-            return False
-        
-        print(f"   ✅ Total retornado pela API: {len(turmas)} turmas")
-        
-        # Filtrar registros válidos (com campos obrigatórios)
-        turmas_validas = []
+            logger.warning("Nenhum registro retornado pela API")
+            return True  # execução válida, mas sem dados
+
+        logger.info("Total retornado pela API: %d", len(turmas))
+
+        # ---------------------------------------------------------------------
+        # 3. Validação mínima dos registros
+        # Campos obrigatórios: ano, semestre, turma, disciplina
+        # ---------------------------------------------------------------------
+        turmas_validas: list[dict] = []
         turmas_invalidas = 0
-        
+
         for t in turmas:
-            # Campos obrigatórios: ano, semestre, turma, disciplina
-            if all([t.get('ano'), t.get('semestre'), t.get('turma'), t.get('disciplina')]):
+            if all([t.get("ano"), t.get("semestre"), t.get("turma"), t.get("disciplina")]):
                 turmas_validas.append(t)
             else:
                 turmas_invalidas += 1
-        
-        if turmas_invalidas > 0:
-            print(f"   ⚠️  Turmas inválidas (sem campos obrigatórios): {turmas_invalidas}")
-        
-        print(f"   📊 Turmas válidas para processamento: {len(turmas_validas)}")
-        
-        if len(turmas_validas) == 0:
-            print("   ⚠️  Nenhuma turma válida encontrada")
-            return True  # Considera sucesso, mas sem dados
-        
-        # Mostrar amostra e estatísticas
-        if turmas_validas:
-            primeiro = turmas_validas[0]
-            print(f"   📋 Amostra da primeira turma:")
-            print(f"      Ano: {primeiro.get('ano')}")
-            print(f"      Semestre: {primeiro.get('semestre')}")
-            print(f"      Turma: {primeiro.get('turma')}")
-            print(f"      Disciplina: {primeiro.get('disciplina')}")
-            print(f"      Curso: {primeiro.get('curso', 'N/A')}")
-            print(f"      Situação: {primeiro.get('sit_turma', 'N/A')}")
-            print(f"      Vagas: {primeiro.get('vagas_calouros', 'N/A')}/{primeiro.get('vagas_veteranos', 'N/A')}")
-            
-            # Estatísticas básicas
-            ativas = sum(1 for t in turmas_validas if t.get('sit_turma') == 'A')
-            inativas = len(turmas_validas) - ativas
-            
-            print(f"   📈 Estatísticas dos dados:")
-            print(f"      Total: {len(turmas_validas)}")
-            print(f"      Ativas: {ativas}")
-            print(f"      Inativas: {inativas}")
-            
-            # Contar por ano
-            anos = Counter()
-            for t in turmas_validas:
-                ano = t.get('ano')
-                if ano:
-                    anos[ano] += 1
-            
-            print(f"   📅 Distribuição por ano (top 5):")
-            for ano, count in sorted(anos.items(), reverse=True)[:5]:
-                print(f"      {ano}: {count} turmas")
-            
-            # Contar por semestre
-            semestres = Counter()
-            for t in turmas_validas:
-                semestre = t.get('semestre')
-                if semestre:
-                    semestres[semestre] += 1
-            
-            print(f"   📚 Distribuição por semestre:")
-            for semestre, count in sorted(semestres.items()):
-                print(f"      {semestre}º semestre: {count} turmas")
-            
-            # Contar por curso
-            cursos = Counter()
-            for t in turmas_validas:
-                curso = t.get('curso', 'Não informado')
-                cursos[curso] += 1
-            
-            print(f"   🎓 Distribuição por curso (top 5):")
-            for curso, count in cursos.most_common(5):
-                print(f"      {curso}: {count} turmas")
-            
-            # Analisar combinações únicas
-            combinacoes = set()
-            for t in turmas_validas:
-                chave = f"{t.get('ano')}-{t.get('semestre')}-{t.get('disciplina')}-{t.get('turma')}"
-                combinacoes.add(chave)
-            
-            print(f"   🔍 Análise de combinações únicas:")
-            print(f"      Registros totais: {len(turmas_validas)}")
-            print(f"      Combinações únicas (ano-semestre-disciplina-turma): {len(combinacoes)}")
-            print(f"      Duplicatas: {len(turmas_validas) - len(combinacoes)}")
-            
-            # Mostrar duplicatas mais frequentes (se houver)
-            if len(turmas_validas) > len(combinacoes):
-                combinacoes_counter = Counter()
-                for t in turmas_validas:
-                    chave = f"{t.get('ano')}-{t.get('semestre')}-{t.get('disciplina')}-{t.get('turma')}"
-                    combinacoes_counter[chave] += 1
-                
-                print(f"   🔢 Turmas com múltiplas ocorrências (top 5):")
-                for chave, count in combinacoes_counter.most_common(5):
-                    if count > 1:
-                        print(f"      {chave}: {count} ocorrências")
-        
-        # 3. Limpar tabela existente (sincronização completa)
-        print(f"\n[3/4] 🧹 Limpando tabela existente...")
+
+        logger.info(
+            "Registros válidos: %d | Registros inválidos: %d",
+            len(turmas_validas),
+            turmas_invalidas,
+        )
+
+        if not turmas_validas:
+            logger.warning("Nenhuma turma válida para processamento")
+            return True
+
+        # Estatísticas rápidas (diagnóstico)
+        ativos = sum(1 for t in turmas_validas if t.get("sit_turma") == "A")
+        anos = Counter(t.get("ano") for t in turmas_validas if t.get("ano"))
+
+        logger.info("Turmas ativas: %d | Inativas: %d", ativos, len(turmas_validas) - ativos)
+        logger.info("Distribuição por ano (top 5): %s", anos.most_common(5))
+
+        # ---------------------------------------------------------------------
+        # 4. Limpeza da tabela local
+        # ---------------------------------------------------------------------
+        logger.info("[3/4] Limpando tabela LY_TURMA (LOCAL)")
         LyTurmaModel.clear_table()
-        
-        # 4. Inserir no banco
-        print(f"\n[4/4] 💾 Inserindo {len(turmas_validas)} turmas no banco...")
-        
-        total_processadas = LyTurmaModel.batch_insert(turmas_validas)
-        
-        # 5. Resumo final
+
+        # ---------------------------------------------------------------------
+        # 5. Inserção no banco local
+        # ---------------------------------------------------------------------
+        logger.info("[4/4] Inserindo registros no banco LOCAL")
+        total_inseridos = LyTurmaModel.batch_insert(turmas_validas)
+
+        # ---------------------------------------------------------------------
+        # 6. Resumo final
+        # ---------------------------------------------------------------------
         tempo_total = time.time() - start_time
         resumo_final = LyTurmaModel.get_summary()
-        
-        print(f"\n[5/5] 📊 Gerando resumo...")
-        
-        print("\n" + "=" * 60)
-        print("RESUMO DA SINCRONIZAÇÃO")
-        print("=" * 60)
-        
-        print(f"\n📈 DADOS DA API:")
-        print(f"   Total retornado: {len(turmas)} turmas")
-        print(f"   Válidas para processamento: {len(turmas_validas)}")
-        if turmas_invalidas > 0:
-            print(f"   Inválidas (sem campos obrigatórios): {turmas_invalidas}")
-        
-        print(f"\n🗃️  OPERAÇÕES NO BANCO:")
-        print(f"   Inseridas com sucesso: {total_processadas}")
-        if len(turmas_validas) > total_processadas:
-            print(f"   Turmas com erro: {len(turmas_validas) - total_processadas}")
-        
-        print(f"\n📊 SITUAÇÃO DO BANCO:")
-        print(f"   Antes da sincronização: {resumo_inicial.get('total_turmas', 0)} turmas")
-        print(f"   Após a sincronização: {resumo_final.get('total_turmas', 0)} turmas")
-        print(f"   Turmas distintas (código): {resumo_final.get('turmas_distintas', 0)}")
-        print(f"   Turmas ativas: {resumo_final.get('turmas_ativas', 0)}")
-        print(f"   Anos distintos: {resumo_final.get('anos_distintos', 0)}")
-        print(f"   Semestres distintos: {resumo_final.get('semestres_distintos', 0)}")
-        print(f"   Disciplinas distintas: {resumo_final.get('disciplinas_distintas', 0)}")
-        
-        if resumo_final.get('ultima_atualizacao'):
-            print(f"   Última atualização: {resumo_final['ultima_atualizacao']}")
-        
-        print(f"\n⏱️  PERFORMANCE:")
-        print(f"   Tempo total: {tempo_total:.2f} segundos")
-        
-        if len(turmas_validas) > 0:
-            taxa = len(turmas_validas) / tempo_total
-            print(f"   Taxa: {taxa:.2f} turmas/segundo")
-        
-        print("\n" + "=" * 60)
-        
-        if total_processadas == len(turmas_validas):
-            print("✅ SINCRONIZAÇÃO CONCLUÍDA COM SUCESSO!")
-        else:
-            print(f"⚠️  SINCRONIZAÇÃO PARCIALMENTE CONCLUÍDA ({total_processadas}/{len(turmas_validas)})")
-        
-        print("=" * 60)
-        
+
+        logger.info("=" * 80)
+        logger.info("RESUMO DA SINCRONIZAÇÃO - LY_TURMA")
+        logger.info("API (GET): %d registros", len(turmas))
+        logger.info("Processados: %d", len(turmas_validas))
+        logger.info("Inseridos no banco local: %d", total_inseridos)
+
+        logger.info(
+            "Banco | Antes: %s | Depois: %s",
+            resumo_inicial.get("total_turmas", 0),
+            resumo_final.get("total_turmas", 0),
+        )
+
+        logger.info(
+            "Ativas: %s | Anos: %s | Semestres: %s | Disciplinas: %s",
+            resumo_final.get("turmas_ativas", 0),
+            resumo_final.get("anos_distintos", 0),
+            resumo_final.get("semestres_distintos", 0),
+            resumo_final.get("disciplinas_distintas", 0),
+        )
+
+        logger.info("Tempo total: %.2f s", tempo_total)
+        logger.info("Taxa: %.2f turmas/s", len(turmas_validas) / tempo_total)
+
+        logger.info("SINCRONIZAÇÃO FINALIZADA COM SUCESSO")
+        logger.info("=" * 80)
+
         return True
-        
-    except Exception as e:
-        print(f"\n❌ ERRO NA SINCRONIZAÇÃO: {e}")
-        import traceback
-        traceback.print_exc()
+
+    except Exception as exc:
+        logger.exception("Erro durante a sincronização: %s", exc)
         return False
 
 
-def main():
-    """Função principal"""
-    print("🚀 Iniciando sincronização de turmas...")
-    
-    try:
-        # Verificar configurações
-        if not all([config.LYCEUM_BASE_URL, config.LYCEUM_USERNAME, config.LYCEUM_PASSWORD]):
-            print("❌ Configurações da API incompletas no arquivo .env")
-            print("   Verifique: API_BASE_URL, API_USERNAME, API_PASSWORD")
-            return False
-        
-        # Executar sincronização
-        sucesso = sincronizar_turmas()
-        
-        if sucesso:
-            print("\n✨ Processo concluído!")
-            return True
-        else:
-            print("\n💥 Falha no processo!")
-            return False
-            
-    except KeyboardInterrupt:
-        print("\n\n⚠️  Processo interrompido pelo usuário")
-        return False
+# -----------------------------------------------------------------------------
+# ENTRYPOINT
+# -----------------------------------------------------------------------------
+def main() -> int:
+    if not all([config.LYCEUM_BASE_URL, config.LYCEUM_USERNAME, config.LYCEUM_PASSWORD]):
+        logger.error("Configurações da API incompletas (.env)")
+        return 1
+
+    return 0 if run() else 1
 
 
 if __name__ == "__main__":
-    sucesso = main()
-    sys.exit(0 if sucesso else 1)
+    sys.exit(main())
