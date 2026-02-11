@@ -22,6 +22,45 @@ Integrar dados acadêmicos + dados de questionários (Qstione)
 ✔ Execução isolada por módulo
 ✔ Logs completos por execução
 
+markdown
+# Aluno Sync
+
+Sistema de sincronização de dados acadêmicos entre a API Lyceum e o banco de dados Qstione.
+
+## 📌 Sobre o Projeto
+
+Este projeto automatiza a extração, transformação e carga (ETL) de dados de alunos, ofertas, coordenadores e usuários a partir da API do Lyceum para as tabelas do sistema Qstione. Utiliza Python para consumir endpoints REST e inserir os dados no banco de dados PostgreSQL.
+
+## 🚀 Começando
+
+### Pré-requisitos
+
+- Python 3.8 ou superior
+- Acesso à API Lyceum (credenciais)
+- Banco de dados PostgreSQL configurado
+
+### Instalação
+
+1. Clone o repositório:
+   ```bash
+   git clone https://github.com/leonardo201800478/aluno-sync.git
+   cd aluno-sync
+Crie e ative um ambiente virtual:
+
+bash
+python -m venv venv
+source venv/bin/activate  # Linux/macOS
+venv\Scripts\activate     # Windows
+Instale as dependências:
+
+bash
+pip install -r requirements.txt
+Configure as variáveis de ambiente (copie o arquivo de exemplo):
+
+bash
+cp .env.example .env
+# Edite o .env com suas credenciais
+
 aluno-sync/
 │
 ├── core/                               # Infraestrutura base do projeto
