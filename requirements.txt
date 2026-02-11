@@ -1,4 +1,30 @@
+# ============================
+# HTTP / API
+# ============================
 requests>=2.31.0
-pandas>=2.0.0
+
+# ============================
+# Variáveis de ambiente
+# ============================
 python-dotenv>=1.0.0
+
+# ============================
+# Manipulação de dados
+# ============================
+pandas>=2.0.0
+
+# ============================
+# Excel (exportações / integrações)
+# ============================
 openpyxl>=3.1.5
+
+# ============================
+# Banco de dados
+# ============================
+# SQLite já vem no Python (sqlite3)
+# Nenhuma lib externa necessária
+
+# ============================
+# Utilitários / compatibilidade
+# ============================
+typing-extensions>=4.7.0; python_version < "3.11"
