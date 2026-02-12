@@ -225,6 +225,34 @@ TABELAS_CONFIG = {
         'agrupamento': None,
         'tipo_carga': 'Incremental',
         'escopo_carga': 'Instituicao'
+    },
+    # -------------------------------------------------------------------------
+    # NOVA TABELA: imp_008_usuarios_disciplinas
+    # -------------------------------------------------------------------------
+    'imp_008_usuarios_disciplinas': {
+        'nome_planilha': 'IMP-008 - Usuários das Disciplinas',
+        'tabela_origem': 'LY_TURMA_DOCENTE',
+        'descricao': 'Associação de usuários (docentes) às disciplinas',
+        'campos': [
+            {
+                'nome_qstione': 'codigoDisciplina',
+                'tipo': 'CHAR(30)',
+                'obrigatorio': True,
+                'origem': None,
+                'transformacao': 'gerar_codigo_disciplina_curso'
+            },
+            {
+                'nome_qstione': 'emailUsuario',
+                'tipo': 'CHAR(100)',
+                'obrigatorio': True,
+                'origem': None,
+                'transformacao': 'converter_minusculas'
+            }
+        ],
+        'condicoes': "td.ano = 2026 AND td.periodo = '21' AND dsc.faculdade IN ('001', '002') AND d.ativo = 'S'",
+        'agrupamento': None,
+        'tipo_carga': 'Incremental',
+        'escopo_carga': 'Instituicao'
     }
 }
 
@@ -235,5 +263,6 @@ ORDEM_COLUNAS_PLANILHA = {
     'imp_005_ofertas': ['codigoOferta', 'nomeOferta', 'codigoDisciplina', 'semestreOferta', 
                         'codigoTipoOferta', 'codigoOfertaOrigem', 'turno', 'codigoIdentificacaoAVA'],
     'imp_006_usuarios': ['matriculaUsuario', 'codigoUsuario', 'emailUsuario', 'nomeUsuario'],
-    'imp_007_usuarios_cursos': ['codigoCurso', 'emailUsuario', 'papelUsuario']
+    'imp_007_usuarios_cursos': ['codigoCurso', 'emailUsuario', 'papelUsuario'],
+    'imp_008_usuarios_disciplinas': ['codigoDisciplina', 'emailUsuario']   # NOVA
 }
