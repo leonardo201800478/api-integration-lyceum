@@ -1,196 +1,291 @@
 #!/usr/bin/env python3
 """
-Sincronização da tabela LY_DOCENTE
+Sincronização FULL REFRESH da tabela LY_DOCENTE.
 
-- Sincronização COMPLETA (full refresh)
-- API Lyceum: SOMENTE GET
-- Banco local: clear + batch insert
-- Sem chave primária fixa (padrão LY_TURMA)
+Utiliza o cliente DocenteAPICliente (já implementado) para obter todos os docentes
+via paginação automática com parâmetros 'page' e 'size' (configurados em core.config).
+
+REGRAS DE NEGÓCIO:
+1. Campos obrigatórios: cpf e num_func (não vazios).
+2. CPF deve ser normalizado (apenas 11 dígitos).
+3. E-mail de docente deve ter domínio @foa.org.br (se presente, apenas loga inválidos).
+4. DOCENTE PADRÃO (matrícula "1") é automaticamente descartado – não é real.
+5. Docentes com e-mail inválido são registrados em log, mas NÃO são excluídos (apenas o padrão é excluído).
 """
 
 import sys
 import os
 import time
 import logging
+import re
 from datetime import datetime
 from collections import Counter
-from typing import List, Dict
+from pathlib import Path
+from typing import List, Dict, Any, Tuple
 
-# Garante import do projeto
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, PROJECT_ROOT)
+# -----------------------------------------------------------------------------
+# AJUSTE DE PATH PARA IMPORTAÇÃO DOS MÓDULOS INTERNOS
+# -----------------------------------------------------------------------------
+RAIZ_PROJETO = Path(__file__).resolve().parent.parent
+if str(RAIZ_PROJETO) not in sys.path:
+    sys.path.insert(0, str(RAIZ_PROJETO))
+    os.chdir(RAIZ_PROJETO)
 
+# -----------------------------------------------------------------------------
+# IMPORTAÇÕES INTERNAS
+# -----------------------------------------------------------------------------
 from core.config import config
 from core.api_client import DocenteAPIClient
 from models.ly_docente import LyDocenteModel
 
-
 # -----------------------------------------------------------------------------
-# Logging
+# Logger
 # -----------------------------------------------------------------------------
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
 logger = logging.getLogger("sync_ly_docente")
 
+# -----------------------------------------------------------------------------
+# CONSTANTES
+# -----------------------------------------------------------------------------
+REQUIRED_FIELDS = ["cpf", "num_func"]       # Campos obrigatórios
+DOMINIO_DOCENTE = "foa.org.br"              # Domínio exclusivo para docentes
+DOCENTE_PADRAO_MATRICULA = "1"             # Matrícula do docente fictício (deve ser excluído)
+DEPTOS_TOP_N = 5
+TITULOS_TOP_N = 5
 
 # -----------------------------------------------------------------------------
-# Funções auxiliares
+# FUNÇÕES AUXILIARES
 # -----------------------------------------------------------------------------
-def validar_docentes(docentes: List[Dict]) -> tuple[list[Dict], int]:
+def normalizar_cpf(cpf: Any) -> str:
+    """Remove caracteres não numéricos e retorna apenas dígitos."""
+    if not cpf:
+        return ""
+    return re.sub(r"\D", "", str(cpf))
+
+
+def validar_email_docente(email: Any) -> Tuple[bool, str]:
     """
-    Filtra docentes válidos.
+    Valida e-mail de docente: deve terminar com @foa.org.br.
+    Retorna (True, email_normalizado) se válido;
+    (False, email_original) se inválido; (False, "") se vazio/nulo.
+    """
+    if not email or not isinstance(email, str):
+        return False, ""
+    email = email.strip().lower()
+    if email.endswith(f"@{DOMINIO_DOCENTE}"):
+        return True, email
+    return False, email
 
-    Regras:
-    - cpf obrigatório
-    - num_func obrigatório
+
+def validar_docentes(docentes: List[Dict[str, Any]]) -> Tuple[List[Dict], int, int, List[Dict]]:
+    """
+    Aplica todas as validações e transformações nos docentes.
+
+    Args:
+        docentes: Lista bruta da API.
+
+    Returns:
+        - docentes_validos: lista de dicionários prontos para inserção.
+        - total_descartados: soma de todos os descartes (campos obrigatórios, CPF inválido, docente padrão).
+        - emails_invalidos: lista de docentes (não descartados) com e-mail inválido.
     """
     validos = []
-    invalidos = 0
+    descartados = 0
+    emails_invalidos = []
 
-    for d in docentes:
-        if d.get("cpf") and d.get("num_func"):
-            validos.append(d)
-        else:
-            invalidos += 1
+    for doc in docentes:
+        # ---------------------------------------------------------------------
+        # 1. Descarte do docente padrão (matrícula "1")
+        # ---------------------------------------------------------------------
+        if str(doc.get("num_func")) == DOCENTE_PADRAO_MATRICULA:
+            logger.debug("Docente padrão descartado (matrícula %s)", DOCENTE_PADRAO_MATRICULA)
+            descartados += 1
+            continue
 
-    return validos, invalidos
+        # ---------------------------------------------------------------------
+        # 2. Validação de campos obrigatórios
+        # ---------------------------------------------------------------------
+        if not all(doc.get(campo) for campo in REQUIRED_FIELDS):
+            logger.debug("Docente descartado (campos obrigatórios ausentes): %s",
+                         {c: doc.get(c) for c in REQUIRED_FIELDS})
+            descartados += 1
+            continue
+
+        # ---------------------------------------------------------------------
+        # 3. Normalização e validação do CPF
+        # ---------------------------------------------------------------------
+        cpf_normalizado = normalizar_cpf(doc.get("cpf"))
+        if len(cpf_normalizado) != 11:
+            logger.debug("Docente descartado (CPF inválido após normalização): %s", doc.get("num_func"))
+            descartados += 1
+            continue
+        doc["cpf"] = cpf_normalizado   # substitui pelo valor limpo
+
+        # ---------------------------------------------------------------------
+        # 4. Validação de e-mail (não descarta, apenas loga)
+        # ---------------------------------------------------------------------
+        email_valido, email_limpo = validar_email_docente(doc.get("email"))
+        if not email_valido and doc.get("email"):   # só registra se existir e for inválido
+            emails_invalidos.append({
+                "num_func": doc.get("num_func"),
+                "cpf": doc.get("cpf"),
+                "email": doc.get("email")
+            })
+        doc["email"] = email_limpo if email_valido else doc.get("email")
+
+        # Se chegou até aqui, docente é válido
+        validos.append(doc)
+
+    return validos, descartados, emails_invalidos
 
 
-def log_estatisticas(docentes: List[Dict]) -> None:
-    """Gera estatísticas descritivas para auditoria."""
+def gerar_estatisticas(docentes: List[Dict]) -> None:
+    """Registra estatísticas detalhadas para auditoria."""
+    if not docentes:
+        return
+
     ativos = sum(1 for d in docentes if d.get("ativo") == "S")
     inativos = len(docentes) - ativos
 
-    logger.info("Estatísticas gerais:")
-    logger.info(" - Total: %s", len(docentes))
-    logger.info(" - Ativos: %s", ativos)
-    logger.info(" - Inativos: %s", inativos)
+    logger.info("📊 Estatísticas dos docentes válidos:")
+    logger.info("   - Total: %s", len(docentes))
+    logger.info("   - Ativos: %s", ativos)
+    logger.info("   - Inativos: %s", inativos)
 
+    # Top N departamentos
     deptos = Counter(d.get("depto", "Não informado") for d in docentes)
-    logger.info("Top 10 departamentos:")
-    for depto, qtd in deptos.most_common(10):
-        logger.info(" - %s: %s", depto, qtd)
+    logger.info("   - Top %d departamentos:", DEPTOS_TOP_N)
+    for depto, qtd in deptos.most_common(DEPTOS_TOP_N):
+        logger.info("       • %s: %s", depto, qtd)
 
-    titulacoes = Counter(d.get("titulacao", "Não informado") for d in docentes)
-    logger.info("Top 5 titulações:")
-    for tit, qtd in titulacoes.most_common(5):
-        logger.info(" - %s: %s", tit, qtd)
+    # Top N titulações
+    titulos = Counter(d.get("titulacao", "Não informado") for d in docentes)
+    logger.info("   - Top %d titulações:", TITULOS_TOP_N)
+    for tit, qtd in titulos.most_common(TITULOS_TOP_N):
+        logger.info("       • %s: %s", tit, qtd)
 
-    chaves = [f"{d.get('cpf')}-{d.get('num_func')}" for d in docentes]
-    unicos = set(chaves)
+    # Chaves compostas (cpf + num_func) – duplicatas
+    chaves = [f"{d['cpf']}-{d['num_func']}" for d in docentes if d.get("cpf") and d.get("num_func")]
+    total_chaves = len(chaves)
+    unicas = len(set(chaves))
+    logger.info("   - Chaves (cpf+num_func): %s únicas de %s", unicas, total_chaves)
+    if total_chaves > unicas:
+        logger.warning("   ⚠️  %s duplicatas de chave encontradas!", total_chaves - unicas)
 
-    logger.info("Combinações cpf-num_func:")
-    logger.info(" - Registros: %s", len(chaves))
-    logger.info(" - Únicos: %s", len(unicos))
-    logger.info(" - Duplicados: %s", len(chaves) - len(unicos))
 
+def log_emails_invalidos(docentes_com_email_invalido: List[Dict]) -> None:
+    """Registra em log a matrícula e CPF de cada docente com e-mail inválido."""
+    if not docentes_com_email_invalido:
+        return
 
-# -----------------------------------------------------------------------------
-# Sincronização principal
-# -----------------------------------------------------------------------------
-def sincronizar_docentes() -> bool:
-    """
-    Executa a sincronização completa da tabela LY_DOCENTE.
-
-    Fluxo:
-    1. Cria/verifica tabela
-    2. Busca dados via GET na API Lyceum
-    3. Valida registros
-    4. Limpa tabela local
-    5. Insere dados válidos
-    """
-    logger.info("=" * 70)
-    logger.info("INICIANDO SINCRONIZAÇÃO DA TABELA LY_DOCENTE")
-    logger.info("Início: %s", datetime.now().strftime("%d/%m/%Y %H:%M:%S"))
-    logger.info("=" * 70)
-
-    inicio = time.time()
-
-    # 1. Tabela
-    LyDocenteModel.create_table()
-    resumo_inicial = LyDocenteModel.get_summary()
-
-    logger.info("Resumo inicial: %s", resumo_inicial)
-
-    # 2. API (GET)
-    client = DocenteAPIClient()
-    docentes_api = client.get_docentes()
-
-    if not docentes_api:
-        logger.warning("Nenhum docente retornado pela API")
-        return False
-
-    logger.info("Total retornado pela API: %s", len(docentes_api))
-
-    # 3. Validação
-    docentes_validos, docentes_invalidos = validar_docentes(docentes_api)
-
-    logger.info("Docentes válidos: %s", len(docentes_validos))
-    if docentes_invalidos:
-        logger.warning("Docentes inválidos descartados: %s", docentes_invalidos)
-
-    if not docentes_validos:
-        logger.warning("Nenhum docente válido para inserção")
-        return True
-
-    # Amostra
-    amostra = docentes_validos[0]
-    logger.info(
-        "Amostra | CPF=%s | NUM_FUNC=%s | NOME=%s",
-        amostra.get("cpf"),
-        amostra.get("num_func"),
-        amostra.get("nome_compl"),
-    )
-
-    log_estatisticas(docentes_validos)
-
-    # 4. Banco local
-    logger.info("Limpando tabela LY_DOCENTE")
-    LyDocenteModel.clear_table()
-
-    logger.info("Inserindo %s docentes", len(docentes_validos))
-    inseridos = LyDocenteModel.batch_insert(docentes_validos)
-
-    # 5. Resumo final
-    tempo_total = time.time() - inicio
-    resumo_final = LyDocenteModel.get_summary()
-
-    logger.info("=" * 70)
-    logger.info("RESUMO FINAL")
-    logger.info("Inseridos: %s", inseridos)
-    logger.info("Resumo final: %s", resumo_final)
-    logger.info("Tempo total: %.2f s", tempo_total)
-    logger.info("Taxa: %.2f docentes/s", inseridos / tempo_total)
-    logger.info("=" * 70)
-
-    return inseridos == len(docentes_validos)
+    logger.warning("📧 Docentes com e-mail inválido (domínio diferente de @%s):", DOMINIO_DOCENTE)
+    for doc in docentes_com_email_invalido:
+        logger.warning("   - Matrícula: %s | CPF: %s | E-mail fornecido: %s",
+                       doc.get("num_func"), doc.get("cpf"), doc.get("email"))
 
 
 # -----------------------------------------------------------------------------
-# Entry point
+# FUNÇÃO PRINCIPAL (chamada pelo run_all_syncs.py)
 # -----------------------------------------------------------------------------
-def main() -> int:
-    """Ponto de entrada do script."""
-    if not all(
-        [config.LYCEUM_BASE_URL, config.LYCEUM_USERNAME, config.LYCEUM_PASSWORD]
-    ):
-        logger.error("Configurações da API Lyceum incompletas (.env)")
-        return 1
+def run() -> bool:
+    logger.info("=" * 70)
+    logger.info("🔄 INÍCIO DA SINCRONIA: LY_DOCENTE")
+    logger.info("⏱️  %s", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    logger.info("=" * 70)
+
+    tempo_inicio = time.time()
 
     try:
-        sucesso = sincronizar_docentes()
-        return 0 if sucesso else 1
+        # 1. Tabela
+        LyDocenteModel.create_table()
+        resumo_inicial = LyDocenteModel.get_summary()
+        logger.info("📋 Resumo inicial da tabela: %s", resumo_inicial)
 
-    except KeyboardInterrupt:
-        logger.warning("Processo interrompido pelo usuário")
+        # 2. API
+        logger.info("📡 Conectando à API Lyceum (endpoint: docente)...")
+        cliente = DocenteAPIClient()
+        docentes_brutos = cliente.get_docentes()
+
+        if docentes_brutos is None:
+            logger.error("❌ Cliente retornou None – falha na requisição.")
+            return False
+
+        if not docentes_brutos:
+            logger.warning("⚠️  Nenhum docente retornado pela API. Nada a sincronizar.")
+            LyDocenteModel.clear_table()
+            logger.info("✅ Tabela esvaziada (sem dados na API).")
+            return True
+
+        logger.info("📦 Total bruto recebido da API: %s registros", len(docentes_brutos))
+
+        # 3. Validação completa
+        docentes_validos, total_descartados, emails_invalidos = validar_docentes(docentes_brutos)
+
+        logger.info("✅ Docentes válidos: %s", len(docentes_validos))
+        if total_descartados > 0:
+            logger.warning("⚠️  Docentes descartados: %s (campos obrigatórios, CPF inválido ou docente padrão)",
+                           total_descartados)
+
+        # Log de e-mails inválidos (apenas entre os válidos)
+        log_emails_invalidos(emails_invalidos)
+
+        if not docentes_validos:
+            logger.warning("🚫 Nenhum docente válido para inserção. Tabela será esvaziada.")
+            LyDocenteModel.clear_table()
+            return True
+
+        # 4. Amostra e estatísticas
+        amostra = docentes_validos[0]
+        logger.info("🔍 Amostra (primeiro registro válido):")
+        logger.info("   - CPF: %s", amostra.get("cpf"))
+        logger.info("   - NUM_FUNC: %s", amostra.get("num_func"))
+        logger.info("   - NOME: %s", amostra.get("nome_compl", "---"))
+        logger.info("   - E-MAIL: %s", amostra.get("email", "---"))
+        logger.info("   - ATIVO: %s", amostra.get("ativo", "---"))
+
+        gerar_estatisticas(docentes_validos)
+
+        # 5. Banco de dados
+        logger.info("🧹 Limpando tabela LY_DOCENTE...")
+        linhas_removidas = LyDocenteModel.clear_table()
+        logger.info("   - Registros removidos: %s", linhas_removidas)
+
+        logger.info("💾 Inserindo %s docentes no banco...", len(docentes_validos))
+        inseridos = LyDocenteModel.batch_insert(docentes_validos)
+
+        if inseridos != len(docentes_validos):
+            logger.error("❌ Inserção incompleta: %s de %s registros inseridos.",
+                         inseridos, len(docentes_validos))
+            return False
+
+        # 6. Finalização
+        tempo_total = time.time() - tempo_inicio
+        taxa = inseridos / tempo_total if tempo_total > 0 else 0
+        resumo_final = LyDocenteModel.get_summary()
+
+        logger.info("=" * 70)
+        logger.info("✅ SINCRONIA CONCLUÍDA COM SUCESSO")
+        logger.info("📈 Resumo final da tabela: %s", resumo_final)
+        logger.info("⏱️  Tempo total: %.2f s", tempo_total)
+        logger.info("⚡ Taxa de inserção: %.2f registros/s", taxa)
+        logger.info("=" * 70)
+
+        return True
+
+    except Exception as e:
+        logger.exception("❌ Falha crítica durante a sincronia de docentes")
+        return False
+
+
+# -----------------------------------------------------------------------------
+# EXECUÇÃO ISOLADA
+# -----------------------------------------------------------------------------
+def main() -> int:
+    if not all([config.LYCEUM_BASE_URL, config.LYCEUM_USERNAME, config.LYCEUM_PASSWORD]):
+        logger.error("Configurações da API Lyceum incompletas. Verifique o arquivo .env.")
         return 1
 
-    except Exception:
-        logger.exception("Erro inesperado na sincronização")
-        return 1
+    sucesso = run()
+    return 0 if sucesso else 1
 
 
 if __name__ == "__main__":
