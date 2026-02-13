@@ -1,150 +1,146 @@
-from core.database import get_db_connection
+from core.database import execute_query, fetch_all, fetch_one
 import logging
 
 logger = logging.getLogger(__name__)
 
-
 class AlunoModel:
-    TABLE = "LY_ALUNO"
-    
-    # Mapeamento de campos para conversão de tipos
+    TABLE = "LY_ALUNO"  # Nome da tabela no SQL Server
+
+    # Mapeamento de campos para conversão de tipos (mesmo)
     INTEGER_FIELDS = {
         'ano_ingresso', 'anoconcl2g', 'creditos', 'num_chamada',
         'pessoa', 'sem_ingresso', 'serie', 'dist_aluno_unidade'
     }
-    
     BOOLEAN_FIELDS = {'representante_turma'}  # Campos que podem ser 'S'/'N'
-    
-    @staticmethod
-    def create_table():
-        """Cria a tabela se não existir, ou atualiza se necessário"""
-        with get_db_connection() as conn:
-            # Primeiro, verifica se a tabela existe
-            cursor = conn.execute(f"""
-                SELECT name FROM sqlite_master 
-                WHERE type='table' AND name='{AlunoModel.TABLE}'
-            """)
-            tabela_existe = cursor.fetchone() is not None
-            
-            if not tabela_existe:
-                # Cria a tabela completa
-                conn.execute(f"""
-                    CREATE TABLE {AlunoModel.TABLE} (
-                        aluno TEXT PRIMARY KEY,
-                        ano_ingresso INTEGER,
-                        anoconcl2g INTEGER,
-                        areacnpq TEXT,
-                        candidato TEXT,
-                        cidade2g TEXT,
-                        classif_aluno TEXT,
-                        cod_cartao TEXT,
-                        concurso TEXT,
-                        cred_educativo TEXT,
-                        creditos INTEGER,
-                        curriculo TEXT,
-                        curso TEXT,
-                        curso_ant TEXT,
-                        discipoutraserie TEXT,
-                        dist_aluno_unidade INTEGER,
-                        dt_ingresso TEXT,
-                        e_mail_interno TEXT,
-                        faculdade_conveniada TEXT,
-                        grupo TEXT,
-                        instituicao TEXT,
-                        nome_abrev TEXT,
-                        nome_compl TEXT,
-                        nome_conjuge TEXT,
-                        nome_social TEXT,
-                        num_chamada INTEGER,
-                        obs_aluno_finan TEXT,
-                        obs_tel_com TEXT,
-                        obs_tel_res TEXT,
-                        outra_faculdade TEXT,
-                        pais2g TEXT,
-                        pessoa INTEGER,
-                        ref_aluno_ant TEXT,
-                        representante_turma TEXT,
-                        sem_ingresso INTEGER,
-                        serie INTEGER,
-                        sit_aluno TEXT,
-                        sit_aprov TEXT,
-                        stamp_atualizacao TEXT,
-                        tipo_aluno TEXT,
-                        tipo_escola TEXT,
-                        tipo_ingresso TEXT,
-                        turma_pref TEXT,
-                        turno TEXT,
-                        unidade_ensino TEXT,
-                        unidade_fisica TEXT,
-                        data_sincronizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    )
-                """)
-                logger.info(f"Tabela {AlunoModel.TABLE} criada com sucesso")
-            else:
-                # Verifica se a coluna data_sincronizacao existe
-                cursor = conn.execute(f"""
-                    PRAGMA table_info({AlunoModel.TABLE})
-                """)
-                colunas = [row[1] for row in cursor.fetchall()]
-                
-                if 'data_sincronizacao' not in colunas:
-                    # Adiciona a coluna faltante
-                    conn.execute(f"""
-                        ALTER TABLE {AlunoModel.TABLE} 
-                        ADD COLUMN data_sincronizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    """)
-                    logger.info(f"Coluna data_sincronizacao adicionada à tabela {AlunoModel.TABLE}")
-                
-                logger.info(f"Tabela {AlunoModel.TABLE} verificada/atualizada")
-    
+
     @staticmethod
     def _normalize_value(key: str, value):
-        """Normaliza valores antes de inserir no banco"""
+        """Normaliza valores antes de inserir no banco (igual ao original)"""
         if value is None:
             return None
-        
-        # Converte campos inteiros
+
         if key in AlunoModel.INTEGER_FIELDS:
             try:
+                # Converte para int (Python int é ilimitado, será enviado como BIGINT)
                 return int(value)
             except (ValueError, TypeError):
                 return None
-        
-        # Converte booleanos 'S'/'N'
+
         if key in AlunoModel.BOOLEAN_FIELDS:
             if isinstance(value, str):
                 return 'S' if value.upper() == 'S' else 'N'
-        
-        # Converte timestamps para string de data
+
         if key in ['dt_ingresso', 'stamp_atualizacao']:
             if isinstance(value, (int, float)):
                 try:
                     from datetime import datetime
-                    # Verifica se é timestamp em milissegundos
+                    # Converte timestamp (segundos ou milissegundos) para string ISO
                     if value > 1000000000000:
                         timestamp = value / 1000
                     else:
                         timestamp = value
-                    
                     return datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
                 except Exception:
                     return str(value)
-        
-        # Para strings, remove espaços extras
+
         if isinstance(value, str):
             return value.strip()
-        
+
         return value
-    
+
+    @staticmethod
+    def create_table():
+        """
+        Verifica se a tabela existe no SQL Server e a cria se necessário.
+        Usa tipos BIGINT para campos numéricos grandes e NVARCHAR com tamanhos adequados.
+        """
+        # Verifica se a tabela existe usando INFORMATION_SCHEMA
+        query = """
+            SELECT 1 FROM INFORMATION_SCHEMA.TABLES 
+            WHERE TABLE_NAME = ? AND TABLE_TYPE = 'BASE TABLE'
+        """
+        exists = fetch_one(query, (AlunoModel.TABLE,))
+
+        if not exists:
+            # Cria a tabela completa com tipos ajustados
+            create_sql = f"""
+                CREATE TABLE [{AlunoModel.TABLE}] (
+                    [aluno] NVARCHAR(100) PRIMARY KEY,
+                    [ano_ingresso] BIGINT,
+                    [anoconcl2g] BIGINT,
+                    [areacnpq] NVARCHAR(255),
+                    [candidato] NVARCHAR(100),
+                    [cidade2g] NVARCHAR(255),
+                    [classif_aluno] NVARCHAR(100),
+                    [cod_cartao] NVARCHAR(100),
+                    [concurso] NVARCHAR(100),
+                    [cred_educativo] NVARCHAR(50),
+                    [creditos] BIGINT,
+                    [curriculo] NVARCHAR(50),
+                    [curso] NVARCHAR(100),
+                    [curso_ant] NVARCHAR(255),      -- Aumentado para evitar truncamento
+                    [discipoutraserie] NVARCHAR(20),
+                    [dist_aluno_unidade] BIGINT,
+                    [dt_ingresso] NVARCHAR(30),     -- Armazenar como string no formato YYYY-MM-DD HH:MM:SS
+                    [e_mail_interno] NVARCHAR(255),
+                    [faculdade_conveniada] NVARCHAR(50),
+                    [grupo] NVARCHAR(50),
+                    [instituicao] NVARCHAR(200),
+                    [nome_abrev] NVARCHAR(200),
+                    [nome_compl] NVARCHAR(500),
+                    [nome_conjuge] NVARCHAR(500),
+                    [nome_social] NVARCHAR(500),
+                    [num_chamada] BIGINT,
+                    [obs_aluno_finan] NVARCHAR(MAX),
+                    [obs_tel_com] NVARCHAR(MAX),
+                    [obs_tel_res] NVARCHAR(MAX),
+                    [outra_faculdade] NVARCHAR(100),
+                    [pais2g] NVARCHAR(255),
+                    [pessoa] BIGINT,
+                    [ref_aluno_ant] NVARCHAR(100),
+                    [representante_turma] CHAR(1),
+                    [sem_ingresso] BIGINT,
+                    [serie] BIGINT,
+                    [sit_aluno] NVARCHAR(50),
+                    [sit_aprov] NVARCHAR(50),
+                    [stamp_atualizacao] NVARCHAR(30),  -- String no mesmo formato
+                    [tipo_aluno] NVARCHAR(50),
+                    [tipo_escola] NVARCHAR(50),
+                    [tipo_ingresso] NVARCHAR(50),
+                    [turma_pref] NVARCHAR(50),
+                    [turno] NVARCHAR(20),
+                    [unidade_ensino] NVARCHAR(100),
+                    [unidade_fisica] NVARCHAR(100),
+                    [data_sincronizacao] DATETIME2 DEFAULT GETDATE()
+                )
+            """
+            execute_query(create_sql)
+            logger.info(f"Tabela {AlunoModel.TABLE} criada com sucesso (tipos ajustados)")
+        else:
+            # Verifica se a coluna data_sincronizacao existe
+            col_query = """
+                SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_NAME = ? AND COLUMN_NAME = 'data_sincronizacao'
+            """
+            col_exists = fetch_one(col_query, (AlunoModel.TABLE,))
+            if not col_exists:
+                alter_sql = f"""
+                    ALTER TABLE [{AlunoModel.TABLE}] 
+                    ADD [data_sincronizacao] DATETIME2 DEFAULT GETDATE()
+                """
+                execute_query(alter_sql)
+                logger.info(f"Coluna data_sincronizacao adicionada à tabela {AlunoModel.TABLE}")
+            logger.info(f"Tabela {AlunoModel.TABLE} verificada/atualizada")
+
     @staticmethod
     def upsert(data: dict):
-        """Insere ou atualiza um aluno"""
+        """Insere ou atualiza um aluno usando MERGE (SQL Server)"""
         if not data.get("aluno"):
             logger.warning(f"Tentativa de upsert sem matrícula: {data}")
             return
-        
+
         aluno_matricula = data.get("aluno")
-        
+
         # Prepara os parâmetros normalizados
         params = {}
         for key in [
@@ -162,69 +158,72 @@ class AlunoModel:
             "unidade_fisica"
         ]:
             params[key] = AlunoModel._normalize_value(key, data.get(key))
-        
+
+        # Colunas na ordem (exceto data_sincronizacao, que será tratada separadamente)
+        columns = list(params.keys())
+        update_columns = [c for c in columns if c != "aluno"]
+
+        # Constrói o UPDATE SET
+        update_set = ", ".join([f"target.[{col}] = source.[{col}]" for col in update_columns])
+
+        # Colunas para INSERT (incluindo data_sincronizacao)
+        insert_cols = [f"[{col}]" for col in columns] + ["[data_sincronizacao]"]
+        insert_vals = ", ".join([f"source.[{col}]" for col in columns]) + ", GETDATE()"
+
+        # Monta o MERGE
+        merge_sql = f"""
+            MERGE INTO [{AlunoModel.TABLE}] AS target
+            USING (VALUES ({','.join(['?' for _ in columns])})) AS source ({','.join([f"[{col}]" for col in columns])})
+            ON target.[aluno] = source.[aluno]
+            WHEN MATCHED THEN
+                UPDATE SET
+                    {update_set},
+                    target.[data_sincronizacao] = GETDATE()
+            WHEN NOT MATCHED THEN
+                INSERT ({', '.join(insert_cols)})
+                VALUES ({insert_vals});
+        """
+
+        param_values = [params[col] for col in columns]
+
         try:
-            with get_db_connection() as conn:
-                # Prepara a query de UPSERT
-                columns = ", ".join(params.keys())
-                placeholders = ", ".join([f":{key}" for key in params.keys()])
-                update_clause = ", ".join([
-                    f"{key}=excluded.{key}" 
-                    for key in params.keys() 
-                    if key != "aluno"
-                ])
-                
-                # Adiciona data_sincronizacao separadamente
-                query = f"""
-                    INSERT INTO {AlunoModel.TABLE} ({columns}, data_sincronizacao)
-                    VALUES ({placeholders}, CURRENT_TIMESTAMP)
-                    ON CONFLICT(aluno) DO UPDATE SET
-                        {update_clause},
-                        data_sincronizacao = CURRENT_TIMESTAMP
-                """
-                
-                conn.execute(query, params)
-                logger.info(f"Aluno {aluno_matricula} upsert realizado com sucesso")
-                    
+            execute_query(merge_sql, param_values)
+            logger.info(f"Aluno {aluno_matricula} upsert realizado com sucesso")
         except Exception as e:
             logger.error(f"Erro no upsert do aluno {aluno_matricula}: {str(e)}")
-            # Para debug, mostra a query e parâmetros
-            logger.debug(f"Query: {query if 'query' in locals() else 'N/A'}")
             logger.debug(f"Params: {params}")
             raise
-    
+
     @staticmethod
     def get_all_matriculas():
         """Retorna todas as matrículas existentes no banco"""
-        with get_db_connection() as conn:
-            cursor = conn.execute(f"SELECT aluno FROM {AlunoModel.TABLE}")
-            return {row[0] for row in cursor.fetchall()}
-    
+        rows = fetch_all(f"SELECT [aluno] FROM [{AlunoModel.TABLE}]")
+        return {row[0] for row in rows} if rows else set()
+
     @staticmethod
     def delete_obsoletos(matriculas_atualizadas: set):
         """Remove alunos que não estão mais na API"""
         if not matriculas_atualizadas:
             return
-        
-        with get_db_connection() as conn:
-            # Converte o set para lista
-            matriculas_lista = list(matriculas_atualizadas)
-            placeholders = ','.join(['?'] * len(matriculas_lista))
-            
-            # Busca os alunos que serão removidos
-            cursor = conn.execute(
-                f"SELECT aluno FROM {AlunoModel.TABLE} WHERE aluno NOT IN ({placeholders})",
-                matriculas_lista
-            )
-            obsoletos = cursor.fetchall()
-            
-            if obsoletos:
-                conn.execute(
-                    f"DELETE FROM {AlunoModel.TABLE} WHERE aluno NOT IN ({placeholders})",
-                    matriculas_lista
-                )
-                logger.info(f"Removidos {len(obsoletos)} alunos obsoletos")
-                for aluno in obsoletos[:10]:  # Mostra apenas os primeiros 10
-                    logger.info(f"  - Removido: {aluno[0]}")
-                if len(obsoletos) > 10:
-                    logger.info(f"  ... e mais {len(obsoletos) - 10} alunos")
+
+        matriculas_lista = list(matriculas_atualizadas)
+        placeholders = ','.join(['?' for _ in matriculas_lista])
+
+        # Opcional: log dos obsoletos
+        select_obs_sql = f"""
+            SELECT [aluno] FROM [{AlunoModel.TABLE}] 
+            WHERE [aluno] NOT IN ({placeholders})
+        """
+        obsoletos = fetch_all(select_obs_sql, matriculas_lista)
+
+        if obsoletos:
+            delete_sql = f"""
+                DELETE FROM [{AlunoModel.TABLE}] 
+                WHERE [aluno] NOT IN ({placeholders})
+            """
+            execute_query(delete_sql, matriculas_lista)
+            logger.info(f"Removidos {len(obsoletos)} alunos obsoletos")
+            for aluno in obsoletos[:10]:
+                logger.info(f"  - Removido: {aluno[0]}")
+            if len(obsoletos) > 10:
+                logger.info(f"  ... e mais {len(obsoletos) - 10} alunos")

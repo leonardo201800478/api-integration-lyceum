@@ -39,7 +39,7 @@ logger = logging.getLogger("sync_ly_turma")
 def run() -> bool:
     logger.info("=" * 80)
     logger.info("INICIANDO SINCRONIZAÇÃO - LY_TURMA")
-    logger.info("Modo: FULL REFRESH | API: GET ONLY")
+    logger.info("Modo: FULL REFRESH | API: GET ONLY | Banco produção: IMUTÁVEL")
     logger.info("Início: %s", datetime.now().strftime("%d/%m/%Y %H:%M:%S"))
     logger.info("=" * 80)
 
@@ -79,7 +79,7 @@ def run() -> bool:
         # 3. Validação mínima dos registros
         # Campos obrigatórios: ano, semestre, turma, disciplina
         # ---------------------------------------------------------------------
-        turmas_validas = []
+        turmas_validas: list[dict] = []
         turmas_invalidas = 0
 
         for t in turmas:

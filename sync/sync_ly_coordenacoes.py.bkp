@@ -1,3 +1,4 @@
+# sync/sync_ly_coordenacoes.py
 """
 SINCRONIZAÇÃO LY_COORDENACAO
 - Execução direta
@@ -66,7 +67,8 @@ def sincronizar_coordenacoes():
     # 2. Buscar dados da API (GET)
     logger.info("Buscando coordenações na API Lyceum...")
     client = get_coordenacao_client()
-    coordenacoes = client.get_coordenacoes()  # paginação interna
+
+    coordenacoes = client.get_coordenacoes()  # ✅ paginação interna
 
     if not coordenacoes:
         logger.warning("API retornou zero coordenações")
@@ -79,7 +81,7 @@ def sincronizar_coordenacoes():
 
     logger.info(f"Total retornado pela API: {len(coordenacoes)}")
 
-    # 3. Normalizar registros (apenas garantir dict)
+    # 3. Normalizar registros
     registros_validos = []
     registros_invalidos = 0
 
@@ -89,7 +91,16 @@ def sincronizar_coordenacoes():
             if registros_invalidos <= 5:
                 logger.warning(f"Registro inválido (não dict): índice {idx}")
             continue
-        registros_validos.append(registro)
+
+        registro_limpo = {}
+        for campo, valor in registro.items():
+            if valor is None:
+                continue
+            if not isinstance(valor, (str, int, float, bool)):
+                valor = str(valor)
+            registro_limpo[campo] = valor
+
+        registros_validos.append(registro_limpo)
 
     if registros_invalidos:
         logger.warning(f"Registros inválidos ignorados: {registros_invalidos}")

@@ -94,8 +94,15 @@ def sincronizar_cursos():
             cursos_invalidos += 1
             continue
 
-        # Não precisa limpar mais, o modelo fará normalização
-        cursos_validos.append(registro)
+        registro_limpo = {}
+        for campo, valor in registro.items():
+            if valor is None:
+                continue
+            if not isinstance(valor, (str, int, float, bool)):
+                valor = str(valor)
+            registro_limpo[campo] = valor
+
+        cursos_validos.append(registro_limpo)
 
     logger.info(f"Cursos válidos: {len(cursos_validos)}")
     if cursos_invalidos:

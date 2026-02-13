@@ -17,6 +17,15 @@ class Config:
     DB_NAME = os.getenv("DB_NAME", "lyceum.db")
     DB_LYCEUM_PATH = os.getenv("DB_LYCEUM_PATH", DB_NAME)  # Adicionado
 
+    # core/config.py (adicione estas linhas)
+    SQL_SERVER_HOST = os.getenv('SQL_SERVER_HOST', 'localhost')
+    SQL_SERVER_PORT = os.getenv('SQL_SERVER_PORT', '1434')
+    SQL_SERVER_USER = os.getenv('SQL_SERVER_USER', 'sa')
+    SQL_SERVER_PASSWORD = os.getenv('SQL_SERVER_PASSWORD')
+    SQL_SERVER_DRIVER = os.getenv('SQL_SERVER_DRIVER', '{ODBC Driver 18 for SQL Server}')
+    SQL_SERVER_DATABASE_LYCEUM = os.getenv('SQL_SERVER_DATABASE_LYCEUM', 'lyceum.db')
+    SQL_SERVER_DATABASE_QSTIONE = os.getenv('SQL_SERVER_DATABASE_QSTIONE', 'qstione.db')
+
     # PAGINAÇÃO
     API_PAGE_START = int(os.getenv("API_PAGE_START", 0))
     API_PAGE_SIZE = int(os.getenv("API_PAGE_SIZE", 100))

@@ -187,6 +187,11 @@ class APIClientFactory:
     def create_coordenacao_client() -> 'CoordenacaoAPIClient':
         """Cria cliente de coordenações com sessão isolada"""
         return CoordenacaoAPIClient()
+    
+    @staticmethod
+    def create_pessoa_client() -> 'PessoaAPIClient':
+        """Cria cliente de pessoas com sessão isolada"""
+        return PessoaAPIClient()
 
 
 # ==================================================
@@ -308,6 +313,11 @@ class GradeAPIClient(BaseAPIClient):
     def get_grades(self) -> List[dict]:
         """Obtém todas as grades"""
         return self.get_paginated("/v2/tabela/grades")
+    
+class PessoaAPIClient(BaseAPIClient):
+    def get_pessoas(self) -> List[dict]:
+        """Obtém todas as pessoas"""
+        return self.get_paginated("/v2/tabela/pessoas")
 
 
 class CoordenacaoAPIClient(BaseAPIClient):
@@ -375,3 +385,7 @@ def get_grade_client() -> GradeAPIClient:
 def get_coordenacao_client() -> CoordenacaoAPIClient:
     """Retorna um cliente de coordenações com sessão isolada"""
     return APIClientFactory.create_coordenacao_client()
+
+def get_pessoa_client() -> PessoaAPIClient:
+    """Retorna um cliente de pessoas com sessão isolada"""
+    return APIClientFactory.create_pessoa_client()

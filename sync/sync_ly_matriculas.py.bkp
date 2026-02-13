@@ -19,6 +19,7 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 from core.config import config
+from core.database import get_db_connection
 from core.api_client import APIClientFactory
 from models.ly_matricula import LyMatriculaModel
 
@@ -60,7 +61,8 @@ def sincronizar_matriculas():
     # 2. Buscar dados da API (GET)
     logger.info("Buscando matrículas na API Lyceum...")
     client = APIClientFactory.create_matricula_client()
-    matriculas = client.get_matriculas()  # ✅ paginação interna
+
+    matriculas = client.get_matriculas()  # ✅ SEM page / page_size
 
     if not matriculas:
         logger.warning("API retornou zero matrículas")
@@ -73,9 +75,11 @@ def sincronizar_matriculas():
 
     logger.info(f"Total retornado pela API: {len(matriculas)}")
 
-    # 3. Limpar tabela local (usando o modelo)
+    # 3. Limpar tabela local
     logger.info("Limpando tabela LY_MATRICULA...")
-    LyMatriculaModel.clear_table()
+    with get_db_connection(db_path=config.DB_LYCEUM_PATH) as conn:
+        conn.execute(f"DELETE FROM {LyMatriculaModel.TABLE_NAME}")
+        conn.commit()
 
     # 4. Inserir no banco
     logger.info("Inserindo matrículas no banco local...")

@@ -1,3 +1,4 @@
+# qstione/config/tabelas.py
 """
 Configuração das tabelas do Qstione
 Conforme Dicionário de Dados – Versão 1.14.0
@@ -29,7 +30,7 @@ from qstione.core.transformacoes import (
 # ANO e PERÍODO (semestre) vigentes para as cargas
 ANO_VIGENTE = 2026
 PERIODOS_VIGENTES = ['21', '22', '2']          # semestres letivos
-SEMESTRE_OFERTA_FIXO = '2026.2'               # formato AAAASS
+SEMESTRE_OFERTA_FIXO = '2026.2'               # formato AAAAS
 
 # Faculdades / Unidades organizacionais incluídas
 FACULDADES_INCLUIDAS = ['001', '002', '004']    # Nível de Curso

@@ -1,3 +1,4 @@
+# sync/sync_ly_curriculos.py
 """
 SINCRONIZAÇÃO LY_CURRICULO
 - Execução direta
@@ -95,8 +96,15 @@ def sincronizar_curriculos():
             registros_invalidos += 1
             continue
 
-        # Não precisa limpar mais, o batch_insert fará normalização
-        registros_validos.append(registro)
+        registro_limpo = {}
+        for campo, valor in registro.items():
+            if valor is None:
+                continue
+            if not isinstance(valor, (str, int, float, bool)):
+                valor = str(valor)
+            registro_limpo[campo] = valor
+
+        registros_validos.append(registro_limpo)
 
     logger.info(f"Registros válidos: {len(registros_validos)}")
     if registros_invalidos:
