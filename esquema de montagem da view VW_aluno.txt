@@ -1,0 +1,23 @@
+pes_nu_cpf_cgc = cpf = ly_pessoa
+ID = sequencial
+HAB_MEC = decreto = ly_curso
+pes_id_pessoa = pessoa = LY_aluno
+pes_nm_pessoa = nome_compl = ly_pessoa
+pes_nm _registro = nome social = ly_pessoa
+alu_nu_matricula = aluno = ly_aluno
+curso = nome = ly_curso
+crr_nm_titulo = titulo = ly_curso
+id_curriculo_atual_aluno = currículo = ly_aluno
+rcr_nu_periodo_aluno = serie = ly_aluno
+semestre oca = (ano + semestre = sit_matricula = Matriculado) = ly_matricula
+DS_SITUACAO = sit_aluno = ly_aluno
+Situação_Matricula = sit_matricula = ly_matricula
+his_dt_ingresso = dt_ingresso = ly_aluno
+his_dt_saida = 
+rcr_dt_colacao_grau
+tpc_ds_tp_curso =  unidade_ensino = ly_aluno                 
+Turno = turno = ly_aluno
+pering = (ano_ingresso + sem ingresso) = ly_aluno
+DS_PERIODICIDADE = regime = ly_curriculo
+MODALIDADE_ENSINO = tipo = ly_curso
+INSTITUICAO_ENSINO = unidade física = ly_aluno
