@@ -1,5 +1,9 @@
 # sync/sync_ly_pessoa_by_id.py
 import sys
+from pathlib import Path
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
 from core.api_client import get_pessoa_client, get_aluno_client
 from core.database import fetch_one
 from core.logger import logger
