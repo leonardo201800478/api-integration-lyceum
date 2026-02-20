@@ -309,15 +309,42 @@ class MatriculaAPIClient(BaseAPIClient):
         params = {"pk[turma]": turma_code}
         return self.get_paginated("/v2/tabela/matriculas", params=params)
     
+
 class GradeAPIClient(BaseAPIClient):
     def get_grades(self) -> List[dict]:
         """Obtém todas as grades"""
         return self.get_paginated("/v2/tabela/grades")
     
+
 class PessoaAPIClient(BaseAPIClient):
     def get_pessoas(self) -> List[dict]:
-        """Obtém todas as pessoas"""
+        """Obtém todas as pessoas (com paginação)"""
         return self.get_paginated("/v2/tabela/pessoas")
+
+    def get_pessoa_by_id(self, cod_pessoa: int) -> Optional[dict]:
+        """
+        Obtém uma pessoa específica pelo código usando o filtro pk[pessoa].
+        Trata tanto resposta com {'data': [...]} quanto o objeto direto.
+        """
+        endpoint = "/v2/tabela/pessoas"
+        params = {"pk[pessoa]": cod_pessoa}  # parâmetro correto
+        data = self.get(endpoint, params=params)
+        
+        print(f"DEBUG - Resposta da API para pessoa {cod_pessoa}: {data}")
+
+        # Caso 1: resposta é um dicionário com a chave 'data' contendo uma lista
+        if isinstance(data, dict) and 'data' in data:
+            items = data['data']
+            if isinstance(items, list) and len(items) > 0:
+                return items[0]
+        # Caso 2: resposta é um dicionário e parece ser o próprio registro (contém 'pessoa')
+        elif isinstance(data, dict) and 'pessoa' in data:
+            return data
+        # Caso 3: resposta é uma lista (improvável, mas seguro)
+        elif isinstance(data, list) and len(data) > 0:
+            return data[0]
+        
+        return None
 
 
 class CoordenacaoAPIClient(BaseAPIClient):
