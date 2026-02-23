@@ -210,9 +210,31 @@ def gerar_codigo_oferta_origem(disciplina, turma, ano, semestre, turmas_regulare
     
     return ''
 
+def gerar_email_aluno(matricula, unidade_ensino):
+    """
+    Gera o e-mail do aluno baseado na unidade de ensino.
+    
+    Args:
+        matricula (str): Matrícula do aluno
+        unidade_ensino (str): Código da unidade de ensino
+    
+    Returns:
+        str: E-mail formatado em minúsculas
+    """
+    if not matricula:
+        return None
+    
+    matricula_str = str(matricula).strip()
+    if unidade_ensino == '007':
+        dominio = '@etecfoa.com.br'
+    else:
+        dominio = '@unifoa.edu.br'
+    
+    return (matricula_str + dominio).lower()
+
 def determinar_papel_usuario(num_func, curso, coordenadores_dict):
     """
-    Determina o papel do usuário: 1 para coordenador (C), 2 para professor (P)
+    Determina o papel do usuário: 'C' para coordenador, 'P' para professor
     
     Args:
         num_func (str): Número do funcionário
@@ -220,7 +242,7 @@ def determinar_papel_usuario(num_func, curso, coordenadores_dict):
         coordenadores_dict (dict): Dicionário com coordenadores {(num_func, curso): True}
     
     Returns:
-        int: 1 para coordenador, 2 para professor
+        str: 'C' para coordenador, 'P' para professor
     """
     if not num_func or not curso:
         return 'P'  # Default para professor

@@ -1,6 +1,6 @@
 """
 Importador para tabela imp_007_usuarios_cursos
-Adaptado para SQL Server usando core.database
+Adaptado para SQL Server com garantia de unicidade por (curso, email)
 """
 
 from core.database import get_db_connection
@@ -130,19 +130,21 @@ class ImportadorUsuariosCursos:
             return coordenadores
 
     # -------------------------------------------------------------------------
-    # Obter dados principais do Lyceum
+    # Obter dados principais do Lyceum (garantindo unicidade por curso e email)
     # -------------------------------------------------------------------------
     def obter_dados_lyceum(self):
         # Primeiro obtém coordenadores
         coordenadores = self.obter_coordenadores()
 
-        # Agora obtém os dados de turma docente com filtros
         with get_db_connection() as conn:
             cursor = conn.cursor()
+            # Usamos uma subconsulta para trazer uma única linha por (num_func, curso)
+            # com a informação de se o docente é coordenador (através de LEFT JOIN com coordenadores).
+            # Depois, no Python, determinamos o papel.
+            periodo_principal = PERIODOS_VIGENTES[0]
             query = """
                 SELECT DISTINCT
                     td.num_func,
-                    td.disciplina,
                     d.email,
                     g.curso
                 FROM LY_TURMA_DOCENTE td
@@ -155,21 +157,21 @@ class ImportadorUsuariosCursos:
                   AND d.ativo = 'S'
                 ORDER BY td.num_func, g.curso
             """
-            # Usa o primeiro período da lista como período principal
-            periodo_principal = PERIODOS_VIGENTES[0]
             cursor.execute(query, (ANO_VIGENTE, periodo_principal))
             dados = cursor.fetchall()
 
         return dados, coordenadores
 
     # -------------------------------------------------------------------------
-    # Transformar dados
+    # Transformar dados (com deduplicação final por (email, curso))
     # -------------------------------------------------------------------------
     def transformar_dados(self, dados_lyceum, coordenadores):
-        dados_transformados = []
+        # Usamos um dicionário para garantir unicidade por (email, curso)
+        # e dar prioridade ao papel 'C' (coordenador) caso haja conflito
+        registros_unicos = {}
 
         for registro in dados_lyceum:
-            num_func, disciplina, email, curso = registro
+            num_func, email, curso = registro
 
             # Validações
             if not validar_codigo_curso(curso):
@@ -182,21 +184,32 @@ class ImportadorUsuariosCursos:
 
             # Transformações
             email_final = converter_minusculas(email)
+            chave = (str(curso)[:30], email_final[:100])
 
-            # Determinar papel do usuário
+            # Determinar papel do usuário (C ou P)
             papel = determinar_papel_usuario(num_func, curso, coordenadores)
 
             if not validar_papel_usuario(papel):
                 print(f"  ⚠️  Papel do usuário inválido: {papel} para docente {num_func}")
                 continue
 
-            dados_transformados.append({
-                'codigoCurso': str(curso)[:30],
-                'emailUsuario': email_final[:100],
-                'papelUsuario': papel
-            })
+            # Se já existe um registro para a mesma chave, mantém o que tem maior prioridade
+            # Prioridade: C > P
+            if chave in registros_unicos:
+                papel_existente = registros_unicos[chave]['papelUsuario']
+                # Se o papel atual é C e o existente é P, substitui
+                if papel == 'C' and papel_existente == 'P':
+                    registros_unicos[chave]['papelUsuario'] = papel
+                # Se ambos são iguais, não faz nada (mantém)
+                # Se o atual é P e o existente é C, mantém o C (já está)
+            else:
+                registros_unicos[chave] = {
+                    'codigoCurso': str(curso)[:30],
+                    'emailUsuario': email_final[:100],
+                    'papelUsuario': papel
+                }
 
-        return dados_transformados
+        return list(registros_unicos.values())
 
     # -------------------------------------------------------------------------
     # Importar para Qstione (MERGE)
@@ -266,12 +279,12 @@ class ImportadorUsuariosCursos:
         # 1. Obter dados do Lyceum (inclui coordenadores)
         print("📋 Obtendo dados do Lyceum...")
         dados_lyceum, coordenadores = self.obter_dados_lyceum()
-        print(f"📊 Registros encontrados no Lyceum: {len(dados_lyceum)}")
+        print(f"📊 Registros encontrados no Lyceum (após DISTINCT): {len(dados_lyceum)}")
 
-        # 2. Transformar dados
+        # 2. Transformar dados (deduplicação por curso+email)
         print("🔄 Transformando dados...")
         dados_transformados = self.transformar_dados(dados_lyceum, coordenadores)
-        print(f"✅ Registros válidos para importação: {len(dados_transformados)}")
+        print(f"✅ Registros únicos para importação: {len(dados_transformados)}")
 
         # 3. Importar para Qstione
         print("💾 Importando para banco Qstione...")
@@ -283,7 +296,7 @@ class ImportadorUsuariosCursos:
         print(f"  ✗ Erros: {resultado['total_erros']}")
         print(f"  📋 Total processados: {resultado['total_processados']}")
 
-        # Estatísticas de papéis (considerando 'C' e 'P')
+        # Estatísticas de papéis
         coordenadores_count = sum(1 for reg in dados_transformados if reg['papelUsuario'] == 'C')
         professores_count = sum(1 for reg in dados_transformados if reg['papelUsuario'] == 'P')
 

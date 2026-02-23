@@ -1,8 +1,8 @@
 """
 Script principal para importação e exportação de dados Qstione
+Adaptado para SQL Server (sem conexões SQLite)
 """
 
-import sqlite3
 import os
 from pathlib import Path
 
@@ -16,7 +16,6 @@ from qstione.importadores.imp_008_usuarios_disciplinas import ImportadorUsuarios
 from qstione.importadores.imp_009_professores_ofertas import ImportadorProfessoresOfertas
 from qstione.importadores.imp_010_alunos import ImportadorAlunos
 from qstione.importadores.imp_011_alunos_ofertas import ImportadorAlunosOfertas
-from qstione.importadores.imp_012_alunos_periodo import ImportadorAlunosPeriodo
 from qstione.importadores.imp_013_unidades_avaliacao import ImportadorUnidadesAvaliacao
 from qstione.importadores.imp_015_conteudos import ImportadorConteudos
 from qstione.importadores.imp_016_unidades_organizacionais import ImportadorUnidadesOrganizacionais
@@ -25,46 +24,34 @@ from qstione.exportadores.sql import ExportadorSQL
 
 
 class GestorQstione:
-    def __init__(self, caminho_lyceum='lyceum.db', caminho_qstione='qstione.db'):
-        self.caminho_lyceum = caminho_lyceum
-        self.caminho_qstione = caminho_qstione
+    def __init__(self):
         self.dados_exportar = {}
-
+        # Criar diretórios necessários
         Path("exportacoes").mkdir(exist_ok=True)
         Path("backups").mkdir(exist_ok=True)
-
-    def verificar_banco_lyceum(self):
-        if not os.path.exists(self.caminho_lyceum):
-            print(f"ERRO: Banco {self.caminho_lyceum} não encontrado!")
-            return False
-        return True
 
     # ----------------------------------------------------------------------
     # MÉTODOS DE IMPORTAÇÃO (IMP-*)
     # ----------------------------------------------------------------------
     def importar_tabela_cursos(self):
         try:
-            con_lyceum = sqlite3.connect(self.caminho_lyceum)
-            con_qstione = sqlite3.connect(self.caminho_qstione)
-            importador = ImportadorCursos(con_lyceum, con_qstione)
+            importador = ImportadorCursos()
             dados = importador.executar_importacao()
             self.dados_exportar['imp_001_cursos'] = dados
-            con_lyceum.close(); con_qstione.close()
             return True
         except Exception as e:
-            print(f"Erro: {e}"); return False
+            print(f"Erro: {e}")
+            return False
 
     def importar_tabela_disciplinas(self):
         try:
-            con_lyceum = sqlite3.connect(self.caminho_lyceum)
-            con_qstione = sqlite3.connect(self.caminho_qstione)
-            importador = ImportadorDisciplinas(con_lyceum, con_qstione)
+            importador = ImportadorDisciplinas()
             dados = importador.executar_importacao()
             self.dados_exportar['imp_002_disciplina'] = dados
-            con_lyceum.close(); con_qstione.close()
             return True
         except Exception as e:
-            print(f"Erro: {e}"); return False
+            print(f"Erro: {e}")
+            return False
 
     def importar_tabela_objetivos(self):
         print("\n⚠️  IMP-003 ainda não implementado.")
@@ -76,103 +63,83 @@ class GestorQstione:
 
     def importar_tabela_ofertas(self):
         try:
-            con_lyceum = sqlite3.connect(self.caminho_lyceum)
-            con_qstione = sqlite3.connect(self.caminho_qstione)
-            importador = ImportadorOfertas(con_lyceum, con_qstione)
+            importador = ImportadorOfertas()
             dados = importador.executar_importacao()
             self.dados_exportar['imp_005_ofertas'] = dados
-            con_lyceum.close(); con_qstione.close()
             return True
         except Exception as e:
-            print(f"Erro: {e}"); return False
+            print(f"Erro: {e}")
+            return False
 
     def importar_tabela_usuarios(self):
         try:
-            con_lyceum = sqlite3.connect(self.caminho_lyceum)
-            con_qstione = sqlite3.connect(self.caminho_qstione)
-            importador = ImportadorUsuarios(con_lyceum, con_qstione)
+            importador = ImportadorUsuarios()
             dados = importador.executar_importacao()
             self.dados_exportar['imp_006_usuarios'] = dados
-            con_lyceum.close(); con_qstione.close()
             return True
         except Exception as e:
-            print(f"Erro: {e}"); return False
+            print(f"Erro: {e}")
+            return False
 
     def importar_tabela_usuarios_cursos(self):
         try:
-            con_lyceum = sqlite3.connect(self.caminho_lyceum)
-            con_qstione = sqlite3.connect(self.caminho_qstione)
-            importador = ImportadorUsuariosCursos(con_lyceum, con_qstione)
+            importador = ImportadorUsuariosCursos()
             dados = importador.executar_importacao()
             self.dados_exportar['imp_007_usuarios_cursos'] = dados
-            con_lyceum.close(); con_qstione.close()
             return True
         except Exception as e:
-            print(f"Erro: {e}"); return False
+            print(f"Erro: {e}")
+            return False
 
     def importar_tabela_usuarios_disciplinas(self):
         try:
-            con_lyceum = sqlite3.connect(self.caminho_lyceum)
-            con_qstione = sqlite3.connect(self.caminho_qstione)
-            importador = ImportadorUsuariosDisciplinas(con_lyceum, con_qstione)
+            importador = ImportadorUsuariosDisciplinas()
             dados = importador.executar_importacao()
             self.dados_exportar['imp_008_usuarios_disciplinas'] = dados
-            con_lyceum.close(); con_qstione.close()
             return True
         except Exception as e:
-            print(f"Erro: {e}"); return False
+            print(f"Erro: {e}")
+            return False
 
     def importar_tabela_professores_ofertas(self):
         try:
-            con_lyceum = sqlite3.connect(self.caminho_lyceum)
-            con_qstione = sqlite3.connect(self.caminho_qstione)
-            importador = ImportadorProfessoresOfertas(con_lyceum, con_qstione)
+            importador = ImportadorProfessoresOfertas()
             dados = importador.executar_importacao()
             self.dados_exportar['imp_009_professores_ofertas'] = dados
-            con_lyceum.close(); con_qstione.close()
             return True
         except Exception as e:
-            print(f"Erro: {e}"); return False
+            print(f"Erro: {e}")
+            return False
 
     def importar_tabela_alunos(self):
         try:
-            con_lyceum = sqlite3.connect(self.caminho_lyceum)
-            con_qstione = sqlite3.connect(self.caminho_qstione)
-            importador = ImportadorAlunos(con_lyceum, con_qstione)
+            importador = ImportadorAlunos()
             dados = importador.executar_importacao()
             self.dados_exportar['imp_010_alunos'] = dados
-            con_lyceum.close(); con_qstione.close()
             return True
         except Exception as e:
-            print(f"Erro: {e}"); return False
+            print(f"Erro: {e}")
+            return False
 
     def importar_tabela_alunos_ofertas(self):
         try:
-            con_lyceum = sqlite3.connect(self.caminho_lyceum)
-            con_qstione = sqlite3.connect(self.caminho_qstione)
-            importador = ImportadorAlunosOfertas(con_lyceum, con_qstione)
+            importador = ImportadorAlunosOfertas()
             dados = importador.executar_importacao()
             self.dados_exportar['imp_011_alunos_ofertas'] = dados
-            con_lyceum.close(); con_qstione.close()
             return True
         except Exception as e:
-            print(f"Erro: {e}"); return False
-
-    def importar_tabela_alunos_periodo(self):
-        print("\n⚠️  IMP-012 ainda não implementado.")
-        return True
+            print(f"Erro: {e}")
+            return False
 
     def importar_tabela_unidades_avaliacao(self):
         try:
-            con_lyceum = sqlite3.connect(self.caminho_lyceum)
-            con_qstione = sqlite3.connect(self.caminho_qstione)
-            importador = ImportadorUnidadesAvaliacao(con_lyceum, con_qstione)
+            importador = ImportadorUnidadesAvaliacao()
             dados = importador.executar_importacao()
             self.dados_exportar['imp_013_unidades_avaliacao'] = dados
-            con_lyceum.close(); con_qstione.close()
             return True
         except Exception as e:
-            print(f"Erro: {e}"); return False
+            print(f"Erro: {e}")
+            return False
 
     def importar_tabela_conteudos(self):
         print("\n⚠️  IMP-015 ainda não implementado.")
@@ -232,8 +199,9 @@ class GestorQstione:
         print("\n" + "="*60)
         print("EXPORTAÇÃO PARA PLANILHAS EXCEL")
         print("="*60)
+        print(f"Conteúdo de dados_exportar: {list(self.dados_exportar.keys())}")
         if not self.dados_exportar:
-            print("Nenhum dado disponível.")
+            print("Nenhum dado disponível. Execute uma importação primeiro.")
             return []
         exportador = ExportadorExcel()
         arquivos = exportador.exportar_todas_tabelas(self.dados_exportar, TABELAS_CONFIG)
@@ -243,9 +211,11 @@ class GestorQstione:
         print("\n" + "="*60)
         print("EXPORTAÇÃO PARA ARQUIVO SQL")
         print("="*60)
-        exportador = ExportadorSQL()
-        arquivo = exportador.exportar_banco_completo(self.caminho_qstione, 'backups')
-        return arquivo
+        print("⚠️  Exportação SQL ainda não adaptada para SQL Server.")
+        return None
+        # exportador = ExportadorSQL()
+        # arquivo = exportador.exportar_banco_completo('qstione.db', 'backups')
+        # return arquivo
 
     # ----------------------------------------------------------------------
     # VERIFICAÇÃO DE TABELAS
@@ -255,18 +225,18 @@ class GestorQstione:
         print(f"VERIFICAÇÃO DA TABELA: {nome_tabela}")
         print("="*60)
         try:
-            con = sqlite3.connect(self.caminho_qstione)
-            cur = con.cursor()
-            cur.execute(f"SELECT COUNT(*) FROM {nome_tabela}")
-            total = cur.fetchone()[0]
-            print(f"Total de registros: {total}")
-            cur.execute(f"SELECT * FROM {nome_tabela} ORDER BY data_atualizacao DESC LIMIT 5")
-            registros = cur.fetchall()
-            if registros:
-                print("\nÚltimos 5 registros:")
-                for reg in registros:
-                    print(f"  {reg}")
-            con.close()
+            from core.database import get_db_connection
+            with get_db_connection(db_path='qstione.db') as conn:
+                cursor = conn.cursor()
+                cursor.execute(f"SELECT COUNT(*) FROM {nome_tabela}")
+                total = cursor.fetchone()[0]
+                print(f"Total de registros: {total}")
+                cursor.execute(f"SELECT TOP 5 * FROM {nome_tabela} ORDER BY data_atualizacao DESC")
+                rows = cursor.fetchall()
+                if rows:
+                    print("\nÚltimos 5 registros:")
+                    for row in rows:
+                        print(f"  {row}")
         except Exception as e:
             print(f"Erro: {e}")
 
@@ -275,11 +245,8 @@ class GestorQstione:
     # ----------------------------------------------------------------------
     def menu_principal(self):
         print("\n" + "="*70)
-        print("GESTOR DE IMPORTAÇÃO QSTIONE (v1.14.0)")
+        print("GESTOR DE IMPORTAÇÃO QSTIONE (v1.14.0) – SQL Server")
         print("="*70)
-
-        if not self.verificar_banco_lyceum():
-            return
 
         while True:
             print("\n📋 MENU PRINCIPAL:")
@@ -295,7 +262,6 @@ class GestorQstione:
             print("   9. IMP-009 - Professores das Ofertas")
             print("  10. IMP-010 - Alunos")
             print("  11. IMP-011 - Alunos das Ofertas")
-            print("  12. IMP-012 - Alunos das Ofertas do Período")
             print("  13. IMP-013 - Unidades de Avaliação")
             print("  14. IMP-015 - Conteúdos Programáticos")
             print("  15. IMP-016 - Unidades Organizacionais")
@@ -312,7 +278,7 @@ class GestorQstione:
             print("  25. DES-012 - Unidades Organizacionais")
             print("\n  --- EXPORTAÇÃO / UTILITÁRIOS ---")
             print("  26. Exportar para Excel")
-            print("  27. Exportar backup SQL")
+            print("  27. Exportar backup SQL (⚠️ não implementado)")
             print("  28. Verificar tabela")
             print("  29. Executar TODAS as importações (IMP)")
             print("  30. Sair")
@@ -331,7 +297,6 @@ class GestorQstione:
             elif opcao == '9': self.importar_tabela_professores_ofertas()
             elif opcao == '10': self.importar_tabela_alunos()
             elif opcao == '11': self.importar_tabela_alunos_ofertas()
-            elif opcao == '12': self.importar_tabela_alunos_periodo()
             elif opcao == '13': self.importar_tabela_unidades_avaliacao()
             elif opcao == '14': self.importar_tabela_conteudos()
             elif opcao == '15': self.importar_tabela_unidades_organizacionais()
@@ -354,9 +319,7 @@ class GestorQstione:
                     for arq in arquivos:
                         print(f"  ✓ {os.path.basename(arq)}")
             elif opcao == '27':
-                arquivo = self.exportar_para_sql()
-                if arquivo:
-                    print(f"Backup gerado: {arquivo}")
+                self.exportar_para_sql()
             elif opcao == '28':
                 tabela = input("Nome da tabela: ").strip()
                 if tabela: self.verificar_tabela(tabela)
@@ -373,7 +336,6 @@ class GestorQstione:
                 self.importar_tabela_professores_ofertas()
                 self.importar_tabela_alunos()
                 self.importar_tabela_alunos_ofertas()
-                self.importar_tabela_alunos_periodo()
                 self.importar_tabela_unidades_avaliacao()
                 self.importar_tabela_conteudos()
                 self.importar_tabela_unidades_organizacionais()

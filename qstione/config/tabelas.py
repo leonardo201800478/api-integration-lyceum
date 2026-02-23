@@ -7,22 +7,6 @@ Todas as constantes de filtro (ano, período, faculdade, área de conhecimento)
 estão centralizadas no topo para facilitar a manutenção a cada virada de período.
 """
 
-from qstione.core.transformacoes import (
-    truncar_texto,
-    converter_inteiro,
-    converter_minusculas,
-    extrair_usuario_email,
-    gerar_codigo_disciplina_curso,
-    gerar_codigo_oferta,
-    gerar_codigo_tipo_oferta,
-    gerar_codigo_oferta_origem,
-    mapear_turno,
-    valor_fixo_4000000001,
-    valor_fixo_2026_2,
-    valor_fixo_vazio,
-    determinar_papel_usuario
-)
-
 # =============================================================================
 # CONSTANTES DE FILTRO – CENTRALIZADAS PARA MANUTENÇÃO
 # =============================================================================
@@ -62,7 +46,7 @@ TABELAS_CONFIG = {
             {'nome_qstione': 'codigoCurso', 'tipo': 'CHAR(30)', 'obrigatorio': True,
              'origem': 'curso', 'transformacao': None},
             {'nome_qstione': 'nomeCurso', 'tipo': 'CHAR(64)', 'obrigatorio': True,
-             'origem': 'nome', 'transformacao': truncar_texto},
+             'origem': 'nome', 'transformacao': 'truncar_texto'},
             {'nome_qstione': 'quantPeriodos', 'tipo': 'INTEGER(2)', 'obrigatorio': True,
              'origem': 'prazo_ideal', 'transformacao': 'converter_inteiro'},
             {'nome_qstione': 'codigoUnidadeOrganizacional', 'tipo': 'CHAR(30)', 'obrigatorio': False,
@@ -85,7 +69,7 @@ TABELAS_CONFIG = {
             {'nome_qstione': 'codigoDisciplina', 'tipo': 'CHAR(30)', 'obrigatorio': True,
              'origem': 'disciplina', 'transformacao': 'gerar_codigo_disciplina_curso'},
             {'nome_qstione': 'nomeDisciplina', 'tipo': 'CHAR(100)', 'obrigatorio': True,
-             'origem': 'nome_compl', 'transformacao': truncar_texto},
+             'origem': 'nome_compl', 'transformacao': 'truncar_texto'},
             {'nome_qstione': 'codigoCurso', 'tipo': 'CHAR(30)', 'obrigatorio': True,
              'origem': 'curso', 'transformacao': None},
             {'nome_qstione': 'periodo', 'tipo': 'INTEGER(2)', 'obrigatorio': True,
@@ -154,7 +138,7 @@ TABELAS_CONFIG = {
             {'nome_qstione': 'nomeOferta', 'tipo': 'CHAR(100)', 'obrigatorio': True,
              'origem': 'turma', 'transformacao': None},
             {'nome_qstione': 'codigoDisciplina', 'tipo': 'CHAR(30)', 'obrigatorio': True,
-             'origem': None, 'transformacao': 'gerar_codigo_disciplina_oferta'},
+             'origem': None, 'transformacao': 'gerar_codigo_disciplina_curso'},
             {'nome_qstione': 'semestreOferta', 'tipo': 'CHAR(6)', 'obrigatorio': True,
              'origem': None, 'transformacao': f'valor_fixo_{SEMESTRE_OFERTA_FIXO}'},
             {'nome_qstione': 'codigoTipoOferta', 'tipo': 'CHAR(3)', 'obrigatorio': True,
@@ -194,7 +178,7 @@ TABELAS_CONFIG = {
             {'nome_qstione': 'emailUsuario', 'tipo': 'CHAR(100)', 'obrigatorio': True,
              'origem': 'email', 'transformacao': 'converter_minusculas'},
             {'nome_qstione': 'nomeUsuario', 'tipo': 'CHAR(64)', 'obrigatorio': True,
-             'origem': 'nome_compl', 'transformacao': truncar_texto},
+             'origem': 'nome_compl', 'transformacao': 'truncar_texto'},
         ],
         'condicoes': "ativo = 'S'",
         'agrupamento': 'nomeUsuario',
@@ -211,13 +195,13 @@ TABELAS_CONFIG = {
         'descricao': 'Associação de usuários aos cursos',
         'campos': [
             {'nome_qstione': 'codigoCurso', 'tipo': 'CHAR(30)', 'obrigatorio': True,
-             'origem': None, 'transformacao': None},
+             'origem': 'curso', 'transformacao': None},
             {'nome_qstione': 'emailUsuario', 'tipo': 'CHAR(100)', 'obrigatorio': True,
-             'origem': None, 'transformacao': 'converter_minusculas'},
+             'origem': 'email', 'transformacao': 'converter_minusculas'},
             {'nome_qstione': 'papelUsuario', 'tipo': 'CHAR(1)', 'obrigatorio': True,
              'origem': None, 'transformacao': 'determinar_papel_usuario'},
         ],
-        'condicoes': f"td.ano = {ANO_VIGENTE} AND td.periodo = '{PERIODOS_VIGENTES[0]}'",  # período principal
+        'condicoes': f"td.ano = {ANO_VIGENTE} AND td.periodo = '{PERIODOS_VIGENTES[0]}'",
         'agrupamento': None,
         'tipo_carga': 'Incremental',
         'escopo_carga': 'Instituicao'
@@ -234,7 +218,7 @@ TABELAS_CONFIG = {
             {'nome_qstione': 'codigoDisciplina', 'tipo': 'CHAR(30)', 'obrigatorio': True,
              'origem': None, 'transformacao': 'gerar_codigo_disciplina_curso'},
             {'nome_qstione': 'emailUsuario', 'tipo': 'CHAR(100)', 'obrigatorio': True,
-             'origem': None, 'transformacao': 'converter_minusculas'},
+             'origem': 'email', 'transformacao': 'converter_minusculas'},
         ],
         'condicoes': (
             f"td.ano = {ANO_VIGENTE} AND td.periodo = '{PERIODOS_VIGENTES[0]}' "
@@ -257,7 +241,7 @@ TABELAS_CONFIG = {
             {'nome_qstione': 'codigoOferta', 'tipo': 'CHAR(30)', 'obrigatorio': True,
              'origem': None, 'transformacao': 'gerar_codigo_oferta'},
             {'nome_qstione': 'emailProfessor', 'tipo': 'CHAR(100)', 'obrigatorio': True,
-             'origem': None, 'transformacao': 'converter_minusculas'},
+             'origem': 'email', 'transformacao': 'converter_minusculas'},
         ],
         'condicoes': (
             f"t.ano = {ANO_VIGENTE} "
@@ -282,11 +266,11 @@ TABELAS_CONFIG = {
         'descricao': 'Importação de alunos',
         'campos': [
             {'nome_qstione': 'matriculaAluno', 'tipo': 'CHAR(12)', 'obrigatorio': True,
-             'origem': 'matricula', 'transformacao': None},
+             'origem': 'aluno', 'transformacao': None},
             {'nome_qstione': 'nomeAluno', 'tipo': 'CHAR(140)', 'obrigatorio': True,
-             'origem': 'nome', 'transformacao': truncar_texto},
+             'origem': 'nome_compl', 'transformacao': 'truncar_texto'},
             {'nome_qstione': 'emailAluno', 'tipo': 'CHAR(200)', 'obrigatorio': False,
-             'origem': 'email', 'transformacao': 'converter_minusculas'},
+             'origem': None, 'transformacao': 'gerar_email_aluno'},
             {'nome_qstione': 'codigoCurso', 'tipo': 'CHAR(30)', 'obrigatorio': True,
              'origem': 'curso', 'transformacao': None},
             {'nome_qstione': 'turno', 'tipo': 'CHAR(1)', 'obrigatorio': False,
@@ -294,7 +278,7 @@ TABELAS_CONFIG = {
             {'nome_qstione': 'codigoIdentificacaoAVA', 'tipo': 'CHAR(100)', 'obrigatorio': False,
              'origem': None, 'transformacao': 'valor_fixo_vazio'},
         ],
-        'condicoes': "a.ativo = 'S'",
+        'condicoes': "sit_aluno = 'Ativo'",
         'agrupamento': None,
         'tipo_carga': 'Incremental',
         'escopo_carga': 'Instituicao'
@@ -311,7 +295,7 @@ TABELAS_CONFIG = {
             {'nome_qstione': 'codigoOferta', 'tipo': 'CHAR(30)', 'obrigatorio': True,
              'origem': None, 'transformacao': 'gerar_codigo_oferta'},
             {'nome_qstione': 'matriculaAluno', 'tipo': 'CHAR(12)', 'obrigatorio': True,
-             'origem': 'matricula', 'transformacao': None},
+             'origem': 'aluno', 'transformacao': None},
             {'nome_qstione': 'codigoCurso', 'tipo': 'CHAR(30)', 'obrigatorio': False,
              'origem': 'curso', 'transformacao': None},
         ],
@@ -334,7 +318,7 @@ TABELAS_CONFIG = {
             {'nome_qstione': 'semestreOferta', 'tipo': 'CHAR(6)', 'obrigatorio': True,
              'origem': None, 'transformacao': f'valor_fixo_{SEMESTRE_OFERTA_FIXO}'},
             {'nome_qstione': 'matriculaAluno', 'tipo': 'CHAR(12)', 'obrigatorio': True,
-             'origem': 'matricula', 'transformacao': None},
+             'origem': 'aluno', 'transformacao': None},
         ],
         'condicoes': "",
         'agrupamento': None,
@@ -353,7 +337,7 @@ TABELAS_CONFIG = {
             {'nome_qstione': 'codigoUnidade', 'tipo': 'CHAR(32)', 'obrigatorio': True,
              'origem': 'codigo', 'transformacao': None},
             {'nome_qstione': 'nomeUnidade', 'tipo': 'CHAR(64)', 'obrigatorio': True,
-             'origem': 'nome', 'transformacao': truncar_texto},
+             'origem': 'nome', 'transformacao': 'truncar_texto'},
             {'nome_qstione': 'codigoCurso', 'tipo': 'CHAR(30)', 'obrigatorio': False,
              'origem': 'curso', 'transformacao': None},
             {'nome_qstione': 'codigoDisciplina', 'tipo': 'CHAR(30)', 'obrigatorio': False,
@@ -403,7 +387,7 @@ TABELAS_CONFIG = {
             {'nome_qstione': 'nomeCurto', 'tipo': 'CHAR(64)', 'obrigatorio': False,
              'origem': 'sigla', 'transformacao': None},
             {'nome_qstione': 'nomeLongo', 'tipo': 'CHAR(150)', 'obrigatorio': True,
-             'origem': 'nome', 'transformacao': truncar_texto},
+             'origem': 'nome', 'transformacao': 'truncar_texto'},
         ],
         'condicoes': "",
         'agrupamento': None,
