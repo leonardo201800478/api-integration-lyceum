@@ -192,6 +192,17 @@ class APIClientFactory:
     def create_pessoa_client() -> 'PessoaAPIClient':
         """Cria cliente de pessoas com sessão isolada"""
         return PessoaAPIClient()
+    
+    # ========== NOVOS CLIENTES ==========
+    @staticmethod
+    def create_prova_disciplina_client() -> 'ProvaDisciplinaAPIClient':
+        """Cria cliente de provas-disciplinas com sessão isolada"""
+        return ProvaDisciplinaAPIClient()
+    
+    @staticmethod
+    def create_prova_client() -> 'ProvaAPIClient':
+        """Cria cliente de provas com sessão isolada"""
+        return ProvaAPIClient()
 
 
 # ==================================================
@@ -210,7 +221,7 @@ class CurriculoAPIClient(BaseAPIClient):
     
     def get_curriculo(self, curriculo_code: str) -> Optional[dict]:
         """Obtém um currículo específico por código"""
-        endpoint = f"/v2/tabela/curriculos"
+        endpoint = "/v2/tabela/curriculos"
         params = {"pk[curriculo]": curriculo_code}
         data = self.get(endpoint, params=params)
         if data and isinstance(data, dict) and 'data' in data:
@@ -226,7 +237,7 @@ class AlunoAPIClient(BaseAPIClient):
     
     def get_aluno(self, matricula: str) -> Optional[dict]:
         """Obtém um aluno específico por matrícula"""
-        endpoint = f"/v2/tabela/alunos"
+        endpoint = "/v2/tabela/alunos"
         params = {"pk[aluno]": matricula}
         data = self.get(endpoint, params=params)
         if data and isinstance(data, dict) and 'data' in data:
@@ -327,20 +338,17 @@ class PessoaAPIClient(BaseAPIClient):
         Trata tanto resposta com {'data': [...]} quanto o objeto direto.
         """
         endpoint = "/v2/tabela/pessoas"
-        params = {"pk[pessoa]": cod_pessoa}  # parâmetro correto
+        params = {"pk[pessoa]": cod_pessoa}
         data = self.get(endpoint, params=params)
         
         print(f"DEBUG - Resposta da API para pessoa {cod_pessoa}: {data}")
 
-        # Caso 1: resposta é um dicionário com a chave 'data' contendo uma lista
         if isinstance(data, dict) and 'data' in data:
             items = data['data']
             if isinstance(items, list) and len(items) > 0:
                 return items[0]
-        # Caso 2: resposta é um dicionário e parece ser o próprio registro (contém 'pessoa')
         elif isinstance(data, dict) and 'pessoa' in data:
             return data
-        # Caso 3: resposta é uma lista (improvável, mas seguro)
         elif isinstance(data, list) and len(data) > 0:
             return data[0]
         
@@ -351,15 +359,12 @@ class CoordenacaoAPIClient(BaseAPIClient):
     def get_coordenacoes(self) -> List[dict]:
         """
         Obtém todas as coordenações via paginação
-        Começa da página 0 com tamanho config.API_PAGE_SIZE (padrão: 100)
-        Continua até a última página com dados presentes
         """
         return self.get_paginated("/v2/tabela/coordenacao")
     
     def get_coordenacoes_filtradas(self, ano: Optional[int] = None, semestre: Optional[int] = None) -> List[dict]:
         """
         Obtém coordenações com filtros opcionais de ano e semestre
-        Segue o mesmo padrão dos outros clientes (TurmaAPIClient, TurmaDocenteAPIClient, etc.)
         """
         params = {}
         if ano is not None:
@@ -369,50 +374,108 @@ class CoordenacaoAPIClient(BaseAPIClient):
         return self.get_paginated("/v2/tabela/coordenacao", params=params)
 
 
+# ========== NOVOS CLIENTES ==========
+
+class ProvaDisciplinaAPIClient(BaseAPIClient):
+    """
+    Cliente para o endpoint /v2/tabela/provas-disciplinas
+    Retorna lista paginada de provas-disciplinas.
+    """
+    def get_provas_disciplinas(self) -> List[dict]:
+        """
+        Obtém todas as provas-disciplinas (paginação automática).
+        """
+        return self.get_paginated("/v2/tabela/provas-disciplinas")
+    
+    def get_provas_disciplinas_filtradas(self, **kwargs) -> List[dict]:
+        """
+        Obtém provas-disciplinas com filtros adicionais.
+        Exemplo: ?classificacao=... 
+        """
+        return self.get_paginated("/v2/tabela/provas-disciplinas", params=kwargs)
+
+
+class ProvaAPIClient(BaseAPIClient):
+    """
+    Cliente para o endpoint /v2/tabela/provas
+    ATENÇÃO: este endpoint NÃO é paginado. Requer os parâmetros obrigatórios:
+        - pk[ano]
+        - pk[disciplina]
+        - pk[prova]
+        - pk[semestre]
+        - pk[turma]
+    Retorna um único objeto (não uma lista).
+    """
+
+    def get_prova(self, ano: int, disciplina: str, prova: str, semestre: int, turma: str) -> Optional[dict]:
+        """
+        Obtém uma prova específica pelos parâmetros compostos.
+        Retorna o dicionário da prova ou None.
+        """
+        params = {
+            "pk[ano]": ano,
+            "pk[disciplina]": disciplina,
+            "pk[prova]": prova,
+            "pk[semestre]": semestre,
+            "pk[turma]": turma,
+        }
+        data = self.get("/v2/tabela/provas", params=params)
+        
+        # A API pode retornar o objeto diretamente ou dentro de {'data': [...]}
+        if isinstance(data, dict):
+            if 'data' in data:
+                items = data['data']
+                if isinstance(items, list) and len(items) > 0:
+                    return items[0]
+            else:
+                # Assume que o próprio dicionário é a prova
+                return data
+        return None
+
+
 # ==================================================
 # MÉTODOS DE CONVENIÊNCIA - Mantém compatibilidade
 # ==================================================
 
 def get_curriculo_client() -> CurriculoAPIClient:
-    """Retorna um cliente de currículo com sessão isolada"""
     return APIClientFactory.create_curriculo_client()
 
 def get_aluno_client() -> AlunoAPIClient:
-    """Retorna um cliente de alunos com sessão isolada"""
     return APIClientFactory.create_aluno_client()
 
 def get_curso_client() -> CursoAPIClient:
-    """Retorna um cliente de cursos com sessão isolada"""
     return APIClientFactory.create_curso_client()
 
 def get_docente_client() -> DocenteAPIClient:
-    """Retorna um cliente de docentes com sessão isolada"""
     return APIClientFactory.create_docente_client()
 
 def get_disciplina_client() -> DisciplinaAPIClient:
-    """Retorna um cliente de disciplinas com sessão isolada"""
     return APIClientFactory.create_disciplina_client()
 
 def get_turma_client() -> TurmaAPIClient:
-    """Retorna um cliente de turmas com sessão isolada"""
     return APIClientFactory.create_turma_client()
 
 def get_turma_docente_client() -> TurmaDocenteAPIClient:
-    """Retorna um cliente de turma-docente com sessão isolada"""
     return APIClientFactory.create_turma_docente_client()
 
 def get_matricula_client() -> MatriculaAPIClient:
-    """Retorna um cliente de matrículas com sessão isolada"""
     return APIClientFactory.create_matricula_client()
 
 def get_grade_client() -> GradeAPIClient:
-    """Retorna um cliente de grades com sessão isolada"""
     return APIClientFactory.create_grade_client()
 
 def get_coordenacao_client() -> CoordenacaoAPIClient:
-    """Retorna um cliente de coordenações com sessão isolada"""
     return APIClientFactory.create_coordenacao_client()
 
 def get_pessoa_client() -> PessoaAPIClient:
-    """Retorna um cliente de pessoas com sessão isolada"""
     return APIClientFactory.create_pessoa_client()
+
+# ========== NOVAS FUNÇÕES DE CONVENIÊNCIA ==========
+
+def get_prova_disciplina_client() -> ProvaDisciplinaAPIClient:
+    """Retorna um cliente de provas-disciplinas com sessão isolada"""
+    return APIClientFactory.create_prova_disciplina_client()
+
+def get_prova_client() -> ProvaAPIClient:
+    """Retorna um cliente de provas com sessão isolada"""
+    return APIClientFactory.create_prova_client()

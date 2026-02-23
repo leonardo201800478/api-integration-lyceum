@@ -1,180 +1,250 @@
 """
 Importador para tabela imp_006_usuarios
+Adaptado para SQL Server usando core.database
 """
 
-import sqlite3
+from core.database import get_db_connection
 from qstione.core.transformacoes import (
-    extrair_usuario_email, 
+    extrair_usuario_email,
     converter_minusculas,
     truncar_texto
 )
 from qstione.core.validacoes import validar_email, validar_matricula, validar_nome
 
+
 class ImportadorUsuarios:
-    def __init__(self, conexao_lyceum, conexao_qstione):
-        self.con_lyceum = conexao_lyceum
-        self.con_qstione = conexao_qstione
-    
+
+    def __init__(self):
+        pass
+
+    # -------------------------------------------------------------------------
+    # Funções auxiliares para verificação de existência de tabelas/índices
+    # -------------------------------------------------------------------------
+    def _tabela_existe(self, nome_tabela: str) -> bool:
+        try:
+            with get_db_connection(db_path='qstione.db') as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT 1 FROM INFORMATION_SCHEMA.TABLES
+                    WHERE TABLE_NAME = ? AND TABLE_TYPE = 'BASE TABLE'
+                """, (nome_tabela,))
+                return cursor.fetchone() is not None
+        except Exception as e:
+            print(f"  ⚠️  Erro ao verificar existência da tabela: {e}")
+            return False
+
+    def _indice_existe(self, nome_indice: str) -> bool:
+        try:
+            with get_db_connection(db_path='qstione.db') as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT 1 FROM sys.indexes WHERE name = ?", (nome_indice,))
+                return cursor.fetchone() is not None
+        except Exception as e:
+            print(f"  ⚠️  Erro ao verificar índice: {e}")
+            return False
+
+    def _criar_tabela(self):
+        if self._tabela_existe('imp_006_usuarios'):
+            # Verifica se as colunas obrigatórias existem
+            try:
+                with get_db_connection(db_path='qstione.db') as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+                        WHERE TABLE_NAME = 'imp_006_usuarios'
+                          AND COLUMN_NAME IN ('data_criacao', 'data_atualizacao')
+                    """)
+                    colunas = [row[0] for row in cursor.fetchall()]
+                    if 'data_criacao' in colunas and 'data_atualizacao' in colunas:
+                        print("✅ Tabela imp_006_usuarios já existe com estrutura correta.")
+                        return
+                    else:
+                        print("⚠️  Colunas ausentes. Recriando tabela...")
+                        cursor.execute("DROP TABLE imp_006_usuarios")
+                        conn.commit()
+            except Exception as e:
+                print(f"⚠️  Erro ao verificar colunas: {e}. Recriando tabela...")
+                with get_db_connection(db_path='qstione.db') as conn:
+                    conn.execute("DROP TABLE IF EXISTS imp_006_usuarios")
+                    conn.commit()
+
+        print("🆕 Criando tabela imp_006_usuarios...")
+        create_sql = """
+            CREATE TABLE imp_006_usuarios (
+                matriculaUsuario NVARCHAR(20) NOT NULL,
+                codigoUsuario NVARCHAR(24) NULL,
+                emailUsuario NVARCHAR(100) NOT NULL,
+                nomeUsuario NVARCHAR(64) NOT NULL,
+                data_criacao DATETIME2 DEFAULT GETDATE(),
+                data_atualizacao DATETIME2 DEFAULT GETDATE(),
+                PRIMARY KEY (matriculaUsuario)
+            )
+        """
+        try:
+            with get_db_connection(db_path='qstione.db') as conn:
+                conn.execute(create_sql)
+                conn.commit()
+            print("✅ Tabela criada.")
+        except Exception as e:
+            print(f"❌ Erro ao criar tabela: {e}")
+            return
+
+        # Índice
+        if not self._indice_existe('idx_usuarios_email'):
+            try:
+                with get_db_connection(db_path='qstione.db') as conn:
+                    conn.execute("CREATE INDEX idx_usuarios_email ON imp_006_usuarios(emailUsuario)")
+                    conn.commit()
+                print("✅ Índice idx_usuarios_email criado.")
+            except Exception as e:
+                print(f"⚠️ Índice idx_usuarios_email não pôde ser criado: {e}")
+        else:
+            print("✅ Índice idx_usuarios_email já existe.")
+
+    # -------------------------------------------------------------------------
+    # Obter dados do Lyceum (agora com agregação correta para SQL Server)
+    # -------------------------------------------------------------------------
     def obter_dados_lyceum(self):
-        """
-        Obtém dados do banco Lyceum para a tabela imp_006_usuarios
-        """
-        cursor = self.con_lyceum.cursor()
-        
-        query = """
-            SELECT 
-                d.matricula,
-                d.email,
-                COALESCE(d.nome_social, d.nome_compl) as nome_completo,
-                d.cpf
-            FROM LY_DOCENTE d
-            WHERE d.ativo = 'S'
-            GROUP BY d.cpf
-            ORDER BY d.matricula
-        """
-        
-        cursor.execute(query)
-        return cursor.fetchall()
-    
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            query = """
+                SELECT
+                    MAX(d.matricula) as matricula,
+                    MAX(d.email) as email,
+                    MAX(COALESCE(d.nome_social, d.nome_compl)) as nome_completo,
+                    d.cpf
+                FROM LY_DOCENTE d
+                WHERE d.ativo = 'S'
+                GROUP BY d.cpf
+                ORDER BY MAX(d.matricula)
+            """
+            cursor.execute(query)
+            return cursor.fetchall()
+
+    # -------------------------------------------------------------------------
+    # Transformar dados
+    # -------------------------------------------------------------------------
     def transformar_dados(self, dados_lyceum):
-        """
-        Transforma dados do Lyceum para o formato Qstione
-        """
         dados_transformados = []
-        
+
         for registro in dados_lyceum:
-            matricula, email, nome, cpf = registro
-            
-            # Validar campos obrigatórios usando as funções de validação
+            matricula, email, nome, cpf = registro  # cpf não é usado, mas mantido para compatibilidade
+
+            # Validações
             if not validar_matricula(matricula):
                 print(f"  ⚠️  Matrícula inválida: {matricula}")
                 continue
-                
+
             if not validar_email(email):
                 print(f"  ⚠️  Email inválido: {email}")
                 continue
-                
+
             if not validar_nome(nome):
                 print(f"  ⚠️  Nome inválido: {nome}")
                 continue
-            
-            # Aplicar transformações
+
+            # Transformações
             email_final = converter_minusculas(email)
             codigo_usuario = extrair_usuario_email(email)
             nome_final = truncar_texto(nome, 64)
-            
+
             dados_transformados.append({
                 'matriculaUsuario': str(matricula)[:20],
                 'codigoUsuario': codigo_usuario[:24] if codigo_usuario else None,
                 'emailUsuario': email_final[:100],
                 'nomeUsuario': nome_final
             })
-        
+
         return dados_transformados
-    
+
+    # -------------------------------------------------------------------------
+    # Importar para Qstione (MERGE)
+    # -------------------------------------------------------------------------
     def importar_para_qstione(self, dados_transformados):
+        self._criar_tabela()
+
+        merge_sql = """
+            MERGE INTO imp_006_usuarios AS target
+            USING (VALUES (?, ?, ?, ?)) AS source (matriculaUsuario, codigoUsuario, emailUsuario, nomeUsuario)
+            ON target.matriculaUsuario = source.matriculaUsuario
+            WHEN MATCHED THEN
+                UPDATE SET
+                    codigoUsuario = source.codigoUsuario,
+                    emailUsuario = source.emailUsuario,
+                    nomeUsuario = source.nomeUsuario,
+                    data_atualizacao = GETDATE()
+            WHEN NOT MATCHED THEN
+                INSERT (matriculaUsuario, codigoUsuario, emailUsuario, nomeUsuario, data_criacao, data_atualizacao)
+                VALUES (source.matriculaUsuario, source.codigoUsuario, source.emailUsuario, source.nomeUsuario, GETDATE(), GETDATE());
         """
-        Importa dados para o banco Qstione
-        """
-        cursor = self.con_qstione.cursor()
-        
-        # Criar tabela se não existir
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS imp_006_usuarios (
-                matriculaUsuario CHAR(20) NOT NULL,
-                codigoUsuario CHAR(24),
-                emailUsuario CHAR(100) NOT NULL,
-                nomeUsuario CHAR(64) NOT NULL,
-                data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                data_atualizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (matriculaUsuario)
-            )
-        ''')
-        
-        # Criar índice para melhor performance
-        cursor.execute('''
-            CREATE INDEX IF NOT EXISTS idx_usuarios_email 
-            ON imp_006_usuarios(emailUsuario)
-        ''')
-        
-        # SQL para UPSERT (INSERT OR UPDATE)
-        sql_upsert = '''
-            INSERT INTO imp_006_usuarios 
-            (matriculaUsuario, codigoUsuario, emailUsuario, nomeUsuario, data_atualizacao)
-            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(matriculaUsuario) DO UPDATE SET
-                codigoUsuario = excluded.codigoUsuario,
-                emailUsuario = excluded.emailUsuario,
-                nomeUsuario = excluded.nomeUsuario,
-                data_atualizacao = CURRENT_TIMESTAMP
-        '''
-        
-        # Importar/Atualizar dados
+
         total_inseridos = 0
         total_atualizados = 0
         total_erros = 0
-        
-        for registro in dados_transformados:
-            try:
-                # Verificar se já existe
-                cursor.execute(
-                    "SELECT matriculaUsuario FROM imp_006_usuarios WHERE matriculaUsuario = ?",
-                    (registro['matriculaUsuario'],)
-                )
-                
-                existe = cursor.fetchone()
-                
-                # Executar UPSERT
-                cursor.execute(sql_upsert, (
-                    registro['matriculaUsuario'],
-                    registro['codigoUsuario'],
-                    registro['emailUsuario'],
-                    registro['nomeUsuario']
-                ))
-                
-                if existe:
-                    total_atualizados += 1
-                else:
-                    total_inseridos += 1
-                    
-            except sqlite3.Error as e:
-                total_erros += 1
-                print(f"  ✗  Erro ao importar {registro['matriculaUsuario']}: {e}")
-        
-        self.con_qstione.commit()
-        
+
+        with get_db_connection(db_path='qstione.db') as conn:
+            cursor = conn.cursor()
+            for reg in dados_transformados:
+                try:
+                    cursor.execute("SELECT 1 FROM imp_006_usuarios WHERE matriculaUsuario = ?", (reg['matriculaUsuario'],))
+                    existe = cursor.fetchone()
+
+                    cursor.execute(merge_sql, (
+                        reg['matriculaUsuario'],
+                        reg['codigoUsuario'],
+                        reg['emailUsuario'],
+                        reg['nomeUsuario']
+                    ))
+
+                    if existe:
+                        total_atualizados += 1
+                    else:
+                        total_inseridos += 1
+                except Exception as e:
+                    total_erros += 1
+                    print(f"  ✗  Erro ao importar {reg['matriculaUsuario']}: {e}")
+
+            conn.commit()
+
         return {
             'total_inseridos': total_inseridos,
             'total_atualizados': total_atualizados,
             'total_erros': total_erros,
             'total_processados': len(dados_transformados)
         }
-    
+
+    # -------------------------------------------------------------------------
+    # Execução principal
+    # -------------------------------------------------------------------------
     def executar_importacao(self):
-        """
-        Executa todo o processo de importação
-        """
         print("=" * 70)
         print("IMPORTAÇÃO: imp_006_usuarios")
         print("=" * 70)
-        
+
         # 1. Obter dados do Lyceum
         dados_lyceum = self.obter_dados_lyceum()
         print(f"📊 Registros encontrados no Lyceum: {len(dados_lyceum)}")
-        
+
         # 2. Transformar dados
         print("🔄 Transformando dados...")
         dados_transformados = self.transformar_dados(dados_lyceum)
         print(f"✅ Registros válidos para importação: {len(dados_transformados)}")
-        
+
         # 3. Importar para Qstione
         print("💾 Importando para banco Qstione...")
         resultado = self.importar_para_qstione(dados_transformados)
-        
+
         print(f"\n📈 RESULTADO DA IMPORTAÇÃO:")
         print(f"  ✓ Inseridos: {resultado['total_inseridos']}")
         print(f"  ↻ Atualizados: {resultado['total_atualizados']}")
         print(f"  ✗ Erros: {resultado['total_erros']}")
         print(f"  📋 Total processados: {resultado['total_processados']}")
-        
+
         return dados_transformados
+
+
+if __name__ == "__main__":
+    import logging
+    logging.basicConfig(level=logging.INFO)
+    importador = ImportadorUsuarios()
+    importador.executar_importacao()

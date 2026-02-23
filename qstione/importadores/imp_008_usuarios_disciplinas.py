@@ -1,5 +1,6 @@
 """
 Importador para tabela imp_008_usuarios_disciplinas
+Adaptado para SQL Server usando core.database
 
 Exporta a relação entre disciplinas e docentes (email) para o Qstione.
 Gera o código da disciplina concatenado com as iniciais do curso,
@@ -9,60 +10,159 @@ Campos:
     - codigoDisciplina: CHAR(30)  – código da disciplina + '-' + iniciais do curso
     - emailUsuario:      CHAR(100) – e-mail do docente (minúsculas)
 
-Filtros aplicados:
-    - LY_TURMA_DOCENTE: ano = 2026, periodo = '21'
-    - LY_DISCIPLINA:    faculdade IN ('001', '002')
+Filtros aplicados (centralizados em qstione.config.filtros):
+    - LY_TURMA_DOCENTE: ano = ANO_VIGENTE, periodo = primeiro de PERIODOS_VIGENTES
+    - LY_DISCIPLINA:    faculdade IN (FACULDADES_INCLUIDAS)
     - LY_DOCENTE:       ativo = 'S'
     - Apenas docentes com e‑mail válido (validar_email)
 """
 
-import sqlite3
+from core.database import get_db_connection
 from qstione.core.transformacoes import (
     gerar_codigo_disciplina_curso,
     converter_minusculas,
     truncar_texto
 )
 from qstione.core.validacoes import validar_email
+from qstione.config.filtros import ANO_VIGENTE, PERIODOS_VIGENTES, FACULDADES_INCLUIDAS
 
 
 class ImportadorUsuariosDisciplinas:
-    def __init__(self, conexao_lyceum, conexao_qstione):
-        self.con_lyceum = conexao_lyceum
-        self.con_qstione = conexao_qstione
 
+    def __init__(self):
+        pass
+
+    # -------------------------------------------------------------------------
+    # Funções auxiliares para verificação de existência de tabelas/índices
+    # -------------------------------------------------------------------------
+    def _tabela_existe(self, nome_tabela: str) -> bool:
+        try:
+            with get_db_connection(db_path='qstione.db') as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT 1 FROM INFORMATION_SCHEMA.TABLES
+                    WHERE TABLE_NAME = ? AND TABLE_TYPE = 'BASE TABLE'
+                """, (nome_tabela,))
+                return cursor.fetchone() is not None
+        except Exception as e:
+            print(f"  ⚠️  Erro ao verificar existência da tabela: {e}")
+            return False
+
+    def _indice_existe(self, nome_indice: str) -> bool:
+        try:
+            with get_db_connection(db_path='qstione.db') as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT 1 FROM sys.indexes WHERE name = ?", (nome_indice,))
+                return cursor.fetchone() is not None
+        except Exception as e:
+            print(f"  ⚠️  Erro ao verificar índice: {e}")
+            return False
+
+    def _criar_tabela(self):
+        if self._tabela_existe('imp_008_usuarios_disciplinas'):
+            # Verifica se as colunas obrigatórias existem
+            try:
+                with get_db_connection(db_path='qstione.db') as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+                        WHERE TABLE_NAME = 'imp_008_usuarios_disciplinas'
+                          AND COLUMN_NAME IN ('data_criacao', 'data_atualizacao')
+                    """)
+                    colunas = [row[0] for row in cursor.fetchall()]
+                    if 'data_criacao' in colunas and 'data_atualizacao' in colunas:
+                        print("✅ Tabela imp_008_usuarios_disciplinas já existe com estrutura correta.")
+                        return
+                    else:
+                        print("⚠️  Colunas ausentes. Recriando tabela...")
+                        cursor.execute("DROP TABLE imp_008_usuarios_disciplinas")
+                        conn.commit()
+            except Exception as e:
+                print(f"⚠️  Erro ao verificar colunas: {e}. Recriando tabela...")
+                with get_db_connection(db_path='qstione.db') as conn:
+                    conn.execute("DROP TABLE IF EXISTS imp_008_usuarios_disciplinas")
+                    conn.commit()
+
+        print("🆕 Criando tabela imp_008_usuarios_disciplinas...")
+        create_sql = """
+            CREATE TABLE imp_008_usuarios_disciplinas (
+                codigoDisciplina NVARCHAR(30) NOT NULL,
+                emailUsuario NVARCHAR(100) NOT NULL,
+                data_criacao DATETIME2 DEFAULT GETDATE(),
+                data_atualizacao DATETIME2 DEFAULT GETDATE(),
+                PRIMARY KEY (codigoDisciplina, emailUsuario)
+            )
+        """
+        try:
+            with get_db_connection(db_path='qstione.db') as conn:
+                conn.execute(create_sql)
+                conn.commit()
+            print("✅ Tabela criada.")
+        except Exception as e:
+            print(f"❌ Erro ao criar tabela: {e}")
+            return
+
+        # Índices
+        indices = [
+            ('idx_usuarios_disciplinas_email', "CREATE INDEX idx_usuarios_disciplinas_email ON imp_008_usuarios_disciplinas(emailUsuario)"),
+            ('idx_usuarios_disciplinas_codigo', "CREATE INDEX idx_usuarios_disciplinas_codigo ON imp_008_usuarios_disciplinas(codigoDisciplina)")
+        ]
+        for nome_idx, sql_idx in indices:
+            if not self._indice_existe(nome_idx):
+                try:
+                    with get_db_connection(db_path='qstione.db') as conn:
+                        conn.execute(sql_idx)
+                        conn.commit()
+                    print(f"✅ Índice {nome_idx} criado.")
+                except Exception as e:
+                    print(f"⚠️ Índice {nome_idx} não pôde ser criado: {e}")
+            else:
+                print(f"✅ Índice {nome_idx} já existe.")
+
+    # -------------------------------------------------------------------------
+    # Obter dados do Lyceum
+    # -------------------------------------------------------------------------
     def obter_dados_lyceum(self):
         """
         Obtém do banco Lyceum os pares (disciplina, email) únicos,
         respeitando os filtros de ano, período, faculdade e docente ativo.
         """
-        cursor = self.con_lyceum.cursor()
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
 
-        # A consulta garante DISTINCT para evitar duplicatas
-        query = """
-            SELECT DISTINCT
-                td.disciplina,
-                d.email,
-                g.curso AS codigo_curso,
-                c.nome   AS nome_curso
-            FROM LY_TURMA_DOCENTE td
-            INNER JOIN LY_DISCIPLINA dsc
-                ON dsc.disciplina = td.disciplina
-            INNER JOIN LY_DOCENTE d
-                ON d.num_func = td.num_func
-            INNER JOIN LY_GRADE g
-                ON g.disciplina = td.disciplina
-            INNER JOIN LY_CURSO c
-                ON c.curso = g.curso
-            WHERE td.ano = 2026
-              AND td.periodo = '21'
-              AND dsc.faculdade IN ('001', '002')
-              AND d.ativo = 'S'
-            ORDER BY td.disciplina, d.email
-        """
+            # Usa o primeiro período da lista como período principal
+            periodo_principal = PERIODOS_VIGENTES[0]
+            faculdades_placeholder = ','.join(['?'] * len(FACULDADES_INCLUIDAS))
 
-        cursor.execute(query)
-        return cursor.fetchall()
+            query = f"""
+                SELECT DISTINCT
+                    td.disciplina,
+                    d.email,
+                    g.curso AS codigo_curso,
+                    c.nome   AS nome_curso
+                FROM LY_TURMA_DOCENTE td
+                INNER JOIN LY_DISCIPLINA dsc
+                    ON dsc.disciplina = td.disciplina
+                INNER JOIN LY_DOCENTE d
+                    ON d.num_func = td.num_func
+                INNER JOIN LY_GRADE g
+                    ON g.disciplina = td.disciplina
+                INNER JOIN LY_CURSO c
+                    ON c.curso = g.curso
+                WHERE td.ano = ?
+                  AND td.periodo = ?
+                  AND dsc.faculdade IN ({faculdades_placeholder})
+                  AND d.ativo = 'S'
+                ORDER BY td.disciplina, d.email
+            """
 
+            params = [ANO_VIGENTE, periodo_principal] + FACULDADES_INCLUIDAS
+            cursor.execute(query, params)
+            return cursor.fetchall()
+
+    # -------------------------------------------------------------------------
+    # Transformar dados
+    # -------------------------------------------------------------------------
     def transformar_dados(self, dados_lyceum):
         """
         Transforma cada registro bruto do Lyceum no formato esperado pelo Qstione.
@@ -73,24 +173,23 @@ class ImportadorUsuariosDisciplinas:
         dados_transformados = []
 
         for disciplina, email, codigo_curso, nome_curso in dados_lyceum:
-            # --- Validação do e-mail (campo obrigatório) ---
+            # Validação do e-mail (campo obrigatório)
             if not validar_email(email):
                 print(f"  ⚠️  E-mail inválido para disciplina {disciplina}: {email}")
                 continue
 
-            # --- Transformações ---
-            # 1. Geração do código da disciplina (igual ao imp_002)
+            # Geração do código da disciplina (igual ao imp_002)
             codigo_disciplina_final = gerar_codigo_disciplina_curso(
                 disciplina,
                 nome_curso,
                 codigo_curso
             )
 
-            # 2. E-mail em minúsculas e truncado (segurança)
+            # E-mail em minúsculas e truncado
             email_final = converter_minusculas(email)
             email_final = truncar_texto(email_final, 100)
 
-            # 3. Truncar código da disciplina para 30 caracteres
+            # Truncar código da disciplina para 30 caracteres
             codigo_disciplina_final = truncar_texto(codigo_disciplina_final, 30)
 
             dados_transformados.append({
@@ -100,75 +199,53 @@ class ImportadorUsuariosDisciplinas:
 
         return dados_transformados
 
+    # -------------------------------------------------------------------------
+    # Importar para Qstione (MERGE)
+    # -------------------------------------------------------------------------
     def importar_para_qstione(self, dados_transformados):
+        self._criar_tabela()
+
+        merge_sql = """
+            MERGE INTO imp_008_usuarios_disciplinas AS target
+            USING (VALUES (?, ?)) AS source (codigoDisciplina, emailUsuario)
+            ON target.codigoDisciplina = source.codigoDisciplina
+               AND target.emailUsuario = source.emailUsuario
+            WHEN MATCHED THEN
+                UPDATE SET
+                    data_atualizacao = GETDATE()
+            WHEN NOT MATCHED THEN
+                INSERT (codigoDisciplina, emailUsuario, data_criacao, data_atualizacao)
+                VALUES (source.codigoDisciplina, source.emailUsuario, GETDATE(), GETDATE());
         """
-        Cria/atualiza a tabela imp_008_usuarios_disciplinas e insere os dados.
-        Utiliza UPSERT (INSERT OR UPDATE) com chave primária composta.
-        """
-        cursor = self.con_qstione.cursor()
-
-        # --- Criação da tabela (se não existir) ---
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS imp_008_usuarios_disciplinas (
-                codigoDisciplina CHAR(30) NOT NULL,
-                emailUsuario CHAR(100) NOT NULL,
-                data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                data_atualizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (codigoDisciplina, emailUsuario)
-            )
-        ''')
-
-        # --- Índices para consultas futuras ---
-        cursor.execute('''
-            CREATE INDEX IF NOT EXISTS idx_usuarios_disciplinas_email
-            ON imp_008_usuarios_disciplinas(emailUsuario)
-        ''')
-
-        cursor.execute('''
-            CREATE INDEX IF NOT EXISTS idx_usuarios_disciplinas_codigo
-            ON imp_008_usuarios_disciplinas(codigoDisciplina)
-        ''')
-
-        # --- SQL de UPSERT (padrão do projeto) ---
-        sql_upsert = '''
-            INSERT INTO imp_008_usuarios_disciplinas
-            (codigoDisciplina, emailUsuario, data_atualizacao)
-            VALUES (?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(codigoDisciplina, emailUsuario) DO UPDATE SET
-                data_atualizacao = CURRENT_TIMESTAMP
-        '''
 
         total_inseridos = 0
         total_atualizados = 0
         total_erros = 0
 
-        for registro in dados_transformados:
-            try:
-                # Verifica se o par já existe (apenas para estatística)
-                cursor.execute(
-                    """SELECT 1 FROM imp_008_usuarios_disciplinas
-                       WHERE codigoDisciplina = ?
-                         AND emailUsuario = ?""",
-                    (registro['codigoDisciplina'], registro['emailUsuario'])
-                )
-                existe = cursor.fetchone()
+        with get_db_connection(db_path='qstione.db') as conn:
+            cursor = conn.cursor()
+            for reg in dados_transformados:
+                try:
+                    cursor.execute("""
+                        SELECT 1 FROM imp_008_usuarios_disciplinas
+                        WHERE codigoDisciplina = ? AND emailUsuario = ?
+                    """, (reg['codigoDisciplina'], reg['emailUsuario']))
+                    existe = cursor.fetchone()
 
-                # Executa o UPSERT
-                cursor.execute(sql_upsert, (
-                    registro['codigoDisciplina'],
-                    registro['emailUsuario']
-                ))
+                    cursor.execute(merge_sql, (
+                        reg['codigoDisciplina'],
+                        reg['emailUsuario']
+                    ))
 
-                if existe:
-                    total_atualizados += 1
-                else:
-                    total_inseridos += 1
+                    if existe:
+                        total_atualizados += 1
+                    else:
+                        total_inseridos += 1
+                except Exception as e:
+                    total_erros += 1
+                    print(f"  ✗ Erro ao importar {reg['codigoDisciplina']} - {reg['emailUsuario']}: {e}")
 
-            except sqlite3.Error as e:
-                total_erros += 1
-                print(f"  ✗ Erro ao importar {registro['codigoDisciplina']} - {registro['emailUsuario']}: {e}")
-
-        self.con_qstione.commit()
+            conn.commit()
 
         return {
             'total_inseridos': total_inseridos,
@@ -177,10 +254,10 @@ class ImportadorUsuariosDisciplinas:
             'total_processados': len(dados_transformados)
         }
 
+    # -------------------------------------------------------------------------
+    # Execução principal
+    # -------------------------------------------------------------------------
     def executar_importacao(self):
-        """
-        Executa o fluxo completo de importação para imp_008_usuarios_disciplinas.
-        """
         print("=" * 70)
         print("IMPORTAÇÃO: imp_008_usuarios_disciplinas")
         print("=" * 70)
@@ -206,3 +283,10 @@ class ImportadorUsuariosDisciplinas:
         print(f"  📋 Total processados: {resultado['total_processados']}")
 
         return dados_transformados
+
+
+if __name__ == "__main__":
+    import logging
+    logging.basicConfig(level=logging.INFO)
+    importador = ImportadorUsuariosDisciplinas()
+    importador.executar_importacao()
