@@ -1,19 +1,6 @@
 """
 Importador para tabela imp_009_professores_ofertas
-Adaptado para SQL Server usando core.database
-
-Exporta a relação entre ofertas de disciplinas (turmas) e professores (e-mail).
-Gera o código da oferta da mesma forma que o importador imp_005_ofertas.
-
-Campos:
-    - codigoOferta:   CHAR(30) – código da oferta (disciplina_turma_anoSemestre)
-    - emailProfessor: CHAR(100) – e-mail do docente (minúsculas)
-
-Filtros aplicados (centralizados em qstione.config.filtros):
-    - LY_TURMA: ano = ANO_VIGENTE, semestre IN (PERIODOS_VIGENTES), sit_turma = 'aberta'
-    - LY_DISCIPLINA: faculdade IN (FACULDADES_INCLUIDAS)
-    - Áreas de conhecimento: as definidas em AREAS_CONHECIMENTO_INCLUIDAS (inclui NULL e vazio)
-    - LY_DOCENTE: ativo = 'S' e e-mail válido
+Adaptado para SQL Server usando core.database e alinhado ao padrão do projeto.
 """
 
 from core.database import get_db_connection
@@ -27,7 +14,8 @@ from qstione.config.filtros import (
     ANO_VIGENTE,
     PERIODOS_VIGENTES,
     FACULDADES_INCLUIDAS,
-    AREAS_CONHECIMENTO_INCLUIDAS
+    AREAS_CONHECIMENTO_INCLUIDAS,
+    SITUACAO_TURMA_VALIDA  # Se não existir, defina como 'aberta' manualmente
 )
 
 
@@ -64,7 +52,6 @@ class ImportadorProfessoresOfertas:
 
     def _criar_tabela(self):
         if self._tabela_existe('imp_009_professores_ofertas'):
-            # Verifica se as colunas obrigatórias existem
             try:
                 with get_db_connection(db_path='qstione.db') as conn:
                     cursor = conn.cursor()
@@ -106,7 +93,6 @@ class ImportadorProfessoresOfertas:
             print(f"❌ Erro ao criar tabela: {e}")
             return
 
-        # Índices
         indices = [
             ('idx_professores_ofertas_email', "CREATE INDEX idx_professores_ofertas_email ON imp_009_professores_ofertas(emailProfessor)"),
             ('idx_professores_ofertas_codigo', "CREATE INDEX idx_professores_ofertas_codigo ON imp_009_professores_ofertas(codigoOferta)")
@@ -127,20 +113,15 @@ class ImportadorProfessoresOfertas:
     # Obter dados do Lyceum
     # -------------------------------------------------------------------------
     def obter_dados_lyceum(self):
-        """
-        Obtém do banco Lyceum os pares (disciplina, turma, ano, semestre, email)
-        respeitando os filtros e garantindo DISTINCT para evitar duplicatas.
-        """
         with get_db_connection() as conn:
             cursor = conn.cursor()
 
-            # Construir placeholders para períodos e faculdades
             periodos_placeholders = ','.join(['?'] * len(PERIODOS_VIGENTES))
             faculdades_placeholders = ','.join(['?'] * len(FACULDADES_INCLUIDAS))
-
-            # Áreas de conhecimento: extrair apenas as não nulas para usar na cláusula IN
             areas_nao_nulas = [a for a in AREAS_CONHECIMENTO_INCLUIDAS if a is not None and a != '']
             areas_placeholders = ','.join(['?'] * len(areas_nao_nulas))
+
+            situacao = SITUACAO_TURMA_VALIDA if 'SITUACAO_TURMA_VALIDA' in locals() else 'aberta'
 
             query = f"""
                 SELECT DISTINCT
@@ -161,7 +142,7 @@ class ImportadorProfessoresOfertas:
                     ON d.num_func = td.num_func
                 WHERE t.ano = ?
                   AND t.semestre IN ({periodos_placeholders})
-                  AND t.sit_turma = 'aberta'
+                  AND t.sit_turma = ?
                   AND dsc.faculdade IN ({faculdades_placeholders})
                   AND (dsc.area_conhecimento IN ({areas_placeholders})
                        OR dsc.area_conhecimento IS NULL
@@ -172,7 +153,7 @@ class ImportadorProfessoresOfertas:
                 ORDER BY t.disciplina, t.turma, d.email
             """
 
-            params = [ANO_VIGENTE] + PERIODOS_VIGENTES + FACULDADES_INCLUIDAS + areas_nao_nulas
+            params = [ANO_VIGENTE] + PERIODOS_VIGENTES + [situacao] + FACULDADES_INCLUIDAS + areas_nao_nulas
             cursor.execute(query, params)
             return cursor.fetchall()
 
@@ -183,16 +164,13 @@ class ImportadorProfessoresOfertas:
         dados_transformados = []
 
         for disciplina, turma, ano, semestre, email in dados_lyceum:
-            # Validação do e-mail
             if not validar_email(email):
                 print(f"  ⚠️  E-mail inválido para oferta {disciplina}_{turma}_{ano}{semestre}: {email}")
                 continue
 
-            # Geração do código da oferta (igual ao imp_005)
             codigo_oferta = gerar_codigo_oferta(disciplina, turma, ano, semestre)
             codigo_oferta = truncar_texto(codigo_oferta, 30)
 
-            # E-mail normalizado
             email_final = converter_minusculas(email)
             email_final = truncar_texto(email_final, 100)
 
@@ -266,20 +244,16 @@ class ImportadorProfessoresOfertas:
         print("IMPORTAÇÃO: imp_009_professores_ofertas")
         print("=" * 70)
 
-        # 1. Obtém dados brutos do Lyceum
         dados_lyceum = self.obter_dados_lyceum()
         print(f"📊 Registros encontrados no Lyceum (após DISTINCT): {len(dados_lyceum)}")
 
-        # 2. Transforma e valida os dados
         print("🔄 Transformando dados...")
         dados_transformados = self.transformar_dados(dados_lyceum)
         print(f"✅ Registros válidos para importação: {len(dados_transformados)}")
 
-        # 3. Importa para o banco Qstione
         print("💾 Importando para banco Qstione...")
         resultado = self.importar_para_qstione(dados_transformados)
 
-        # 4. Exibe relatório final
         print(f"\n📈 RESULTADO DA IMPORTAÇÃO:")
         print(f"  ✓ Inseridos: {resultado['total_inseridos']}")
         print(f"  ↻ Atualizados: {resultado['total_atualizados']}")

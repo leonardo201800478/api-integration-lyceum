@@ -1,25 +1,10 @@
 """
 Importador para tabela imp_008_usuarios_disciplinas
-Adaptado para SQL Server usando core.database
-
-Exporta a relação entre disciplinas e docentes (email) para o Qstione.
-Gera o código da disciplina concatenado com as iniciais do curso,
-seguindo a mesma regra do importador imp_002_disciplina.
-
-Campos:
-    - codigoDisciplina: CHAR(30)  – código da disciplina + '-' + iniciais do curso
-    - emailUsuario:      CHAR(100) – e-mail do docente (minúsculas)
-
-Filtros aplicados (centralizados em qstione.config.filtros):
-    - LY_TURMA_DOCENTE: ano = ANO_VIGENTE, periodo = primeiro de PERIODOS_VIGENTES
-    - LY_DISCIPLINA:    faculdade IN (FACULDADES_INCLUIDAS)
-    - LY_DOCENTE:       ativo = 'S'
-    - Apenas docentes com e‑mail válido (validar_email)
+Adaptado para SQL Server usando core.database e alinhado ao imp_002
 """
 
 from core.database import get_db_connection
 from qstione.core.transformacoes import (
-    gerar_codigo_disciplina_curso,
     converter_minusculas,
     truncar_texto
 )
@@ -60,7 +45,6 @@ class ImportadorUsuariosDisciplinas:
 
     def _criar_tabela(self):
         if self._tabela_existe('imp_008_usuarios_disciplinas'):
-            # Verifica se as colunas obrigatórias existem
             try:
                 with get_db_connection(db_path='qstione.db') as conn:
                     cursor = conn.cursor()
@@ -102,7 +86,6 @@ class ImportadorUsuariosDisciplinas:
             print(f"❌ Erro ao criar tabela: {e}")
             return
 
-        # Índices
         indices = [
             ('idx_usuarios_disciplinas_email', "CREATE INDEX idx_usuarios_disciplinas_email ON imp_008_usuarios_disciplinas(emailUsuario)"),
             ('idx_usuarios_disciplinas_codigo', "CREATE INDEX idx_usuarios_disciplinas_codigo ON imp_008_usuarios_disciplinas(codigoDisciplina)")
@@ -120,6 +103,34 @@ class ImportadorUsuariosDisciplinas:
                 print(f"✅ Índice {nome_idx} já existe.")
 
     # -------------------------------------------------------------------------
+    # Obter mapeamento disciplina original -> código padronizado (da tabela imp_002)
+    # -------------------------------------------------------------------------
+    def _obter_codigos_disciplina(self):
+        """
+        Consulta a tabela imp_002_disciplina no banco Qstione e retorna um dicionário
+        com a disciplina original (extraída da parte antes do '-') -> codigoDisciplina completo.
+        """
+        codigos = {}
+        try:
+            with get_db_connection(db_path='qstione.db') as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT codigoDisciplina FROM imp_002_disciplina
+                """)
+                for row in cursor.fetchall():
+                    codigo_completo = row[0]
+                    # Extrai a parte antes do primeiro '-' (código original)
+                    if '-' in codigo_completo:
+                        original = codigo_completo.split('-')[0]
+                        codigos[original] = codigo_completo
+                    else:
+                        # Se não tiver '-', assume que o próprio código é o original
+                        codigos[codigo_completo] = codigo_completo
+        except Exception as e:
+            print(f"  ⚠️  Erro ao consultar imp_002_disciplina: {e}")
+        return codigos
+
+    # -------------------------------------------------------------------------
     # Obter dados do Lyceum
     # -------------------------------------------------------------------------
     def obter_dados_lyceum(self):
@@ -129,68 +140,55 @@ class ImportadorUsuariosDisciplinas:
         """
         with get_db_connection() as conn:
             cursor = conn.cursor()
-
-            # Usa o primeiro período da lista como período principal
             periodo_principal = PERIODOS_VIGENTES[0]
             faculdades_placeholder = ','.join(['?'] * len(FACULDADES_INCLUIDAS))
 
             query = f"""
                 SELECT DISTINCT
                     td.disciplina,
-                    d.email,
-                    g.curso AS codigo_curso,
-                    c.nome   AS nome_curso
+                    d.email
                 FROM LY_TURMA_DOCENTE td
                 INNER JOIN LY_DISCIPLINA dsc
                     ON dsc.disciplina = td.disciplina
                 INNER JOIN LY_DOCENTE d
                     ON d.num_func = td.num_func
-                INNER JOIN LY_GRADE g
-                    ON g.disciplina = td.disciplina
-                INNER JOIN LY_CURSO c
-                    ON c.curso = g.curso
                 WHERE td.ano = ?
                   AND td.periodo = ?
                   AND dsc.faculdade IN ({faculdades_placeholder})
                   AND d.ativo = 'S'
                 ORDER BY td.disciplina, d.email
             """
-
             params = [ANO_VIGENTE, periodo_principal] + FACULDADES_INCLUIDAS
             cursor.execute(query, params)
             return cursor.fetchall()
 
     # -------------------------------------------------------------------------
-    # Transformar dados
+    # Transformar dados (usando mapeamento de disciplinas do imp_002)
     # -------------------------------------------------------------------------
     def transformar_dados(self, dados_lyceum):
-        """
-        Transforma cada registro bruto do Lyceum no formato esperado pelo Qstione.
-        - Gera codigoDisciplina com a função gerar_codigo_disciplina_curso
-        - Converte e‑mail para minúsculas
-        - Valida o e‑mail; registros inválidos são ignorados com aviso
-        """
+        mapa_codigos = self._obter_codigos_disciplina()
+        if not mapa_codigos:
+            print("  ⚠️  Nenhum código de disciplina encontrado no imp_002. Os códigos serão gerados dinamicamente, mas podem divergir.")
+
         dados_transformados = []
 
-        for disciplina, email, codigo_curso, nome_curso in dados_lyceum:
-            # Validação do e-mail (campo obrigatório)
+        for disciplina, email in dados_lyceum:
+            # Validação do e-mail
             if not validar_email(email):
                 print(f"  ⚠️  E-mail inválido para disciplina {disciplina}: {email}")
                 continue
 
-            # Geração do código da disciplina (igual ao imp_002)
-            codigo_disciplina_final = gerar_codigo_disciplina_curso(
-                disciplina,
-                nome_curso,
-                codigo_curso
-            )
+            # Obter código padronizado
+            if disciplina in mapa_codigos:
+                codigo_disciplina_final = mapa_codigos[disciplina]
+            else:
+                # Fallback: gerar um código genérico (sem curso) – apenas o código original truncado
+                print(f"  ⚠️  Disciplina {disciplina} não encontrada no imp_002. Usando código original.")
+                codigo_disciplina_final = truncar_texto(disciplina, 30)
 
             # E-mail em minúsculas e truncado
             email_final = converter_minusculas(email)
             email_final = truncar_texto(email_final, 100)
-
-            # Truncar código da disciplina para 30 caracteres
-            codigo_disciplina_final = truncar_texto(codigo_disciplina_final, 30)
 
             dados_transformados.append({
                 'codigoDisciplina': codigo_disciplina_final,
@@ -262,20 +260,16 @@ class ImportadorUsuariosDisciplinas:
         print("IMPORTAÇÃO: imp_008_usuarios_disciplinas")
         print("=" * 70)
 
-        # 1. Obtém dados brutos do Lyceum
         dados_lyceum = self.obter_dados_lyceum()
         print(f"📊 Registros encontrados no Lyceum (após DISTINCT): {len(dados_lyceum)}")
 
-        # 2. Transforma e valida os dados
         print("🔄 Transformando dados...")
         dados_transformados = self.transformar_dados(dados_lyceum)
         print(f"✅ Registros válidos para importação: {len(dados_transformados)}")
 
-        # 3. Importa para o banco Qstione
         print("💾 Importando para banco Qstione...")
         resultado = self.importar_para_qstione(dados_transformados)
 
-        # 4. Exibe relatório final
         print(f"\n📈 RESULTADO DA IMPORTAÇÃO:")
         print(f"  ✓ Inseridos: {resultado['total_inseridos']}")
         print(f"  ↻ Atualizados: {resultado['total_atualizados']}")

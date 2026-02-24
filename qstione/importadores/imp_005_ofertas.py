@@ -1,6 +1,6 @@
 """
 Importador para tabela imp_005_ofertas
-Adaptado para SQL Server usando core.database e filtros centralizados
+Adaptado para SQL Server com alinhamento ao código de disciplina do imp_002
 """
 
 from core.database import get_db_connection
@@ -14,7 +14,6 @@ from qstione.config.filtros import (
 )
 from qstione.core.transformacoes import (
     gerar_codigo_oferta,
-    gerar_codigo_disciplina_curso,
     gerar_codigo_tipo_oferta,
     mapear_turno,
     valor_fixo_2026_2,
@@ -61,7 +60,6 @@ class ImportadorOfertas:
 
     def _criar_tabela(self):
         if self._tabela_existe('imp_005_ofertas'):
-            # Verifica se as colunas obrigatórias existem
             try:
                 with get_db_connection(db_path='qstione.db') as conn:
                     cursor = conn.cursor()
@@ -109,7 +107,6 @@ class ImportadorOfertas:
             print(f"❌ Erro ao criar tabela: {e}")
             return
 
-        # Índices
         indices = [
             ('idx_ofertas_disciplina', "CREATE INDEX idx_ofertas_disciplina ON imp_005_ofertas(codigoDisciplina)"),
             ('idx_ofertas_tipo', "CREATE INDEX idx_ofertas_tipo ON imp_005_ofertas(codigoTipoOferta)")
@@ -130,7 +127,6 @@ class ImportadorOfertas:
     # Funções para obter metadados das tabelas do Lyceum (INFORMATION_SCHEMA)
     # -------------------------------------------------------------------------
     def _coluna_existe(self, tabela: str, coluna: str) -> bool:
-        """Verifica se uma coluna existe em uma tabela do banco Lyceum."""
         try:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
@@ -143,17 +139,50 @@ class ImportadorOfertas:
             return False
 
     # -------------------------------------------------------------------------
+    # Obter mapeamento disciplina -> codigoDisciplina da tabela imp_002_disciplina
+    # -------------------------------------------------------------------------
+    def _obter_codigos_disciplina(self):
+        """
+        Consulta a tabela imp_002_disciplina no banco Qstione e retorna um dicionário
+        com disciplina original -> codigoDisciplina (o código padronizado).
+        Considera que cada disciplina tem um único registro (após agregação).
+        """
+        codigos = {}
+        try:
+            with get_db_connection(db_path='qstione.db') as conn:
+                cursor = conn.cursor()
+                # A tabela imp_002_disciplina tem colunas: codigoDisciplina, nomeDisciplina, codigoCurso, periodo
+                # Precisamos relacionar o código original da disciplina (que não está armazenado).
+                # Uma alternativa é extrair a parte antes do '-' do codigoDisciplina, assumindo que o código original é o prefixo.
+                # Exemplo: "12345-ADM" -> disciplina original "12345". Isso é frágil, mas talvez funcione.
+                # Outra opção: modificar o imp_002 para também armazenar o código original em uma coluna, mas isso exige alteração.
+                # Por enquanto, vamos usar uma abordagem de extração, mas é melhor se tivermos uma coluna separada.
+                cursor.execute("""
+                    SELECT codigoDisciplina FROM imp_002_disciplina
+                """)
+                for row in cursor.fetchall():
+                    codigo_completo = row[0]
+                    # Extrai a parte antes do primeiro '-'
+                    if '-' in codigo_completo:
+                        original = codigo_completo.split('-')[0]
+                        codigos[original] = codigo_completo
+                    else:
+                        # Se não tiver '-', assume que é o próprio código
+                        codigos[codigo_completo] = codigo_completo
+        except Exception as e:
+            print(f"  ⚠️  Erro ao consultar imp_002_disciplina: {e}")
+        return codigos
+
+    # -------------------------------------------------------------------------
     # Obter dados do Lyceum com filtros centralizados
     # -------------------------------------------------------------------------
     def obter_dados_lyceum(self):
         with get_db_connection() as conn:
             cursor = conn.cursor()
 
-            # Descobrir estrutura das tabelas
             tem_curso_na_turma = self._coluna_existe('LY_TURMA', 'curso')
             tem_curso_na_disciplina = self._coluna_existe('LY_DISCIPLINA', 'curso')
 
-            # Construir a lista de áreas de conhecimento para o IN
             areas_validas = [a for a in AREAS_CONHECIMENTO_INCLUIDAS if a is not None]
             placeholders_areas = ','.join(['?'] * len(areas_validas))
 
@@ -212,7 +241,6 @@ class ImportadorOfertas:
                 params = [ANO_VIGENTE] + PERIODOS_VIGENTES + [SITUACAO_TURMA_VALIDA] + FACULDADES_INCLUIDAS + areas_validas
 
             else:
-                # Fallback usando LY_GRADE
                 query = f"""
                     SELECT
                         t.disciplina,
@@ -255,7 +283,7 @@ class ImportadorOfertas:
             tem_curso_na_turma = self._coluna_existe('LY_TURMA', 'curso')
 
             if tem_curso_na_turma:
-                query = """
+                query = f"""
                     SELECT
                         t.disciplina,
                         t.turma,
@@ -269,17 +297,14 @@ class ImportadorOfertas:
                     INNER JOIN LY_CURSO c
                         ON c.curso = t.curso
                     WHERE t.ano = ?
-                      AND t.semestre IN ({})
+                      AND t.semestre IN ({','.join(['?'] * len(PERIODOS_VIGENTES))})
                       AND t.sit_turma = ?
                       AND t.turma LIKE 'T0%'
-                      AND d.faculdade IN ({})
-                """.format(
-                    ','.join(['?'] * len(PERIODOS_VIGENTES)),
-                    ','.join(['?'] * len(FACULDADES_INCLUIDAS))
-                )
+                      AND d.faculdade IN ({','.join(['?'] * len(FACULDADES_INCLUIDAS))})
+                """
                 params = [ANO_VIGENTE] + PERIODOS_VIGENTES + [SITUACAO_TURMA_VALIDA] + FACULDADES_INCLUIDAS
             else:
-                query = """
+                query = f"""
                     SELECT
                         t.disciplina,
                         t.turma,
@@ -295,15 +320,12 @@ class ImportadorOfertas:
                     INNER JOIN LY_CURSO c
                         ON c.curso = g.curso
                     WHERE t.ano = ?
-                      AND t.semestre IN ({})
+                      AND t.semestre IN ({','.join(['?'] * len(PERIODOS_VIGENTES))})
                       AND t.sit_turma = ?
                       AND t.turma LIKE 'T0%'
-                      AND d.faculdade IN ({})
+                      AND d.faculdade IN ({','.join(['?'] * len(FACULDADES_INCLUIDAS))})
                     GROUP BY t.disciplina, t.turma, t.ano, t.semestre, c.nome, g.curso
-                """.format(
-                    ','.join(['?'] * len(PERIODOS_VIGENTES)),
-                    ','.join(['?'] * len(FACULDADES_INCLUIDAS))
-                )
+                """
                 params = [ANO_VIGENTE] + PERIODOS_VIGENTES + [SITUACAO_TURMA_VALIDA] + FACULDADES_INCLUIDAS
 
             cursor.execute(query, params)
@@ -341,14 +363,18 @@ class ImportadorOfertas:
             return None, None
 
     # -------------------------------------------------------------------------
-    # Transformar dados
+    # Transformar dados (usando mapeamento de disciplinas do imp_002)
     # -------------------------------------------------------------------------
     def transformar_dados(self, dados_lyceum):
-        dados_transformados = []
+        # Obter mapeamento disciplina -> codigoDisciplina padronizado
+        mapa_codigos = self._obter_codigos_disciplina()
+        if not mapa_codigos:
+            print("  ⚠️  Nenhum código de disciplina encontrado no imp_002. As ofertas serão geradas com base no curso da turma, mas podem haver divergências.")
+
         turmas_regulares = self.obter_turmas_regulares()
+        dados_transformados = []
 
         for registro in dados_lyceum:
-            # O registro pode ter 7 ou 9 campos, conforme a consulta
             if len(registro) == 9:
                 disciplina, turma, ano, semestre, turno, nome_compl, codigo_curso, nome_curso, area_conhecimento = registro
             elif len(registro) == 7:
@@ -371,18 +397,19 @@ class ImportadorOfertas:
                     continue
                 print(f"  ⚠️  Nome da disciplina truncado: {nome_disciplina}")
 
-            if not codigo_curso or not nome_curso:
-                print(f"  ⚠️  Não foi possível obter curso para disciplina {disciplina}")
-                continue
+            # Determinar o código da disciplina padronizado
+            if disciplina in mapa_codigos:
+                codigo_disciplina_padrao = mapa_codigos[disciplina]
+            else:
+                # Fallback: gerar com base no curso da turma
+                print(f"  ⚠️  Disciplina {disciplina} não encontrada no imp_002. Gerando código com curso {codigo_curso}.")
+                from qstione.core.transformacoes import gerar_codigo_disciplina_curso
+                codigo_disciplina_padrao = gerar_codigo_disciplina_curso(disciplina, nome_curso, codigo_curso)
+                codigo_disciplina_padrao = truncar_texto(codigo_disciplina_padrao, 30)
 
-            if not validar_codigo_curso(codigo_curso):
-                print(f"  ⚠️  Código do curso inválido: {codigo_curso} para disciplina {disciplina}")
-                continue
-
-            # Gerar códigos
+            # Gerar código da oferta
             codigo_oferta = gerar_codigo_oferta(disciplina, turma, ano, semestre)
-            codigo_disciplina = gerar_codigo_disciplina_curso(disciplina, nome_curso, codigo_curso)
-            semestre_oferta = valor_fixo_2026_2(None)  # ou usar SEMESTRE_OFERTA_FIXO diretamente
+            semestre_oferta = valor_fixo_2026_2(None)
             codigo_tipo_oferta = gerar_codigo_tipo_oferta(turma)
             turno_oferta = mapear_turno(turno)
             codigo_ava = valor_fixo_vazio(None)
@@ -398,7 +425,7 @@ class ImportadorOfertas:
             dados_transformados.append({
                 'codigoOferta': truncar_texto(codigo_oferta, 30),
                 'nomeOferta': truncar_texto(turma, 100),
-                'codigoDisciplina': truncar_texto(codigo_disciplina, 30),
+                'codigoDisciplina': codigo_disciplina_padrao,
                 'semestreOferta': truncar_texto(semestre_oferta, 6),
                 'codigoTipoOferta': truncar_texto(codigo_tipo_oferta, 3),
                 'codigoOfertaOrigem': truncar_texto(codigo_oferta_origem, 30),
