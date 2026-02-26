@@ -1,4 +1,5 @@
 """
+sync/sync_ly_alunos.py
 Sincronização de alunos da API Lyceum para a tabela LY_ALUNO (SQL Server)
 
 Execução recomendada:

@@ -1,3 +1,5 @@
+# core/database.py
+
 import pyodbc
 from contextlib import contextmanager
 from core.config import config

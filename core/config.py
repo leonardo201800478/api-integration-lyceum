@@ -25,6 +25,7 @@ class Config:
     SQL_SERVER_DRIVER = os.getenv('SQL_SERVER_DRIVER', '{ODBC Driver 18 for SQL Server}')
     SQL_SERVER_DATABASE_LYCEUM = os.getenv('SQL_SERVER_DATABASE_LYCEUM', 'lyceum.db')
     SQL_SERVER_DATABASE_QSTIONE = os.getenv('SQL_SERVER_DATABASE_QSTIONE', 'qstione.db')
+    SQL_SERVER_DATABASE_LXP = os.getenv('SQL_SERVER_DATABASE_LXP', 'lxp.db')
 
     # PAGINAÇÃO
     API_PAGE_START = int(os.getenv("API_PAGE_START", 0))
