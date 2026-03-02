@@ -181,6 +181,12 @@ python run_all.py
 python qstione/sync/sync_questionarios.py
 python qstione/sync/sync_respostas.py
 
+# Sincronizar todas as pessoas
+python sync/sync_ly_pessoas.py
+
+Módulo principal:
+python qstione/main.py
+
 
 ⚠️ O Qstione não é executado pelo run_all.py por padrão
 (decisão proposital para isolamento de domínio)
