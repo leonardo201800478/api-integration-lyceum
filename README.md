@@ -1,4 +1,3 @@
-markdown
 # 📘 aluno-sync
 
 Projeto de sincronização e consolidação de dados acadêmicos do **Lyceum**, com persistência local em SQLite, execução controlada e uso exclusivo do método HTTP GET.  
@@ -20,136 +19,125 @@ O projeto integra dados de diferentes fontes (Lyceum, Qstione e LXP) para fornec
 ## 📁 Estrutura do Projeto (Atualizada)
 
 Abaixo está a organização completa dos diretórios e arquivos, conforme a versão mais recente do projeto.
+
 aluno-sync/
-│
-├── core/ # Infraestrutura base do projeto
-│ ├── init.py
-│ ├── api_client.py # Cliente HTTP (somente GET – Lyceum)
-│ ├── config.py # Carregamento de variáveis (.env)
-│ ├── database.py # Conexão e utilidades SQLite
-│ └── logger.py # Configuração central de logs
-│
-├── models/ # Modelos SQLite – domínio Lyceum
-│ ├── init.py
-│ ├── ly_aluno.py
-│ ├── ly_coordenacao.py
-│ ├── ly_curriculo.py
-│ ├── ly_curso.py
-│ ├── ly_disciplina.py
-│ ├── ly_docente.py
-│ ├── ly_grade.py
-│ ├── ly_matricula.py
-│ ├── ly_pessoa.py
-│ ├── ly_prova.py
-│ ├── ly_prova_discip.py
-│ ├── ly_turma.py
-│ └── ly_turma_docente.py
-│
-├── sync/ # Sincronizadores individuais Lyceum
-│ ├── init.py
-│ ├── sync_ly_alunos.py
-│ ├── sync_ly_coordenacoes.py
-│ ├── sync_ly_curriculos.py
-│ ├── sync_ly_cursos.py
-│ ├── sync_ly_disciplinas.py
-│ ├── sync_ly_docentes.py
-│ ├── sync_ly_grades.py
-│ ├── sync_ly_matriculas.py
-│ ├── sync_ly_pessoa_by_id.py # Sincroniza pessoa específica + alunos
-│ ├── sync_ly_pessoas.py # Sincroniza todas as pessoas
-│ ├── sync_ly_provas.py
-│ ├── sync_ly_provas_disciplinas.py
-│ ├── sync_ly_turma_docentes.py
-│ └── sync_ly_turmas.py
-│
-├── lxp/ # Módulo de integração com dados LXP
-│ ├── config/
-│ │ ├── init.py
-│ │ ├── filtros.py
-│ │ └── mapeamentos.py
-│ ├── core/
-│ │ ├── init.py
-│ │ ├── crud_course.py
-│ │ └── exportador.py
-│ ├── exportadores/
-│ │ ├── init.py
-│ │ ├── exp_001_cursos.py
-│ │ ├── exp_002_curriculum.py
-│ │ ├── exp_003_enrollment.py
-│ │ ├── exp_004_desenturmar_alunos__.py
-│ │ ├── exp_004_turmas.py
-│ │ ├── exp_005_matriculas.py
-│ │ └── exp_006_pessoas.py
-│ ├── init.py
-│ ├── main.py # Entry-point do módulo LXP
-│ └── README.md
-│
-├── qstione/ # Módulo de questionários (Qstione)
-│ ├── config/
-│ │ ├── criar_tabelas_qstone.sql
-│ │ ├── filtros.py
-│ │ └── tabelas.py
-│ ├── core/
-│ │ ├── transformacoes.py
-│ │ ├── utils_db.py
-│ │ └── validacoes.py
-│ ├── desativadores/
-│ │ ├── des_001_cursos.py
-│ │ └── desativador_base.py
-│ ├── exportadores/
-│ │ ├── ExportadorSQL/
-│ │ ├── excel.py
-│ │ └── sql.py
-│ ├── importadores/
-│ │ ├── imp_001_cursos.py
-│ │ ├── imp_002_disciplina.py
-│ │ ├── imp_003_objetivos.py
-│ │ ├── imp_004_referencias.py
-│ │ ├── imp_005_ofertas.py
-│ │ ├── imp_006_usuarios.py
-│ │ ├── imp_007_usuarios_cursos.py
-│ │ └── imp_008_usuarios_disciplinas.py
-│ └── main.py # Entry-point do módulo Qstione
-│
-├── reports/ # Geradores de relatórios e exporters
-│ ├── exporters/
-│ │ ├── init.py
-│ │ ├── base.py
-│ │ ├── excel_exporter.py
-│ │ ├── pdf_exporter.py
-│ │ └── xml_exporter.py
-│ ├── generators/
-│ │ ├── init.py
-│ │ ├── gerar_relatorio_alunos.py
-│ │ └── gerar_relatorio_contatos_completo.py
-│ ├── queries/
-│ │ ├── init.py
-│ │ ├── relatorio_alunos.py
-│ │ └── relatorio_contatos_filtros.py
-│ └── sync_pessoas.py # Verifica e sincroniza pessoas faltantes
-│
-├── backups/ # Backups automáticos dos bancos
-├── exportacoes/ # Arquivos exportados (CSV / XLSX)
-├── logs/ # Logs estruturados por execução
-│ └── execucoes/
-│
-├── .env # Variáveis de ambiente (local)
-├── .env.example # Modelo de configuração
+├── core/
+│   ├── __init__.py
+│   ├── api_client.py
+│   ├── config.py
+│   ├── database.py
+│   └── logger.py
+├── models/
+│   ├── __init__.py
+│   ├── ly_aluno.py
+│   ├── ly_coordenacao.py
+│   ├── ly_curriculo.py
+│   ├── ly_curso.py
+│   ├── ly_disciplina.py
+│   ├── ly_docente.py
+│   ├── ly_grade.py
+│   ├── ly_matricula.py
+│   ├── ly_pessoa.py
+│   ├── ly_prova.py
+│   ├── ly_prova_discip.py
+│   ├── ly_turma.py
+│   └── ly_turma_docente.py
+├── sync/
+│   ├── __init__.py
+│   ├── sync_ly_alunos.py
+│   ├── sync_ly_coordenacoes.py
+│   ├── sync_ly_curriculos.py
+│   ├── sync_ly_cursos.py
+│   ├── sync_ly_disciplinas.py
+│   ├── sync_ly_docentes.py
+│   ├── sync_ly_grades.py
+│   ├── sync_ly_matriculas.py
+│   ├── sync_ly_pessoa_by_id.py
+│   ├── sync_ly_pessoas.py
+│   ├── sync_ly_provas.py
+│   ├── sync_ly_provas_disciplinas.py
+│   ├── sync_ly_turma_docentes.py
+│   └── sync_ly_turmas.py
+├── lxp/
+│   ├── config/
+│   │   ├── __init__.py
+│   │   ├── filtros.py
+│   │   └── mapeamentos.py
+│   ├── core/
+│   │   ├── __init__.py
+│   │   ├── crud_course.py
+│   │   └── exportador.py
+│   ├── exportadores/
+│   │   ├── __init__.py
+│   │   ├── exp_001_cursos.py
+│   │   ├── exp_002_curriculum.py
+│   │   ├── exp_003_enrollment.py
+│   │   ├── exp_004_desenturmar_alunos.py
+│   │   ├── exp_005_matriculas.py
+│   │   └── exp_006_pessoas.py
+│   ├── __init__.py
+│   ├── main.py
+│   └── README.md
+├── qstione/
+│   ├── config/
+│   │   ├── criar_tabelas_qstone.sql
+│   │   ├── filtros.py
+│   │   └── tabelas.py
+│   ├── core/
+│   │   ├── transformacoes.py
+│   │   ├── utils_db.py
+│   │   └── validacoes.py
+│   ├── desativadores/
+│   │   ├── des_001_cursos.py
+│   │   └── desativador_base.py
+│   ├── exportadores/
+│   │   ├── ExportadorSQL/
+│   │   ├── excel.py
+│   │   └── sql.py
+│   ├── importadores/
+│   │   ├── imp_001_cursos.py
+│   │   ├── imp_002_disciplina.py
+│   │   ├── imp_003_objetivos.py
+│   │   ├── imp_004_referencias.py
+│   │   ├── imp_005_ofertas.py
+│   │   ├── imp_006_usuario.py
+│   │   ├── imp_007_usuarios_cursos.py
+│   │   └── imp_008_usuarios_disciplinas.py
+│   └── main.py
+├── reports/
+│   ├── exporters/
+│   │   ├── __init__.py
+│   │   ├── base.py
+│   │   ├── excel_exporter.py
+│   │   ├── pdf_exporter.py
+│   │   └── xml_exporter.py
+│   ├── generators/
+│   │   ├── __init__.py
+│   │   ├── gerar_relatorio_alunos.py
+│   │   └── gerar_relatorio_contatos_completo.py
+│   ├── queries/
+│   │   ├── __init__.py
+│   │   ├── relatorio_alunos.py
+│   │   └── relatorio_contatos_filtros.py
+│   └── sync_pessoas.py
+├── backups/
+├── exportacoes/
+├── logs/
+│   └── execucoes/
+├── .env
+├── .env.example
 ├── .gitignore
 ├── ARQUITETURA.md
-├── README.md # Documentação principal
-├── requirements.txt # Dependências
-├── run_all.py # Runner unificado Lyceum
-├── executar_qstione.py # Entry-point simplificado para o Qstione
-├── run_reports.py # Executa todos os relatórios
-├── run_relatorio_contatos.py # Gera relatório de contatos
+├── README.md
+├── requirements.txt
+├── run_all.py
+├── executar_qstione.py
+├── run_reports.py
 ├── test_conexao.py
 ├── teste.py
-├── lyceum.db # Banco SQLite Lyceum (criado em execução)
-├── qstione.db # Banco SQLite Qstione (criado em execução)
+├── lyceum.db
+├── qstione.db
 └── esquema de montagem da view VW_aluno.txt
-
-text
 
 ## 🚀 Começando
 
@@ -166,17 +154,17 @@ text
    cd aluno-sync
 Crie e ative um ambiente virtual:
 
-bash
+
 python -m venv venv
 source venv/bin/activate  # Linux/macOS
 venv\Scripts\activate     # Windows
 Instale as dependências:
 
-bash
+
 pip install -r requirements.txt
 Configure as variáveis de ambiente:
 
-bash
+
 cp .env.example .env
 # Edite o .env com suas credenciais
 ⚙️ Configuração (.env)
@@ -199,7 +187,7 @@ API_DELAY_BETWEEN_REQUESTS=0.1
 Todos os comandos devem ser executados na raiz do projeto com o ambiente virtual ativado.
 
 🔄 Sincronização de Pessoas (Lyceum)
-bash
+
 # Sincronizar todas as pessoas (endpoint /v2/tabela/pessoas)
 python sync/sync_ly_pessoas.py
 
@@ -209,7 +197,7 @@ python sync/sync_ly_pessoa_by_id.py 12345
 # Verificar pessoas em LY_ALUNO que não estão em LY_PESSOA e sincronizá-las
 python reports/sync_pessoas.py
 📋 Sincronização de Outras Entidades Lyceum
-bash
+
 python sync/sync_ly_alunos.py
 python sync/sync_ly_coordenacoes.py
 python sync/sync_ly_curriculos.py
@@ -223,22 +211,22 @@ python sync/sync_ly_provas_disciplinas.py
 python sync/sync_ly_turma_docentes.py
 python sync/sync_ly_turmas.py
 🚀 Runner Unificado (Lyceum)
-bash
+
 # Executa todos os sincronizadores Lyceum que implementam a função run()
 python run_all.py
 🧩 Módulo LXP
-bash
+
 # Executa o fluxo principal do LXP
 python lxp/main.py
 📊 Módulo Qstione (Questionários)
-bash
+
 # Executa o fluxo completo do Qstione (via entry-point simplificado)
 python executar_qstione.py
 
 # Ou, de forma modular:
 python qstione/main.py
 📑 Relatórios e Exportações
-bash
+
 # Gera relatório de alunos (XML e PDF)
 python reports/generators/gerar_relatorio_alunos.py
 
