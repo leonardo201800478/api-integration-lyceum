@@ -1,4 +1,5 @@
 """
+qstione/core/transformacoes.py
 Funções de transformação de dados
 """
 

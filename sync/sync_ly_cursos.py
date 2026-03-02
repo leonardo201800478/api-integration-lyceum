@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """
+sync/sync_ly_cursos.py
 SINCRONIZAÇÃO LY_CURSO
 - Execução direta
 - Sem menu

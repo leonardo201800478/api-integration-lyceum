@@ -1,3 +1,5 @@
+# models/ly_aluno.py
+
 from core.database import execute_query, fetch_all, fetch_one
 import logging
 

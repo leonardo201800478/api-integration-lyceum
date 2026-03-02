@@ -1,3 +1,5 @@
+# qstione/exportadores/sql.py
+
 from core.database import get_db_connection
 from datetime import datetime
 import os

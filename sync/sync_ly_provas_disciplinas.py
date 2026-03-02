@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """
+sync/sync_ly_provas_disciplinas.py
 Sincronizador da tabela LY_PROVA_DISCIP
 Utiliza o cliente ProvaDisciplinaAPIClient para obter dados paginados.
 """

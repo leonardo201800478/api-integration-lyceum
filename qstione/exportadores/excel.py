@@ -1,4 +1,5 @@
 """
+qstione/exportadores/excel.py
 Exportação para Excel no formato de planilha de carga Qstione
 Adaptado para funcionar com dados provenientes dos importadores SQL Server.
 """

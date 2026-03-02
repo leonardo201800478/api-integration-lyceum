@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """
+models/ly_turma_docente.py
 Modelo para tabela LY_TURMA_DOCENTE usando core.database (SQL Server)
 """
 import logging

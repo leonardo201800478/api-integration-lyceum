@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """
+models/ly_prova_discip.py
 Modelo para tabela LY_PROVA_DISCIP (Provas Disciplinas) - SQL Server
 Chave primária composta: (prova, disciplina) ? Ou usar IDENTITY?
 A API retorna uma lista paginada, sem chave natural óbvia. Vamos usar IDENTITY.

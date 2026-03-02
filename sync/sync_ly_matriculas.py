@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """
+sync/sync_ly_matriculas.py
 SINCRONIZAÇÃO LY_MATRICULA
 - Sem menu
 - Sem filtros

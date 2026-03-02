@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """
+models/ly_curso.py
 Modelo para tabela LY_CURSO usando core.database (SQL Server)
 COM chave primária no campo 'curso' - único por curso
 """

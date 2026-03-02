@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """
+models/ly_docente.py
 Modelo para tabela LY_DOCENTE usando core.database (SQL Server)
 SEM chave primária natural - usa IDENTITY.
 """

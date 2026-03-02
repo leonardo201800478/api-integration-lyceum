@@ -1,4 +1,5 @@
 """
+qstone/importadores/imp_008_usuarios_disciplinas.py
 Importador para tabela imp_008_usuarios_disciplinas
 Adaptado para SQL Server usando core.database e alinhado ao imp_002
 """

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """
+sync/sync_ly_turma_docentes.py
 Sincronização da tabela LY_TURMA_DOCENTE
 
 - API Lyceum: SOMENTE GET

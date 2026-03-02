@@ -1,4 +1,5 @@
 """
+sync/sync_ly_coordenacoes.py
 SINCRONIZAÇÃO LY_COORDENACAO
 - Execução direta
 - Sem menu

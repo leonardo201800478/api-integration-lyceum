@@ -1,4 +1,5 @@
 """
+qstione/importadores/imp_001_cursos.py
 Importador para tabela imp_001_cursos
 Adaptado para SQL Server usando core.database
 """

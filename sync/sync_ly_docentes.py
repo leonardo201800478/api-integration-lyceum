@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """
+sync/sync_ly_docentes.py
 Sincronização FULL REFRESH da tabela LY_DOCENTE.
 
 Utiliza o cliente DocenteAPICliente (já implementado) para obter todos os docentes

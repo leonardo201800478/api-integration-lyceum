@@ -1,4 +1,5 @@
 """
+sync/sync_ly_curriculos.py
 SINCRONIZAÇÃO LY_CURRICULO
 - Execução direta
 - Sem menu

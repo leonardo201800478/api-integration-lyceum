@@ -1,4 +1,5 @@
 """
+qstione/importadores/imp_002_disciplina.py
 Importador para tabela imp_002_disciplina
 Adaptado para SQL Server com agregação por disciplina usando curso 999 para compartilhadas.
 """

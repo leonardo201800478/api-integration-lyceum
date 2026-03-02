@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """
+models/ly_pessoa.py
 Modelo para tabela LY_PESSOA usando core.database (SQL Server)
 Chave primária: pessoa (código numérico)
 """

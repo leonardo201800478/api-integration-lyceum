@@ -1,4 +1,5 @@
 """
+qstione/importadores/imp_009_professores_ofertas.py
 Importador para tabela imp_009_professores_ofertas
 Adaptado para SQL Server usando core.database e alinhado ao padrão do projeto.
 """

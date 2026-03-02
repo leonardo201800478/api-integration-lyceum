@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """
+models/ly_matricula.py
 Modelo para tabela LY_MATRICULA usando core.database (SQL Server)
 SEM chave primária natural – usa IDENTITY.
 """

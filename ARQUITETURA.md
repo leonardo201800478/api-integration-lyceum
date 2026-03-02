@@ -22,47 +22,124 @@ O repositório é organizado de forma modular, com os seguintes diretórios e ar
 
 ```
 aluno-sync/
-├── core/                               # Infraestrutura base do projeto
-│   ├── api_client.py                  # Cliente HTTP (somente GET – Lyceum)
-│   ├── config.py                      # Carregamento de variáveis (.env)
-│   ├── database.py                    # Conexão e utilidades SQLite
-│   └── logger.py                      # Configuração central de logs
-├── models/                            # Modelos SQLite – domínio Lyceum
+├── core/
+│   ├── __init__.py
+│   ├── api_client.py
+│   ├── config.py
+│   ├── database.py
+│   └── logger.py
+├── models/
+│   ├── __init__.py
 │   ├── ly_aluno.py
 │   ├── ly_coordenacao.py
-│   ├── ly_curso.py
 │   ├── ly_curriculo.py
+│   ├── ly_curso.py
 │   ├── ly_disciplina.py
-│   ├── ly_turma.py
 │   ├── ly_docente.py
-│   ├── ly_turma_docente.py
 │   ├── ly_grade.py
-│   └── ly_matricula.py
-├── sync/                              # Sincronizadores Lyceum
+│   ├── ly_matricula.py
+│   ├── ly_pessoa.py
+│   ├── ly_prova.py
+│   ├── ly_prova_discip.py
+│   ├── ly_turma.py
+│   └── ly_turma_docente.py
+├── sync/
+│   ├── __init__.py
 │   ├── sync_ly_alunos.py
 │   ├── sync_ly_coordenacoes.py
-│   ├── sync_ly_cursos.py
 │   ├── sync_ly_curriculos.py
+│   ├── sync_ly_cursos.py
 │   ├── sync_ly_disciplinas.py
 │   ├── sync_ly_docentes.py
 │   ├── sync_ly_grades.py
 │   ├── sync_ly_matriculas.py
+│   ├── sync_ly_pessoa_by_id.py
+│   ├── sync_ly_pessoas.py
+│   ├── sync_ly_provas.py
+│   ├── sync_ly_provas_disciplinas.py
+│   ├── sync_ly_turma_docentes.py
 │   └── sync_ly_turmas.py
-├── qstione/                           # Módulo de Questionários (subprojeto interno)
-│   ├── config/                        # Configurações e mapeamentos (e.g., tabelas.py)
-│   ├── core/                          # Núcleo de regras do Qstione (transformacoes.py, validacoes.py)
-│   ├── exportadores/                  # Exportação de dados (excel.py, sql.py)
-│   ├── importadores/                  # Importação de dados externos (e.g., imp_001_cursos.py)
-│   └── main.py                        # Entry-point do módulo Qstione
-├── backups/                           # Backups automáticos dos bancos
-├── exportacoes/                       # Arquivos exportados (CSV / XLSX)
-├── logs/                              # Logs estruturados por execução
-├── .env.example                       # Modelo de configuração
-├── requirements.txt                  # Dependências do projeto
-├── run_all_syncs.py                   # Runner unificado Lyceum
-├── lyceum.db                          # Banco SQLite Lyceum
-└── qstione.db                         # Banco SQLite Qstione
-```
+├── lxp/
+│   ├── config/
+│   │   ├── __init__.py
+│   │   ├── filtros.py
+│   │   └── mapeamentos.py
+│   ├── core/
+│   │   ├── __init__.py
+│   │   ├── crud_course.py
+│   │   └── exportador.py
+│   ├── exportadores/
+│   │   ├── __init__.py
+│   │   ├── exp_001_cursos.py
+│   │   ├── exp_002_curriculum.py
+│   │   ├── exp_003_enrollment.py
+│   │   ├── exp_004_desenturmar_alunos.py
+│   │   ├── exp_005_matriculas.py
+│   │   └── exp_006_pessoas.py
+│   ├── __init__.py
+│   ├── main.py
+│   └── README.md
+├── qstione/
+│   ├── config/
+│   │   ├── criar_tabelas_qstone.sql
+│   │   ├── filtros.py
+│   │   └── tabelas.py
+│   ├── core/
+│   │   ├── transformacoes.py
+│   │   ├── utils_db.py
+│   │   └── validacoes.py
+│   ├── desativadores/
+│   │   ├── des_001_cursos.py
+│   │   └── desativador_base.py
+│   ├── exportadores/
+│   │   ├── ExportadorSQL/
+│   │   ├── excel.py
+│   │   └── sql.py
+│   ├── importadores/
+│   │   ├── imp_001_cursos.py
+│   │   ├── imp_002_disciplina.py
+│   │   ├── imp_003_objetivos.py
+│   │   ├── imp_004_referencias.py
+│   │   ├── imp_005_ofertas.py
+│   │   ├── imp_006_usuario.py
+│   │   ├── imp_007_usuarios_cursos.py
+│   │   └── imp_008_usuarios_disciplinas.py
+│   └── main.py
+├── reports/
+│   ├── exporters/
+│   │   ├── __init__.py
+│   │   ├── base.py
+│   │   ├── excel_exporter.py
+│   │   ├── pdf_exporter.py
+│   │   └── xml_exporter.py
+│   ├── generators/
+│   │   ├── __init__.py
+│   │   ├── gerar_relatorio_alunos.py
+│   │   └── gerar_relatorio_contatos_completo.py
+│   ├── queries/
+│   │   ├── __init__.py
+│   │   ├── relatorio_alunos.py
+│   │   └── relatorio_contatos_filtros.py
+│   └── sync_pessoas.py
+├── backups/
+├── exportacoes/
+├── logs/
+│   └── execucoes/
+├── .env
+├── .env.example
+├── .gitignore
+├── ARQUITETURA.md
+├── README.md
+├── requirements.txt
+├── run_all.py
+├── executar_qstione.py
+├── run_reports.py
+├── test_conexao.py
+├── teste.py
+├── lyceum.db
+├── qstione.db
+└── esquema de montagem da view VW_aluno.txt
+
 
 ## 5. Componentes Principais e Funcionalidades
 

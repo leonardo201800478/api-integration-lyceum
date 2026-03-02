@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """
+sync/sync_ly_pessoas.py
 SINCRONIZAÇÃO LY_PESSOA
 - Execução direta
 - Somente GET na API Lyceum

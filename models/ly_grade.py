@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """
+models/ly_grade.py
 Modelo para tabela LY_GRADE usando core.database (SQL Server)
 SEM chave primária natural – usa IDENTITY.
 """

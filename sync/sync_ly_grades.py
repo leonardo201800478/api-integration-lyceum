@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """
+sync/sync_ly_grades.py
 Sincronização FULL REFRESH da tabela LY_GRADE.
 
 Utiliza o cliente GradeAPIClient via factory (get_grade_client) para obter todas as grades

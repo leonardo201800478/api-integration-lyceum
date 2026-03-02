@@ -1,4 +1,5 @@
 """
+qstione/importadores/imp_011_alunos_ofertas.py
 Importador para tabela imp_011_alunos_ofertas (Alunos das Ofertas de Disciplinas)
 Adaptado para SQL Server – corrigido: PK sem coluna anulável.
 """

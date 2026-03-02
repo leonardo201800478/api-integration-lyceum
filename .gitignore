@@ -1,3 +1,5 @@
+# .gitignore
+
 # Arquivos de ambiente
 venv/
 env/

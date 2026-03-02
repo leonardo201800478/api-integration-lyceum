@@ -1,4 +1,5 @@
 """
+qstione/importadores/imp_005_ofertas.py
 Importador para tabela imp_005_ofertas
 Adaptado para SQL Server com alinhamento ao código de disciplina do imp_002
 """

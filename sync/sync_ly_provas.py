@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """
+sync/sync_ly_provas.py
 Sincronizador da tabela LY_PROVA
 Este sincronizador depende dos dados de LY_PROVA_DISCIP.
 Para cada registro em LY_PROVA_DISCIP, tenta obter os detalhes da prova via API

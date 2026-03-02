@@ -1,4 +1,5 @@
 """
+models/ly_coordenacao.py
 Modelo para tabela LY_COORDENACAO usando core.database (SQL Server)
 Sem constraints NOT NULL - aceita todos os dados da API.
 """

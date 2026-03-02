@@ -1,4 +1,5 @@
 """
+models/ly_curriculo.py
 Modelo para tabela LY_CURRICULO usando core.database (SQL Server)
 SEM CHAVE PRIMÁRIA natural, mas com coluna IDENTITY para controle interno.
 """

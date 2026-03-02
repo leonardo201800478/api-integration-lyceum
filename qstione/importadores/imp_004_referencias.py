@@ -1,4 +1,5 @@
 """
+qstione/importadores/imp_004_referencias.py
 Importador para tabela imp_004_referencias (Referências Bibliográficas das Disciplinas)
 [ESQUELETO - LÓGICA A SER IMPLEMENTADA]
 """

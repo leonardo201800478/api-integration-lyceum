@@ -1,4 +1,5 @@
 -- =============================================================================
+-- qstione/config/criar_tabelas_qstione.sql
 -- Criação das tabelas de importação e desativação do Qstione
 -- Conforme Dicionário de Dados – Versão 1.14.0
 -- =============================================================================

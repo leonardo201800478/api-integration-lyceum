@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """
+
+sync/sync_ly_turmas.py
 Sincronização da tabela LY_TURMA
 - APENAS método GET na API Lyceum
 - Sincronização completa (full refresh)

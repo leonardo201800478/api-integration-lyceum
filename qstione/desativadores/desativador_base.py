@@ -1,4 +1,5 @@
 """
+qstione/desativadores/desativador_base.py
 Módulo genérico para cargas de desativação (DES-001 a DES-012)
 [ESQUELETO - LÓGICA A SER IMPLEMENTADA]
 """

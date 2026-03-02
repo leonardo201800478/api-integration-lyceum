@@ -1,4 +1,5 @@
 """
+qstione/core/validacoes.py
 Módulo de validações para dados do Qstione
 """
 

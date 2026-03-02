@@ -1,4 +1,5 @@
 """
+qstione/config/filtros.py
 Configuração centralizada de filtros para importações do Qstione.
 Ajuste estas constantes a cada novo período letivo.
 """

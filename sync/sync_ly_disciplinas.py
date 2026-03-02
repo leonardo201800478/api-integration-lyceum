@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """
+sync/sync_ly_disciplinas.py
 SINCRONIZAÇÃO LY_DISCIPLINA
 - Execução direta
 - Sem menu

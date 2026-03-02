@@ -1,4 +1,5 @@
 """
+qstioene/importadores/imp_007_usuarios_cursos.py
 Importador para tabela imp_007_usuarios_cursos
 Adaptado para SQL Server com garantia de unicidade por (curso, email)
 """

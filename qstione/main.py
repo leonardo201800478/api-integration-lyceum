@@ -1,4 +1,5 @@
 """
+qstione/main.py
 Script principal para importação e exportação de dados Qstione
 Adaptado para SQL Server (sem conexões SQLite)
 """

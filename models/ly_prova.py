@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """
+models/ly_prova.py
 Modelo para tabela LY_PROVA - SQL Server
 Chave primária composta: (ano, disciplina, prova, semestre, turma)
 """

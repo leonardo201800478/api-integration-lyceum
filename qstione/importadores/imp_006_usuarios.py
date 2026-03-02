@@ -1,4 +1,5 @@
 """
+qstione/importadores/imp_006_usuarios.py
 Importador para tabela imp_006_usuarios
 Adaptado para SQL Server usando core.database
 """

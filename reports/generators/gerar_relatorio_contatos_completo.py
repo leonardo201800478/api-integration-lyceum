@@ -1,3 +1,5 @@
+# reports/generators/gerar_relatorio_contatos_completo.py
+
 from pathlib import Path
 import pandas as pd
 from core.logger import logger

@@ -1,3 +1,5 @@
+# qstione/core/utils_db.py
+
 def tabela_existe(conn, nome_tabela):
     cursor = conn.cursor()
     cursor.execute("SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = ? AND TABLE_TYPE = 'BASE TABLE'", (nome_tabela,))
