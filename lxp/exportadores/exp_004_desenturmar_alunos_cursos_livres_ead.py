@@ -43,8 +43,8 @@ def run() -> bool:
             AND A.unidade_ensino = '002'
             ORDER BY externalEnrollmentId
         """
-        # Usa conexão com o banco 'lyceum.db'
-        with get_db_connection('lyceum.db') as conn:
+        # Usa conexão com o banco 'lyceum.tbl'
+        with get_db_connection('lyceum.tbl') as conn:
             df = pd.read_sql_query(query_lyceum, conn)
         logger.info(f"{len(df)} registros obtidos da tabela LY_ALUNO (alunos inativos).")
 

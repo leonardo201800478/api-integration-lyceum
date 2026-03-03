@@ -16,7 +16,7 @@ class LyMatriculaModel:
     """Modelo para tabela LY_MATRICULA (SQL Server) sem chave primária natural."""
 
     TABLE_NAME = "LY_MATRICULA"
-    DB_NAME = "lyceum.db"  # nome do banco no SQL Server
+    DB_NAME = "lyceum.tbl"  # nome do banco no SQL Server
 
     API_FIELDS = [
         'aluno', 'ano', 'semestre', 'turma', 'disciplina',

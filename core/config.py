@@ -22,7 +22,7 @@ class Config:
     )
 
     # DATABASE
-    DB_NAME = os.getenv("DB_NAME", "lyceum.db")
+    DB_NAME = os.getenv("DB_NAME", "lyceum.tbl")
     DB_LYCEUM_PATH = os.getenv("DB_LYCEUM_PATH", DB_NAME)
 
     # SQL Server (conexão)
@@ -31,9 +31,9 @@ class Config:
     SQL_SERVER_USER = os.getenv('SQL_SERVER_USER', 'sa')
     SQL_SERVER_PASSWORD = os.getenv('SQL_SERVER_PASSWORD')
     SQL_SERVER_DRIVER = os.getenv('SQL_SERVER_DRIVER', '{ODBC Driver 18 for SQL Server}')
-    SQL_SERVER_DATABASE_LYCEUM = os.getenv('SQL_SERVER_DATABASE_LYCEUM', 'lyceum.db')
-    SQL_SERVER_DATABASE_QSTIONE = os.getenv('SQL_SERVER_DATABASE_QSTIONE', 'qstione.db')
-    SQL_SERVER_DATABASE_LXP = os.getenv('SQL_SERVER_DATABASE_LXP', 'lxp.db')
+    SQL_SERVER_DATABASE_LYCEUM = os.getenv('SQL_SERVER_DATABASE_LYCEUM', 'lyceum.tbl')
+    SQL_SERVER_DATABASE_QSTIONE = os.getenv('SQL_SERVER_DATABASE_QSTIONE', 'qstione.tbl')
+    SQL_SERVER_DATABASE_LXP = os.getenv('SQL_SERVER_DATABASE_LXP', 'lxp.tbl')
 
     # Paginação da API
     API_PAGE_START = int(os.getenv("API_PAGE_START", 0))

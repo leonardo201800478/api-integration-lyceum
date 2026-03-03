@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 class LyTurmaModel:
     TABLE_NAME = "LY_TURMA"
-    DB_NAME = "lyceum.db"
+    DB_NAME = "lyceum.tbl"
 
     API_FIELDS = [
         'ano', 'semestre', 'turma', 'disciplina', 'curso', 'curriculo',

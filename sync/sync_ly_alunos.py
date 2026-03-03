@@ -116,7 +116,7 @@ def run(modo: str = "completo") -> Dict[str, int | float]:
             # Modo incremental: compara stamp_atualizacao
             # --------------------------------------------------------------
             if modo == "incremental":
-                with get_db_connection(database_name='lyceum.db') as conn:
+                with get_db_connection(database_name='lyceum.tbl') as conn:
                     row = conn.execute(
                         "SELECT stamp_atualizacao FROM [LY_ALUNO] WHERE aluno = ?",
                         (matricula,)
@@ -136,7 +136,7 @@ def run(modo: str = "completo") -> Dict[str, int | float]:
             AlunoModel.upsert(aluno)
 
             # Contabiliza (consulta simples para manter contadores precisos)
-            with get_db_connection(database_name='lyceum.db') as conn:
+            with get_db_connection(database_name='lyceum.tbl') as conn:
                 existe = conn.execute(
                     "SELECT 1 FROM [LY_ALUNO] WHERE aluno = ?",
                     (matricula,)
@@ -167,7 +167,7 @@ def run(modo: str = "completo") -> Dict[str, int | float]:
     # ----------------------------------------------------------------------
     tempo_total = time.time() - start_time
 
-    with get_db_connection(database_name='lyceum.db') as conn:
+    with get_db_connection(database_name='lyceum.tbl') as conn:
         total_banco = conn.execute(
             "SELECT COUNT(*) FROM [LY_ALUNO]"
         ).fetchone()[0]

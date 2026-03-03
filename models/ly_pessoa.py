@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 class LyPessoaModel:
     TABLE_NAME = "LY_PESSOA"
-    DB_NAME = "lyceum.db"
+    DB_NAME = "lyceum.tbl"
 
     # Lista de campos conforme API (excluindo metadados internos)
     API_FIELDS = [

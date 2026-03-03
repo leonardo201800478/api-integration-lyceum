@@ -25,7 +25,7 @@ def get_dados_alunos():
     """
     
     try:
-        with get_db_connection(database_name='lyceum.db') as conn:
+        with get_db_connection(database_name='lyceum.tbl') as conn:
             df = pd.read_sql_query(query, conn)
         logger.info(f"{len(df)} registros de alunos encontrados.")
         return df

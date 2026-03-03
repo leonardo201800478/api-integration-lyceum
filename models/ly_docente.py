@@ -16,7 +16,7 @@ class LyDocenteModel:
     """Modelo para tabela LY_DOCENTE (SQL Server) sem chave primária natural."""
 
     TABLE_NAME = "LY_DOCENTE"
-    DB_NAME = "lyceum.db"  # nome do banco no SQL Server
+    DB_NAME = "lyceum.tbl"  # nome do banco no SQL Server
 
     API_FIELDS = [
         'cpf', 'num_func', 'agencia', 'ano_ingresso', 'ativo', 'atuacao_profis',

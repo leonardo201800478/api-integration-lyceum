@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 class LyProvaModel:
     TABLE_NAME = "LY_PROVA"
-    DB_NAME = "lyceum.db"
+    DB_NAME = "lyceum.tbl"
 
     API_FIELDS = [
         'ano', 'classificacao', 'complemento', 'data_divulgacao_aol', 'disciplina',

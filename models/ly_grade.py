@@ -16,7 +16,7 @@ class LyGradeModel:
     """Modelo para tabela LY_GRADE (SQL Server) sem chave primária natural."""
 
     TABLE_NAME = "LY_GRADE"
-    DB_NAME = "lyceum.db"  # nome do banco no SQL Server
+    DB_NAME = "lyceum.tbl"  # nome do banco no SQL Server
 
     API_FIELDS = [
         'atividade', 'aulas_sem_ativ', 'aulas_sem_aulas', 'aulas_sem_lab',

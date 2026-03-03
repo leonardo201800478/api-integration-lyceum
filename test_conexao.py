@@ -1,8 +1,8 @@
 from core.database import get_db_connection
 
 try:
-    with get_db_connection(db_path='qstione.db') as conn:
-        print("✅ Conexão com SQL Server (qstione.db) OK")
+    with get_db_connection(db_path='qstione.tbl') as conn:
+        print("✅ Conexão com SQL Server (qstione.tbl) OK")
         cursor = conn.cursor()
         cursor.execute("SELECT 1")
         print("✅ Consulta executada")

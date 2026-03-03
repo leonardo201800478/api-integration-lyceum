@@ -31,7 +31,7 @@ class ImportadorUnidadesAvaliacao:
             )
         """
         try:
-            with get_db_connection(database_name='qstione.db') as conn:
+            with get_db_connection(database_name='qstione.tbl') as conn:
                 conn.execute(create_sql)
                 conn.commit()
             print("✅ Tabela imp_013_unidades_avaliacao verificada/criada.")

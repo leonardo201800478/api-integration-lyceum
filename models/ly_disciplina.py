@@ -16,7 +16,7 @@ class LyDisciplinaModel:
     """Modelo para tabela LY_DISCIPLINA (SQL Server) sem chave primária natural."""
 
     TABLE_NAME = "LY_DISCIPLINA"
-    DB_NAME = "lyceum.db"  # nome do banco no SQL Server
+    DB_NAME = "lyceum.tbl"  # nome do banco no SQL Server
 
     API_FIELDS = [
         'disciplina', 'nome', 'nome_compl', 'nome_fantasia', 'tipo',
