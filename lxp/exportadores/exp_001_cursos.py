@@ -8,25 +8,25 @@ import pandas as pd
 from core.logger import logger
 from core.database import execute_query, fetch_one
 
-print("=== INÍCIO DO SCRIPT ===")
+logger.info("=== INÍCIO DO SCRIPT ===")
 
 def criar_tabela_course():
-    print("Verificando existência da tabela lxp_course...")
+    logger.info("Verificando existência da tabela lxp_course...")
     try:
         query_check = """
             SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES 
             WHERE TABLE_NAME = 'lxp_course'
         """
-        print(f"Executando query: {query_check}")
-        result = fetch_one(query_check, db_path='lxp')
-        print(f"Resultado da query: {result}")
+        logger.debug(f"Executando query: {query_check}")
+        result = fetch_one(query_check, database_name='lxp')
+        logger.debug(f"Resultado da query: {result}")
         if result is None:
-            print("ERRO: fetch_one retornou None. Verifique conexão com banco lxp.")
+            logger.error("fetch_one retornou None. Verifique conexão com banco lxp.")
             return False
         exists = result[0] > 0
-        print(f"Tabela existe? {exists}")
+        logger.info(f"Tabela existe? {exists}")
         if not exists:
-            print("Tabela não existe. Criando...")
+            logger.info("Tabela não existe. Criando...")
             create_sql = """
             CREATE TABLE lxp_course (
                 id INT IDENTITY(1,1) PRIMARY KEY,
@@ -40,20 +40,18 @@ def criar_tabela_course():
                 updated_at DATETIME DEFAULT GETDATE()
             );
             """
-            print("Executando CREATE TABLE...")
-            execute_query(create_sql, db_path='lxp')
-            print("Tabela criada com sucesso.")
+            logger.info("Executando CREATE TABLE...")
+            execute_query(create_sql, database_name='lxp')
+            logger.info("Tabela criada com sucesso.")
         else:
-            print("Tabela já existe.")
+            logger.info("Tabela já existe.")
         return True
     except Exception as e:
-        print(f"EXCEÇÃO em criar_tabela_course: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.exception(f"EXCEÇÃO em criar_tabela_course: {e}")
         return False
 
 def upsert_course(curso_data):
-    print(f"Iniciando upsert para externalId={curso_data['externalId']}")
+    logger.info(f"Iniciando upsert para externalId={curso_data['externalId']}")
     try:
         merge_sql = """
         MERGE lxp_course AS target
@@ -86,22 +84,20 @@ def upsert_course(curso_data):
             curso_data['externalEducationLevelId'],
             curso_data['courseTypeId']
         )
-        print("Executando MERGE...")
-        execute_query(merge_sql, params, db_path='lxp')
-        print("Upsert concluído.")
+        logger.debug("Executando MERGE...")
+        execute_query(merge_sql, params, database_name='lxp')
+        logger.info("Upsert concluído.")
         return True
     except Exception as e:
-        print(f"EXCEÇÃO em upsert_course: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.exception(f"EXCEÇÃO em upsert_course: {e}")
         return False
 
 def run():
-    print(">>> Executando run()")
+    logger.info(">>> Executando run()")
     try:
-        print("Criando diretório de saída...")
+        logger.info("Criando diretório de saída...")
         os.makedirs('exportacoes/lxp', exist_ok=True)
-        print("Diretório OK.")
+        logger.info("Diretório OK.")
 
         curso_fixo = {
             'name': 'AMBIENTAÇÃO E SOFT SKILLS (EAD)',
@@ -111,17 +107,17 @@ def run():
             'externalEducationLevelId': 'c5395622-e684-4921-aaad-c2b98e7263d2',
             'courseTypeId': 'bachelor'
         }
-        print(f"Dados fixos: {curso_fixo}")
+        logger.info(f"Dados fixos: {curso_fixo}")
 
         if not criar_tabela_course():
-            print("Falha na criação/verificação da tabela. Abortando.")
+            logger.error("Falha na criação/verificação da tabela. Abortando.")
             return False
 
         if not upsert_course(curso_fixo):
-            print("Falha no upsert. Abortando.")
+            logger.error("Falha no upsert. Abortando.")
             return False
 
-        print("Gerando CSV...")
+        logger.info("Gerando CSV...")
         dados_csv = [{
             'name': curso_fixo['name'],
             'externalId': curso_fixo['externalId'],
@@ -135,21 +131,19 @@ def run():
                    'externalTeachingModalityId', 'externalEducationLevelId', 
                    'courseTypeId']
         df = df[colunas]
-        print(f"DataFrame criado: {df}")
+        logger.info(f"DataFrame criado: {df}")
 
         caminho = 'exportacoes/lxp/course.unifoa2.csv'
         df.to_csv(caminho, sep=';', index=False, encoding='utf-8-sig')
-        print(f"CSV salvo em: {caminho}")
+        logger.info(f"CSV salvo em: {caminho}")
 
-        print("Fim da execução com sucesso.")
+        logger.info("Fim da execução com sucesso.")
         return True
     except Exception as e:
-        print(f"EXCEÇÃO GERAL NO RUN: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.exception(f"EXCEÇÃO GERAL NO RUN: {e}")
         return False
 
 if __name__ == "__main__":
     sucesso = run()
-    print(f"Resultado final: {sucesso}")
+    logger.info(f"Resultado final: {sucesso}")
     sys.exit(0 if sucesso else 1)

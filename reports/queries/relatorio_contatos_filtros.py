@@ -7,7 +7,7 @@ from core.logger import logger
 def get_dados_contatos_filtros(anos, semestres, unidade_responsavel, curso=None):
     """
     Retorna DataFrame com dados de contatos aplicando filtros.
-    Agora obtém o curso priorizando LY_ALUNO.curso e depois LY_TURMA.curso,
+    Obtém o curso priorizando LY_ALUNO.curso e depois LY_TURMA.curso,
     e garante apenas um registro por aluno (matrícula mais recente).
     """
     logger.info(f"Buscando contatos com filtros: anos={anos}, semestres={semestres}, unidade={unidade_responsavel}, curso={curso}")
@@ -78,11 +78,15 @@ def get_dados_contatos_filtros(anos, semestres, unidade_responsavel, curso=None)
         ORDER BY nome_curso, nome_aluno
     """
     
-    with get_db_connection() as conn:
-        df = pd.read_sql_query(query, conn, params=params)
-    
-    # Substituir NaN por string vazia
-    df = df.fillna('')
-    
-    logger.info(f"{len(df)} registros encontrados.")
-    return df
+    try:
+        with get_db_connection(database_name='lyceum.db') as conn:
+            df = pd.read_sql_query(query, conn, params=params)
+        
+        # Substituir NaN por string vazia
+        df = df.fillna('')
+        
+        logger.info(f"{len(df)} registros encontrados.")
+        return df
+    except Exception as e:
+        logger.error(f"Erro ao executar consulta de contatos: {e}")
+        return pd.DataFrame()

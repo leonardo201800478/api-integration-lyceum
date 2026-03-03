@@ -3,7 +3,7 @@
 from pathlib import Path
 import pandas as pd
 from core.logger import logger
-from reports.exporters.excel_exporter import ExcelExporter  # Novo
+from reports.exporters.excel_exporter import ExcelExporter
 from reports.exporters.pdf_exporter import PDFExporter
 from reports.queries.relatorio_contatos_filtros import get_dados_contatos_filtros
 
@@ -22,15 +22,15 @@ def gerar_relatorio_contatos_completo(anos, semestres, unidade, curso, output_di
     timestamp = pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')
     base_filename = f"contatos_{timestamp}"
     
-    # --- HTML (já existente) ---
+    # --- HTML ---
     html_path = output_dir / f"{base_filename}.html"
     gerar_html(dados, html_path, anos, semestres, unidade, curso)
     
-    # --- Excel (substitui XML) ---
+    # --- Excel ---
     excel_path = output_dir / f"{base_filename}.xlsx"
     ExcelExporter().export(dados, excel_path)
     
-    # --- PDF (melhorado) ---
+    # --- PDF ---
     pdf_path = output_dir / f"{base_filename}.pdf"
     
     # Selecionar e renomear colunas
@@ -49,21 +49,22 @@ def gerar_relatorio_contatos_completo(anos, semestres, unidade, curso, output_di
     colunas_existentes = {k: v for k, v in colunas_exibir.items() if k in dados.columns}
     dados_pdf = dados[list(colunas_existentes.keys())].rename(columns=colunas_existentes)
     
-    # Subtítulo
-    subtitulo = f"Filtros: Anos {anos} | Semestres {semestres} | Unidade {unidade} | Curso: {curso if curso else 'Todos'}"
+    # Texto dos filtros
+    filtros_texto = f"Filtros: Anos {anos} | Semestres {semestres} | Unidade {unidade} | Curso: {curso if curso else 'Todos'}"
     
     PDFExporter(
         titulo="Relatório de Contatos de Alunos",
-        subtitulo=subtitulo,
+        subtitulo=filtros_texto,
         orientacao="paisagem",
-        font_size=6  # Fonte menor para caber mais conteúdo
-    ).export(dados_pdf, pdf_path)
+        font_size=6
+    ).export(dados_pdf, pdf_path, filtros_texto=filtros_texto)
     
     logger.info(f"Relatórios gerados: {html_path}, {excel_path}, {pdf_path}")
     return html_path, excel_path, pdf_path
 
 def gerar_html(dados, output_path, anos, semestres, unidade, curso):
     """Gera arquivo HTML com os dados agrupados por curso."""
+    # (conteúdo inalterado)
     html_content = []
     html_content.append(f"""
     <!DOCTYPE html>

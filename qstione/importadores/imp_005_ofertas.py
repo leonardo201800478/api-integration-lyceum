@@ -10,8 +10,7 @@ from qstione.config.filtros import (
     PERIODOS_VIGENTES,
     FACULDADES_INCLUIDAS,
     AREAS_CONHECIMENTO_INCLUIDAS,
-    SITUACAO_TURMA_VALIDA,
-    SEMESTRE_OFERTA_FIXO
+    SITUACAO_TURMA_VALIDA
 )
 from qstione.core.transformacoes import (
     gerar_codigo_oferta,
@@ -23,8 +22,7 @@ from qstione.core.transformacoes import (
 )
 from qstione.core.validacoes import (
     validar_codigo_disciplina,
-    validar_nome_disciplina,
-    validar_codigo_curso
+    validar_nome_disciplina
 )
 
 
@@ -38,7 +36,7 @@ class ImportadorOfertas:
     # -------------------------------------------------------------------------
     def _tabela_existe(self, nome_tabela: str) -> bool:
         try:
-            with get_db_connection(db_path='qstione.db') as conn:
+            with get_db_connection(database_name='qstione.db') as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     SELECT 1 FROM INFORMATION_SCHEMA.TABLES
@@ -51,7 +49,7 @@ class ImportadorOfertas:
 
     def _indice_existe(self, nome_indice: str) -> bool:
         try:
-            with get_db_connection(db_path='qstione.db') as conn:
+            with get_db_connection(database_name='qstione.db') as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT 1 FROM sys.indexes WHERE name = ?", (nome_indice,))
                 return cursor.fetchone() is not None
@@ -62,7 +60,7 @@ class ImportadorOfertas:
     def _criar_tabela(self):
         if self._tabela_existe('imp_005_ofertas'):
             try:
-                with get_db_connection(db_path='qstione.db') as conn:
+                with get_db_connection(database_name='qstione.db') as conn:
                     cursor = conn.cursor()
                     cursor.execute("""
                         SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
@@ -79,7 +77,7 @@ class ImportadorOfertas:
                         conn.commit()
             except Exception as e:
                 print(f"⚠️  Erro ao verificar colunas: {e}. Recriando tabela...")
-                with get_db_connection(db_path='qstione.db') as conn:
+                with get_db_connection(database_name='qstione.db') as conn:
                     conn.execute("DROP TABLE IF EXISTS imp_005_ofertas")
                     conn.commit()
 
@@ -100,7 +98,7 @@ class ImportadorOfertas:
             )
         """
         try:
-            with get_db_connection(db_path='qstione.db') as conn:
+            with get_db_connection(database_name='qstione.db') as conn:
                 conn.execute(create_sql)
                 conn.commit()
             print("✅ Tabela criada.")
@@ -115,7 +113,7 @@ class ImportadorOfertas:
         for nome_idx, sql_idx in indices:
             if not self._indice_existe(nome_idx):
                 try:
-                    with get_db_connection(db_path='qstione.db') as conn:
+                    with get_db_connection(database_name='qstione.db') as conn:
                         conn.execute(sql_idx)
                         conn.commit()
                     print(f"✅ Índice {nome_idx} criado.")
@@ -150,14 +148,8 @@ class ImportadorOfertas:
         """
         codigos = {}
         try:
-            with get_db_connection(db_path='qstione.db') as conn:
+            with get_db_connection(database_name='qstione.db') as conn:
                 cursor = conn.cursor()
-                # A tabela imp_002_disciplina tem colunas: codigoDisciplina, nomeDisciplina, codigoCurso, periodo
-                # Precisamos relacionar o código original da disciplina (que não está armazenado).
-                # Uma alternativa é extrair a parte antes do '-' do codigoDisciplina, assumindo que o código original é o prefixo.
-                # Exemplo: "12345-ADM" -> disciplina original "12345". Isso é frágil, mas talvez funcione.
-                # Outra opção: modificar o imp_002 para também armazenar o código original em uma coluna, mas isso exige alteração.
-                # Por enquanto, vamos usar uma abordagem de extração, mas é melhor se tivermos uma coluna separada.
                 cursor.execute("""
                     SELECT codigoDisciplina FROM imp_002_disciplina
                 """)
@@ -471,7 +463,7 @@ class ImportadorOfertas:
         total_atualizados = 0
         total_erros = 0
 
-        with get_db_connection(db_path='qstione.db') as conn:
+        with get_db_connection(database_name='qstione.db') as conn:
             cursor = conn.cursor()
             for reg in dados_transformados:
                 try:

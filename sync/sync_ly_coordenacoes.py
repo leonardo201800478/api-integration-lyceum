@@ -26,7 +26,6 @@ if PROJECT_ROOT not in sys.path:
 # ---------------------------------------------------------------------
 from core.config import config
 from core.api_client import get_coordenacao_client
-from core.database import get_db_connection
 from models.ly_coordenacao import LyCoordenacaoModel
 
 # ---------------------------------------------------------------------

@@ -86,7 +86,7 @@ class LyCursoModel:
             SELECT 1 FROM INFORMATION_SCHEMA.TABLES
             WHERE TABLE_NAME = ? AND TABLE_TYPE = 'BASE TABLE'
         """
-        result = fetch_one(query, (cls.TABLE_NAME,), db_path=cls.DB_NAME)
+        result = fetch_one(query, (cls.TABLE_NAME,), database_name=cls.DB_NAME)
         return result is not None
 
     @classmethod
@@ -97,7 +97,7 @@ class LyCursoModel:
             FROM INFORMATION_SCHEMA.COLUMNS
             WHERE TABLE_NAME = ?
         """
-        rows = fetch_all(query, (cls.TABLE_NAME,), db_path=cls.DB_NAME)
+        rows = fetch_all(query, (cls.TABLE_NAME,), database_name=cls.DB_NAME)
         return [row[0] for row in rows] if rows else []
 
     @classmethod
@@ -212,7 +212,7 @@ class LyCursoModel:
         """
 
         try:
-            execute_query(sql, db_path=cls.DB_NAME)
+            execute_query(sql, database_name=cls.DB_NAME)
 
             # Criar índices
             indexes = [
@@ -223,7 +223,7 @@ class LyCursoModel:
             ]
             for idx_sql in indexes:
                 try:
-                    execute_query(idx_sql, db_path=cls.DB_NAME)
+                    execute_query(idx_sql, database_name=cls.DB_NAME)
                 except Exception as e:
                     logger.warning(f"Erro ao criar índice: {e}")
 
@@ -278,7 +278,7 @@ class LyCursoModel:
                     VALUES ({insert_vals});
             """
 
-            execute_query(merge_sql, tuple(values), db_path=cls.DB_NAME)
+            execute_query(merge_sql, tuple(values), database_name=cls.DB_NAME)
             logger.debug(f"Curso {curso_id} upsert realizado com sucesso")
             return True
 
@@ -295,7 +295,7 @@ class LyCursoModel:
         success_count = 0
         error_count = 0
 
-        with get_db_connection(db_path=cls.DB_NAME) as conn:
+        with get_db_connection(database_name=cls.DB_NAME) as conn:
             cursor = conn.cursor()
             columns = cls.API_FIELDS
             col_list = ', '.join([f"[{col}]" for col in columns])
@@ -358,7 +358,7 @@ class LyCursoModel:
 
             results = {}
             for key, query in queries.items():
-                row = fetch_one(query, db_path=cls.DB_NAME)
+                row = fetch_one(query, database_name=cls.DB_NAME)
                 results[key] = row[0] if row else 0
 
             return results
@@ -372,7 +372,7 @@ class LyCursoModel:
         """Retorna todos os cursos da tabela."""
         try:
             sql = f"SELECT * FROM [{cls.TABLE_NAME}] ORDER BY [curso]"
-            rows = fetch_all(sql, db_path=cls.DB_NAME)
+            rows = fetch_all(sql, database_name=cls.DB_NAME)
             if not rows:
                 return []
 
@@ -383,7 +383,7 @@ class LyCursoModel:
                 WHERE TABLE_NAME = ?
                 ORDER BY ORDINAL_POSITION
             """
-            col_rows = fetch_all(col_query, (cls.TABLE_NAME,), db_path=cls.DB_NAME)
+            col_rows = fetch_all(col_query, (cls.TABLE_NAME,), database_name=cls.DB_NAME)
             columns = [row[0] for row in col_rows] if col_rows else []
 
             cursos = []
@@ -405,7 +405,7 @@ class LyCursoModel:
         """Retorna um curso específico pelo código."""
         try:
             sql = f"SELECT * FROM [{cls.TABLE_NAME}] WHERE [curso] = ?"
-            row = fetch_one(sql, (curso_code,), db_path=cls.DB_NAME)
+            row = fetch_one(sql, (curso_code,), database_name=cls.DB_NAME)
             if not row:
                 return None
 
@@ -416,7 +416,7 @@ class LyCursoModel:
                 WHERE TABLE_NAME = ?
                 ORDER BY ORDINAL_POSITION
             """
-            col_rows = fetch_all(col_query, (cls.TABLE_NAME,), db_path=cls.DB_NAME)
+            col_rows = fetch_all(col_query, (cls.TABLE_NAME,), database_name=cls.DB_NAME)
             columns = [col[0] for col in col_rows] if col_rows else []
 
             curso = {}
@@ -434,7 +434,7 @@ class LyCursoModel:
         """Retorna todos os cursos ativos."""
         try:
             sql = f"SELECT * FROM [{cls.TABLE_NAME}] WHERE [ativo] = 'S' ORDER BY [curso]"
-            rows = fetch_all(sql, db_path=cls.DB_NAME)
+            rows = fetch_all(sql, database_name=cls.DB_NAME)
             if not rows:
                 return []
 
@@ -444,7 +444,7 @@ class LyCursoModel:
                 WHERE TABLE_NAME = ?
                 ORDER BY ORDINAL_POSITION
             """
-            col_rows = fetch_all(col_query, (cls.TABLE_NAME,), db_path=cls.DB_NAME)
+            col_rows = fetch_all(col_query, (cls.TABLE_NAME,), database_name=cls.DB_NAME)
             columns = [col[0] for col in col_rows] if col_rows else []
 
             cursos = []

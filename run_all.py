@@ -33,10 +33,10 @@ SYNC_MODULES = [
     ("sync.sync_ly_matriculas", "run"),
     # NOVOS MÓDULOS DE PROVAS
     ("sync.sync_ly_provas_disciplinas", "run"),
-    ("sync.sync_ly_provas", "run"),
+    # ("sync.sync_ly_provas", "run"),  # Comentado até ser finalizado
 ]
 
-DELAY_SECONDS = 3  # Aguardo entre sincronias (bom comportamento)
+DELAY_SECONDS = 3  # Aguardo entre sincronias
 
 # =============================================================================
 # HANDLER PERSONALIZADO PARA CAPTURAR LOGS DOS MÓDULOS

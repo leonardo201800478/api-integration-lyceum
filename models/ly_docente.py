@@ -64,7 +64,7 @@ class LyDocenteModel:
             SELECT 1 FROM INFORMATION_SCHEMA.TABLES
             WHERE TABLE_NAME = ? AND TABLE_TYPE = 'BASE TABLE'
         """
-        result = fetch_one(query, (cls.TABLE_NAME,), db_path=cls.DB_NAME)
+        result = fetch_one(query, (cls.TABLE_NAME,), database_name=cls.DB_NAME)
         return result is not None
 
     @classmethod
@@ -189,7 +189,7 @@ class LyDocenteModel:
         )
         """
         try:
-            execute_query(sql, db_path=cls.DB_NAME)
+            execute_query(sql, database_name=cls.DB_NAME)
 
             # Índices
             indexes = [
@@ -203,7 +203,7 @@ class LyDocenteModel:
             ]
             for idx_sql in indexes:
                 try:
-                    execute_query(idx_sql, db_path=cls.DB_NAME)
+                    execute_query(idx_sql, database_name=cls.DB_NAME)
                 except Exception as e:
                     logger.warning(f"Erro ao criar índice: {e}")
 
@@ -217,7 +217,7 @@ class LyDocenteModel:
     def clear_table(cls):
         try:
             sql = f"DELETE FROM [{cls.TABLE_NAME}]"
-            execute_query(sql, db_path=cls.DB_NAME)
+            execute_query(sql, database_name=cls.DB_NAME)
             logger.info(f"Tabela {cls.TABLE_NAME} limpa.")
             return True
         except Exception as e:
@@ -249,7 +249,7 @@ class LyDocenteModel:
                 INSERT INTO [{cls.TABLE_NAME}] ({cols_str}, [data_atualizacao])
                 VALUES ({placeholders}, GETDATE())
             """
-            execute_query(sql, tuple(values), db_path=cls.DB_NAME)
+            execute_query(sql, tuple(values), database_name=cls.DB_NAME)
             return True
         except Exception as e:
             logger.error(f"Erro ao inserir docente {data.get('cpf')}/{data.get('num_func')}: {e}")
@@ -263,7 +263,7 @@ class LyDocenteModel:
         success = 0
         errors = 0
 
-        with get_db_connection(db_path=cls.DB_NAME) as conn:
+        with get_db_connection(database_name=cls.DB_NAME) as conn:
             cursor = conn.cursor()
             for data in data_list:
                 try:
@@ -313,48 +313,48 @@ class LyDocenteModel:
         }
         results = {}
         for key, q in queries.items():
-            row = fetch_one(q, db_path=cls.DB_NAME)
+            row = fetch_one(q, database_name=cls.DB_NAME)
             results[key] = row[0] if row else 0
         return results
 
     @classmethod
     def get_all_docentes(cls) -> List[Dict]:
         sql = f"SELECT * FROM [{cls.TABLE_NAME}] ORDER BY [nome_compl]"
-        rows = fetch_all(sql, db_path=cls.DB_NAME)
+        rows = fetch_all(sql, database_name=cls.DB_NAME)
         if not rows:
             return []
         col_query = """
             SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
             WHERE TABLE_NAME = ? ORDER BY ORDINAL_POSITION
         """
-        col_rows = fetch_all(col_query, (cls.TABLE_NAME,), db_path=cls.DB_NAME)
+        col_rows = fetch_all(col_query, (cls.TABLE_NAME,), database_name=cls.DB_NAME)
         columns = [r[0] for r in col_rows]
         return [dict(zip(columns, row)) for row in rows]
 
     @classmethod
     def get_by_cpf(cls, cpf: str) -> List[Dict]:
         sql = f"SELECT * FROM [{cls.TABLE_NAME}] WHERE [cpf] = ? ORDER BY [num_func]"
-        rows = fetch_all(sql, (cpf,), db_path=cls.DB_NAME)
+        rows = fetch_all(sql, (cpf,), database_name=cls.DB_NAME)
         if not rows:
             return []
         col_query = """
             SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
             WHERE TABLE_NAME = ? ORDER BY ORDINAL_POSITION
         """
-        col_rows = fetch_all(col_query, (cls.TABLE_NAME,), db_path=cls.DB_NAME)
+        col_rows = fetch_all(col_query, (cls.TABLE_NAME,), database_name=cls.DB_NAME)
         columns = [r[0] for r in col_rows]
         return [dict(zip(columns, row)) for row in rows]
 
     @classmethod
     def get_by_depto(cls, depto: str) -> List[Dict]:
         sql = f"SELECT * FROM [{cls.TABLE_NAME}] WHERE [depto] = ? ORDER BY [nome_compl]"
-        rows = fetch_all(sql, (depto,), db_path=cls.DB_NAME)
+        rows = fetch_all(sql, (depto,), database_name=cls.DB_NAME)
         if not rows:
             return []
         col_query = """
             SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
             WHERE TABLE_NAME = ? ORDER BY ORDINAL_POSITION
         """
-        col_rows = fetch_all(col_query, (cls.TABLE_NAME,), db_path=cls.DB_NAME)
+        col_rows = fetch_all(col_query, (cls.TABLE_NAME,), database_name=cls.DB_NAME)
         columns = [r[0] for r in col_rows]
         return [dict(zip(columns, row)) for row in rows]

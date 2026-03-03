@@ -59,7 +59,7 @@ class LyTurmaModel:
             SELECT 1 FROM INFORMATION_SCHEMA.TABLES
             WHERE TABLE_NAME = ? AND TABLE_TYPE = 'BASE TABLE'
         """
-        result = fetch_one(query, (cls.TABLE_NAME,), db_path=cls.DB_NAME)
+        result = fetch_one(query, (cls.TABLE_NAME,), database_name=cls.DB_NAME)
         return result is not None
 
     @classmethod
@@ -96,12 +96,12 @@ class LyTurmaModel:
             [nivel] NVARCHAR(50),
             [turno] NVARCHAR(20),
             [horario] NVARCHAR(255),
-            [tem_horario] NVARCHAR(2),          -- Aumentado para acomodar valores maiores que 'S'/'N'
+            [tem_horario] NVARCHAR(2),
             [faculdade] NVARCHAR(50),
             [unidade_responsavel] NVARCHAR(100),
             [centro_de_custo] NVARCHAR(50),
             [disciplina_multipla] NVARCHAR(2),
-            [dependencia] NVARCHAR(20),          -- Aumentado para 'SA', 'S', etc.
+            [dependencia] NVARCHAR(20),
             [especial] NVARCHAR(20),
             [turma_integracao] NVARCHAR(20),
             [em_elaboracao] NVARCHAR(20),
@@ -157,9 +157,9 @@ class LyTurmaModel:
         """
 
         try:
-            execute_query(sql, db_path=cls.DB_NAME)
+            execute_query(sql, database_name=cls.DB_NAME)
 
-            # Índices (opcionais, mas recomendados)
+            # Índices
             indexes = [
                 f"CREATE INDEX idx_turma_ano_semestre ON [{cls.TABLE_NAME}]([ano], [semestre])",
                 f"CREATE INDEX idx_turma_disciplina ON [{cls.TABLE_NAME}]([disciplina])",
@@ -170,7 +170,7 @@ class LyTurmaModel:
             ]
             for idx_sql in indexes:
                 try:
-                    execute_query(idx_sql, db_path=cls.DB_NAME)
+                    execute_query(idx_sql, database_name=cls.DB_NAME)
                 except Exception as e:
                     logger.warning(f"Erro ao criar índice: {e}")
 
@@ -184,7 +184,7 @@ class LyTurmaModel:
     def clear_table(cls):
         try:
             sql = f"DELETE FROM [{cls.TABLE_NAME}]"
-            execute_query(sql, db_path=cls.DB_NAME)
+            execute_query(sql, database_name=cls.DB_NAME)
             logger.info(f"Tabela {cls.TABLE_NAME} limpa.")
             return True
         except Exception as e:
@@ -219,7 +219,7 @@ class LyTurmaModel:
                 INSERT INTO [{cls.TABLE_NAME}] ({cols_str}, [data_atualizacao])
                 VALUES ({placeholders}, GETDATE())
             """
-            execute_query(sql, tuple(values), db_path=cls.DB_NAME)
+            execute_query(sql, tuple(values), database_name=cls.DB_NAME)
             return True
         except Exception as e:
             logger.error(f"Erro ao inserir turma {data.get('ano')}/{data.get('semestre')}/{data.get('disciplina')}/{data.get('turma')}: {e}")
@@ -233,7 +233,7 @@ class LyTurmaModel:
         success = 0
         errors = 0
 
-        with get_db_connection(db_path=cls.DB_NAME) as conn:
+        with get_db_connection(database_name=cls.DB_NAME) as conn:
             cursor = conn.cursor()
             for data in data_list:
                 try:
@@ -286,48 +286,48 @@ class LyTurmaModel:
         }
         results = {}
         for key, q in queries.items():
-            row = fetch_one(q, db_path=cls.DB_NAME)
+            row = fetch_one(q, database_name=cls.DB_NAME)
             results[key] = row[0] if row else 0
         return results
 
     @classmethod
     def get_all_turmas(cls) -> List[Dict]:
         sql = f"SELECT * FROM [{cls.TABLE_NAME}] ORDER BY [ano] DESC, [semestre] DESC, [disciplina], [turma]"
-        rows = fetch_all(sql, db_path=cls.DB_NAME)
+        rows = fetch_all(sql, database_name=cls.DB_NAME)
         if not rows:
             return []
         col_query = """
             SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
             WHERE TABLE_NAME = ? ORDER BY ORDINAL_POSITION
         """
-        col_rows = fetch_all(col_query, (cls.TABLE_NAME,), db_path=cls.DB_NAME)
+        col_rows = fetch_all(col_query, (cls.TABLE_NAME,), database_name=cls.DB_NAME)
         columns = [r[0] for r in col_rows]
         return [dict(zip(columns, row)) for row in rows]
 
     @classmethod
     def get_by_ano_semestre(cls, ano: int, semestre: int) -> List[Dict]:
         sql = f"SELECT * FROM [{cls.TABLE_NAME}] WHERE [ano] = ? AND [semestre] = ? ORDER BY [disciplina], [turma]"
-        rows = fetch_all(sql, (ano, semestre), db_path=cls.DB_NAME)
+        rows = fetch_all(sql, (ano, semestre), database_name=cls.DB_NAME)
         if not rows:
             return []
         col_query = """
             SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
             WHERE TABLE_NAME = ? ORDER BY ORDINAL_POSITION
         """
-        col_rows = fetch_all(col_query, (cls.TABLE_NAME,), db_path=cls.DB_NAME)
+        col_rows = fetch_all(col_query, (cls.TABLE_NAME,), database_name=cls.DB_NAME)
         columns = [r[0] for r in col_rows]
         return [dict(zip(columns, row)) for row in rows]
 
     @classmethod
     def get_by_disciplina(cls, disciplina_code: str) -> List[Dict]:
         sql = f"SELECT * FROM [{cls.TABLE_NAME}] WHERE [disciplina] = ? ORDER BY [ano] DESC, [semestre] DESC, [turma]"
-        rows = fetch_all(sql, (disciplina_code,), db_path=cls.DB_NAME)
+        rows = fetch_all(sql, (disciplina_code,), database_name=cls.DB_NAME)
         if not rows:
             return []
         col_query = """
             SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
             WHERE TABLE_NAME = ? ORDER BY ORDINAL_POSITION
         """
-        col_rows = fetch_all(col_query, (cls.TABLE_NAME,), db_path=cls.DB_NAME)
+        col_rows = fetch_all(col_query, (cls.TABLE_NAME,), database_name=cls.DB_NAME)
         columns = [r[0] for r in col_rows]
         return [dict(zip(columns, row)) for row in rows]

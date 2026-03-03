@@ -1,0 +1,8 @@
+Alguns arquivos que usam get_db_connection(db_path=...) precisam ser ajustados. Exemplos:
+
+
+qstione/importadores/imp_013_unidades_avaliacao.py (ajustar construtor)
+
+qstione/importadores/imp_015_conteudos.py (esqueleto, ajustar construtor)
+
+qstione/importadores/imp_016_unidades_organizacionais.py (esqueleto, ajustar construtor)

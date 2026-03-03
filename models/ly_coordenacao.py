@@ -48,7 +48,7 @@ class LyCoordenacaoModel:
             SELECT 1 FROM INFORMATION_SCHEMA.TABLES
             WHERE TABLE_NAME = ?
         """
-        result = fetch_one(query, (cls.TABLE_NAME,), db_path=cls.DB_NAME)
+        result = fetch_one(query, (cls.TABLE_NAME,), database_name=cls.DB_NAME)
         return result is not None
 
     @classmethod
@@ -59,7 +59,7 @@ class LyCoordenacaoModel:
             FROM INFORMATION_SCHEMA.COLUMNS
             WHERE TABLE_NAME = ?
         """
-        rows = fetch_all(query, (cls.TABLE_NAME,), db_path=cls.DB_NAME)
+        rows = fetch_all(query, (cls.TABLE_NAME,), database_name=cls.DB_NAME)
         return [row[0] for row in rows] if rows else []
 
     @classmethod
@@ -68,7 +68,7 @@ class LyCoordenacaoModel:
         try:
             # Remove tabela
             drop_sql = f"DROP TABLE IF EXISTS [{cls.TABLE_NAME}]"
-            execute_query(drop_sql, db_path=cls.DB_NAME)
+            execute_query(drop_sql, database_name=cls.DB_NAME)
             logger.info(f"Tabela {cls.TABLE_NAME} removida (se existia).")
 
             # Cria nova tabela com tipos adequados para SQL Server
@@ -89,7 +89,7 @@ class LyCoordenacaoModel:
                 [data_atualizacao]               DATETIME2 DEFAULT GETDATE()
             )
             """
-            execute_query(create_sql, db_path=cls.DB_NAME)
+            execute_query(create_sql, database_name=cls.DB_NAME)
 
             # Índices
             indexes = [
@@ -101,7 +101,7 @@ class LyCoordenacaoModel:
             ]
             for idx_sql in indexes:
                 try:
-                    execute_query(idx_sql, db_path=cls.DB_NAME)
+                    execute_query(idx_sql, database_name=cls.DB_NAME)
                 except Exception as e:
                     logger.warning(f"Erro ao criar índice: {e}")
 
@@ -157,14 +157,11 @@ class LyCoordenacaoModel:
                 continue
 
             row = []
-            valid = True
             for col in table_columns:
                 raw_val = data.get(col)
                 norm_val = cls._normalize_value(raw_val)
-                # Se o valor for None, insere NULL no banco (aceito)
                 row.append(norm_val)
 
-            # Só adiciona se pelo menos um campo não for None? Não, pode ser tudo None, mas ainda assim insere.
             values_to_insert.append(tuple(row))
             valid_records += 1
 
@@ -181,11 +178,10 @@ class LyCoordenacaoModel:
             VALUES ({placeholders})
         """
 
-        # Executa em lote (pode-se usar executemany, mas execute_query atual não suporta)
-        # Como não temos executemany, faremos um loop com transação manual
+        # Executa em lote com transação manual
         success = 0
         error = 0
-        with get_db_connection(db_path=cls.DB_NAME) as conn:
+        with get_db_connection(database_name=cls.DB_NAME) as conn:
             cursor = conn.cursor()
             for row in values_to_insert:
                 try:
@@ -205,7 +201,7 @@ class LyCoordenacaoModel:
         """Remove todos os registros da tabela."""
         try:
             sql = f"DELETE FROM [{cls.TABLE_NAME}]"
-            execute_query(sql, db_path=cls.DB_NAME)
+            execute_query(sql, database_name=cls.DB_NAME)
             logger.info(f"Tabela {cls.TABLE_NAME} limpa com sucesso.")
             return True
         except Exception as e:
@@ -226,7 +222,7 @@ class LyCoordenacaoModel:
 
             results = {}
             for key, query in queries.items():
-                row = fetch_one(query, db_path=cls.DB_NAME)
+                row = fetch_one(query, database_name=cls.DB_NAME)
                 results[key] = row[0] if row else 0
 
             return results

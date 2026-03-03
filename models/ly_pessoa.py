@@ -75,7 +75,7 @@ class LyPessoaModel:
             SELECT 1 FROM INFORMATION_SCHEMA.TABLES
             WHERE TABLE_NAME = ? AND TABLE_TYPE = 'BASE TABLE'
         """
-        result = fetch_one(query, (cls.TABLE_NAME,), db_path=cls.DB_NAME)
+        result = fetch_one(query, (cls.TABLE_NAME,), database_name=cls.DB_NAME)
         return result is not None
 
     @classmethod
@@ -243,7 +243,7 @@ class LyPessoaModel:
         )
         """
         try:
-            execute_query(sql, db_path=cls.DB_NAME)
+            execute_query(sql, database_name=cls.DB_NAME)
 
             # Índices
             indexes = [
@@ -254,7 +254,7 @@ class LyPessoaModel:
             ]
             for idx in indexes:
                 try:
-                    execute_query(idx, db_path=cls.DB_NAME)
+                    execute_query(idx, database_name=cls.DB_NAME)
                 except Exception as e:
                     logger.warning(f"Erro ao criar índice: {e}")
 
@@ -305,7 +305,7 @@ class LyPessoaModel:
         """
 
         try:
-            execute_query(merge_sql, tuple(values), db_path=cls.DB_NAME)
+            execute_query(merge_sql, tuple(values), database_name=cls.DB_NAME)
             logger.debug(f"Pessoa {pessoa_id} upsert realizada.")
             return True
         except Exception as e:
@@ -345,7 +345,7 @@ class LyPessoaModel:
                 VALUES ({insert_vals});
         """
 
-        with get_db_connection(db_path=cls.DB_NAME) as conn:
+        with get_db_connection(database_name=cls.DB_NAME) as conn:
             cursor = conn.cursor()
             for data in data_list:
                 pessoa_id = cls._normalize_value(data.get('pessoa'))
@@ -375,7 +375,7 @@ class LyPessoaModel:
             }
             results = {}
             for key, query in queries.items():
-                row = fetch_one(query, db_path=cls.DB_NAME)
+                row = fetch_one(query, database_name=cls.DB_NAME)
                 results[key] = row[0] if row else 0
             return results
         except Exception as e:

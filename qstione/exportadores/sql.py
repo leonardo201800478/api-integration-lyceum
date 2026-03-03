@@ -12,7 +12,7 @@ class ExportadorSQL:
         caminho_arquivo = os.path.join(pasta_saida, nome_arquivo)
 
         try:
-            with get_db_connection(db_path='qstione.db') as conn:
+            with get_db_connection(database_name='qstione.db') as conn:
                 cursor = conn.cursor()
                 with open(caminho_arquivo, 'w', encoding='utf-8') as f:
                     f.write(f"-- Backup do banco Qstione (SQL Server)\n")
@@ -44,6 +44,7 @@ class ExportadorSQL:
                                 if valor is None:
                                     valores.append("NULL")
                                 elif isinstance(valor, str):
+                                    # Escapar aspas simples
                                     valor_escapado = valor.replace("'", "''")
                                     valores.append(f"'{valor_escapado}'")
                                 elif isinstance(valor, (int, float)):

@@ -16,12 +16,19 @@ class BaseAPIClient:
     """
 
     def __init__(self, session: Optional[requests.Session] = None):
-        if not all([
-            config.LYCEUM_BASE_URL,
-            config.LYCEUM_USERNAME,
-            config.LYCEUM_PASSWORD
-        ]):
-            raise RuntimeError("Credenciais da API Lyceum não carregadas corretamente")
+        # Verificação detalhada das credenciais
+        missing = []
+        if not config.LYCEUM_BASE_URL:
+            missing.append("LYCEUM_BASE_URL")
+        if not config.LYCEUM_USERNAME:
+            missing.append("LYCEUM_USERNAME")
+        if not config.LYCEUM_PASSWORD:
+            missing.append("LYCEUM_PASSWORD")
+
+        if missing:
+            raise RuntimeError(
+                f"Credenciais da API Lyceum incompletas. Variáveis faltando no .env: {', '.join(missing)}"
+            )
 
         self.base_url = config.LYCEUM_BASE_URL.rstrip("/")
         self.auth = (config.LYCEUM_USERNAME, config.LYCEUM_PASSWORD)

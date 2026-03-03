@@ -1,5 +1,5 @@
+# sync/sync_ly_alunos.py
 """
-sync/sync_ly_alunos.py
 Sincronização de alunos da API Lyceum para a tabela LY_ALUNO (SQL Server)
 
 Execução recomendada:
@@ -69,7 +69,15 @@ def run(modo: str = "completo") -> Dict[str, int | float]:
 
     if not alunos_api:
         logger.warning("API retornou lista vazia ou None")
-        return {"total_api": 0, "total_banco": 0, "inseridos": 0, "atualizados": 0, "ignorados": 0, "erros": 0, "tempo_total": time.time() - start_time}
+        return {
+            "total_api": 0,
+            "total_banco": 0,
+            "inseridos": 0,
+            "atualizados": 0,
+            "ignorados": 0,
+            "erros": 0,
+            "tempo_total": time.time() - start_time
+        }
 
     logger.info("Registros recebidos da API: %s", len(alunos_api))
 
@@ -108,7 +116,7 @@ def run(modo: str = "completo") -> Dict[str, int | float]:
             # Modo incremental: compara stamp_atualizacao
             # --------------------------------------------------------------
             if modo == "incremental":
-                with get_db_connection() as conn:
+                with get_db_connection(database_name='lyceum.db') as conn:
                     row = conn.execute(
                         "SELECT stamp_atualizacao FROM [LY_ALUNO] WHERE aluno = ?",
                         (matricula,)
@@ -127,10 +135,8 @@ def run(modo: str = "completo") -> Dict[str, int | float]:
             # --------------------------------------------------------------
             AlunoModel.upsert(aluno)
 
-            # Contabiliza (não precisamos verificar existência novamente,
-            # pois o modelo pode retornar essa informação, mas aqui faremos
-            # uma consulta simples para manter os contadores precisos)
-            with get_db_connection() as conn:
+            # Contabiliza (consulta simples para manter contadores precisos)
+            with get_db_connection(database_name='lyceum.db') as conn:
                 existe = conn.execute(
                     "SELECT 1 FROM [LY_ALUNO] WHERE aluno = ?",
                     (matricula,)
@@ -161,7 +167,7 @@ def run(modo: str = "completo") -> Dict[str, int | float]:
     # ----------------------------------------------------------------------
     tempo_total = time.time() - start_time
 
-    with get_db_connection() as conn:
+    with get_db_connection(database_name='lyceum.db') as conn:
         total_banco = conn.execute(
             "SELECT COUNT(*) FROM [LY_ALUNO]"
         ).fetchone()[0]

@@ -22,6 +22,7 @@ from qstione.importadores.imp_015_conteudos import ImportadorConteudos
 from qstione.importadores.imp_016_unidades_organizacionais import ImportadorUnidadesOrganizacionais
 from qstione.exportadores.excel import ExportadorExcel
 from qstione.exportadores.sql import ExportadorSQL
+from core.database import get_db_connection
 
 
 class GestorQstione:
@@ -226,8 +227,7 @@ class GestorQstione:
         print(f"VERIFICAÇÃO DA TABELA: {nome_tabela}")
         print("="*60)
         try:
-            from core.database import get_db_connection
-            with get_db_connection(db_path='qstione.db') as conn:
+            with get_db_connection(database_name='qstione.db') as conn:
                 cursor = conn.cursor()
                 cursor.execute(f"SELECT COUNT(*) FROM {nome_tabela}")
                 total = cursor.fetchone()[0]

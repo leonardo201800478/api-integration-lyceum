@@ -51,7 +51,7 @@ class LyGradeModel:
             SELECT 1 FROM INFORMATION_SCHEMA.TABLES
             WHERE TABLE_NAME = ? AND TABLE_TYPE = 'BASE TABLE'
         """
-        result = fetch_one(query, (cls.TABLE_NAME,), db_path=cls.DB_NAME)
+        result = fetch_one(query, (cls.TABLE_NAME,), database_name=cls.DB_NAME)
         return result is not None
 
     @classmethod
@@ -104,7 +104,7 @@ class LyGradeModel:
         """
 
         try:
-            execute_query(sql, db_path=cls.DB_NAME)
+            execute_query(sql, database_name=cls.DB_NAME)
 
             # Índices
             indexes = [
@@ -116,7 +116,7 @@ class LyGradeModel:
             ]
             for idx_sql in indexes:
                 try:
-                    execute_query(idx_sql, db_path=cls.DB_NAME)
+                    execute_query(idx_sql, database_name=cls.DB_NAME)
                 except Exception as e:
                     logger.warning(f"Erro ao criar índice: {e}")
 
@@ -131,7 +131,7 @@ class LyGradeModel:
         """Remove todos os registros da tabela."""
         try:
             sql = f"DELETE FROM [{cls.TABLE_NAME}]"
-            execute_query(sql, db_path=cls.DB_NAME)
+            execute_query(sql, database_name=cls.DB_NAME)
             logger.info(f"Tabela {cls.TABLE_NAME} limpa.")
             return True
         except Exception as e:
@@ -166,7 +166,7 @@ class LyGradeModel:
                 INSERT INTO [{cls.TABLE_NAME}] ({cols_str}, [data_atualizacao])
                 VALUES ({placeholders}, GETDATE())
             """
-            execute_query(sql, tuple(values), db_path=cls.DB_NAME)
+            execute_query(sql, tuple(values), database_name=cls.DB_NAME)
             return True
         except Exception as e:
             logger.error(f"Erro ao inserir grade {data.get('curriculo')}/{data.get('curso')}/{data.get('disciplina')}: {e}")
@@ -181,7 +181,7 @@ class LyGradeModel:
         success = 0
         errors = 0
 
-        with get_db_connection(db_path=cls.DB_NAME) as conn:
+        with get_db_connection(database_name=cls.DB_NAME) as conn:
             cursor = conn.cursor()
             for data in data_list:
                 try:
@@ -234,7 +234,7 @@ class LyGradeModel:
         }
         results = {}
         for key, q in queries.items():
-            row = fetch_one(q, db_path=cls.DB_NAME)
+            row = fetch_one(q, database_name=cls.DB_NAME)
             results[key] = row[0] if row else 0
         return results
 
@@ -242,14 +242,14 @@ class LyGradeModel:
     def get_all_grades(cls) -> List[Dict]:
         """Retorna todas as grades da tabela."""
         sql = f"SELECT * FROM [{cls.TABLE_NAME}] ORDER BY [curriculo], [curso], [serie_ideal], [disciplina]"
-        rows = fetch_all(sql, db_path=cls.DB_NAME)
+        rows = fetch_all(sql, database_name=cls.DB_NAME)
         if not rows:
             return []
         col_query = """
             SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
             WHERE TABLE_NAME = ? ORDER BY ORDINAL_POSITION
         """
-        col_rows = fetch_all(col_query, (cls.TABLE_NAME,), db_path=cls.DB_NAME)
+        col_rows = fetch_all(col_query, (cls.TABLE_NAME,), database_name=cls.DB_NAME)
         columns = [r[0] for r in col_rows]
         return [dict(zip(columns, row)) for row in rows]
 
@@ -257,14 +257,14 @@ class LyGradeModel:
     def get_by_curriculo_curso(cls, curriculo: str, curso: str) -> List[Dict]:
         """Retorna todas as grades de um currículo e curso específicos."""
         sql = f"SELECT * FROM [{cls.TABLE_NAME}] WHERE [curriculo] = ? AND [curso] = ? ORDER BY [serie_ideal], [disciplina]"
-        rows = fetch_all(sql, (curriculo, curso), db_path=cls.DB_NAME)
+        rows = fetch_all(sql, (curriculo, curso), database_name=cls.DB_NAME)
         if not rows:
             return []
         col_query = """
             SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
             WHERE TABLE_NAME = ? ORDER BY ORDINAL_POSITION
         """
-        col_rows = fetch_all(col_query, (cls.TABLE_NAME,), db_path=cls.DB_NAME)
+        col_rows = fetch_all(col_query, (cls.TABLE_NAME,), database_name=cls.DB_NAME)
         columns = [r[0] for r in col_rows]
         return [dict(zip(columns, row)) for row in rows]
 
@@ -272,14 +272,14 @@ class LyGradeModel:
     def get_by_curso(cls, curso: str) -> List[Dict]:
         """Retorna todas as grades de um curso específico."""
         sql = f"SELECT * FROM [{cls.TABLE_NAME}] WHERE [curso] = ? ORDER BY [curriculo], [serie_ideal], [disciplina]"
-        rows = fetch_all(sql, (curso,), db_path=cls.DB_NAME)
+        rows = fetch_all(sql, (curso,), database_name=cls.DB_NAME)
         if not rows:
             return []
         col_query = """
             SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
             WHERE TABLE_NAME = ? ORDER BY ORDINAL_POSITION
         """
-        col_rows = fetch_all(col_query, (cls.TABLE_NAME,), db_path=cls.DB_NAME)
+        col_rows = fetch_all(col_query, (cls.TABLE_NAME,), database_name=cls.DB_NAME)
         columns = [r[0] for r in col_rows]
         return [dict(zip(columns, row)) for row in rows]
 
@@ -287,13 +287,13 @@ class LyGradeModel:
     def get_by_disciplina(cls, disciplina: str) -> List[Dict]:
         """Retorna todas as grades de uma disciplina específica."""
         sql = f"SELECT * FROM [{cls.TABLE_NAME}] WHERE [disciplina] = ? ORDER BY [curriculo], [curso], [serie_ideal]"
-        rows = fetch_all(sql, (disciplina,), db_path=cls.DB_NAME)
+        rows = fetch_all(sql, (disciplina,), database_name=cls.DB_NAME)
         if not rows:
             return []
         col_query = """
             SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
             WHERE TABLE_NAME = ? ORDER BY ORDINAL_POSITION
         """
-        col_rows = fetch_all(col_query, (cls.TABLE_NAME,), db_path=cls.DB_NAME)
+        col_rows = fetch_all(col_query, (cls.TABLE_NAME,), database_name=cls.DB_NAME)
         columns = [r[0] for r in col_rows]
         return [dict(zip(columns, row)) for row in rows]

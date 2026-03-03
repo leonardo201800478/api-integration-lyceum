@@ -50,7 +50,7 @@ class LyTurmaDocenteModel:
             SELECT 1 FROM INFORMATION_SCHEMA.TABLES
             WHERE TABLE_NAME = ? AND TABLE_TYPE = 'BASE TABLE'
         """
-        result = fetch_one(query, (cls.TABLE_NAME,), db_path=cls.DB_NAME)
+        result = fetch_one(query, (cls.TABLE_NAME,), database_name=cls.DB_NAME)
         return result is not None
 
     @classmethod
@@ -102,7 +102,7 @@ class LyTurmaDocenteModel:
         """
 
         try:
-            execute_query(sql, db_path=cls.DB_NAME)
+            execute_query(sql, database_name=cls.DB_NAME)
 
             # Índices
             indexes = [
@@ -114,7 +114,7 @@ class LyTurmaDocenteModel:
             ]
             for idx_sql in indexes:
                 try:
-                    execute_query(idx_sql, db_path=cls.DB_NAME)
+                    execute_query(idx_sql, database_name=cls.DB_NAME)
                 except Exception as e:
                     logger.warning(f"Erro ao criar índice: {e}")
 
@@ -129,7 +129,7 @@ class LyTurmaDocenteModel:
         """Limpa a tabela completamente."""
         try:
             sql = f"DELETE FROM [{cls.TABLE_NAME}]"
-            execute_query(sql, db_path=cls.DB_NAME)
+            execute_query(sql, database_name=cls.DB_NAME)
             logger.info(f"Tabela {cls.TABLE_NAME} limpa.")
             return True
         except Exception as e:
@@ -145,7 +145,7 @@ class LyTurmaDocenteModel:
         success = 0
         errors = 0
 
-        with get_db_connection(db_path=cls.DB_NAME) as conn:
+        with get_db_connection(database_name=cls.DB_NAME) as conn:
             cursor = conn.cursor()
             for data in data_list:
                 try:
@@ -195,6 +195,6 @@ class LyTurmaDocenteModel:
         }
         results = {}
         for key, q in queries.items():
-            row = fetch_one(q, db_path=cls.DB_NAME)
+            row = fetch_one(q, database_name=cls.DB_NAME)
             results[key] = row[0] if row else 0
         return results

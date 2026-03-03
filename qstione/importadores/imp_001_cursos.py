@@ -1,12 +1,6 @@
-"""
-qstione/importadores/imp_001_cursos.py
-Importador para tabela imp_001_cursos
-Adaptado para SQL Server usando core.database
-"""
-
+# qstione/importadores/imp_001_cursos.py
 from core.database import get_db_connection
 from qstione.core.transformacoes import (
-    converter_inteiro,
     valor_fixo_4000000001,
     truncar_texto
 )
@@ -24,7 +18,7 @@ class ImportadorCursos:
 
     def _tabela_existe(self, nome_tabela: str) -> bool:
         try:
-            with get_db_connection(db_path='qstione.db') as conn:
+            with get_db_connection(database_name='qstione.db') as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     SELECT 1 FROM INFORMATION_SCHEMA.TABLES
@@ -37,7 +31,7 @@ class ImportadorCursos:
 
     def _indice_existe(self, nome_indice: str) -> bool:
         try:
-            with get_db_connection(db_path='qstione.db') as conn:
+            with get_db_connection(database_name='qstione.db') as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT 1 FROM sys.indexes WHERE name = ?", (nome_indice,))
                 return cursor.fetchone() is not None
@@ -63,7 +57,7 @@ class ImportadorCursos:
             )
         """
         try:
-            with get_db_connection(db_path='qstione.db') as conn:
+            with get_db_connection(database_name='qstione.db') as conn:
                 conn.execute(create_sql)
                 conn.commit()
             print("✅ Tabela criada.")
@@ -73,7 +67,7 @@ class ImportadorCursos:
 
         if not self._indice_existe('idx_cursos_nome'):
             try:
-                with get_db_connection(db_path='qstione.db') as conn:
+                with get_db_connection(database_name='qstione.db') as conn:
                     conn.execute("CREATE INDEX idx_cursos_nome ON imp_001_cursos(nomeCurso)")
                     conn.commit()
                 print("✅ Índice criado.")
@@ -111,10 +105,8 @@ class ImportadorCursos:
         for registro in dados_lyceum:
             curso, nome, prazo_ideal = registro
 
-            # Primeiro trunca o nome para 64 caracteres (limite da tabela)
             nome_curso = truncar_texto(nome, 64)
 
-            # Validações (agora com nome já truncado)
             if not validar_codigo_curso(curso):
                 print(f"  ⚠️  Código do curso inválido: {curso}")
                 continue
@@ -123,11 +115,12 @@ class ImportadorCursos:
                 print(f"  ⚠️  Nome do curso inválido após truncagem: {nome_curso}")
                 continue
 
-            if not validar_quant_periodos(prazo_ideal):
+            # Aproveita o retorno da validação
+            quant_periodos = validar_quant_periodos(prazo_ideal)
+            if quant_periodos is None:
                 print(f"  ⚠️  Quantidade de períodos inválida: {prazo_ideal} para o curso {curso}")
                 continue
 
-            quant_periodos = converter_inteiro(prazo_ideal)
             codigo_unidade = valor_fixo_4000000001(None)
 
             dados_transformados.append({
@@ -158,7 +151,7 @@ class ImportadorCursos:
         total_atualizados = 0
         total_erros = 0
 
-        with get_db_connection(db_path='qstione.db') as conn:
+        with get_db_connection(database_name='qstione.db') as conn:
             cursor = conn.cursor()
             for reg in dados_transformados:
                 try:
