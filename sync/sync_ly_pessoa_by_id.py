@@ -14,7 +14,7 @@ def pessoa_existe_no_banco(cod_pessoa: int) -> bool:
     """Verifica se a pessoa já existe na tabela LY_PESSOA pela chave 'pessoa'."""
     query = "SELECT 1 FROM LY_PESSOA WHERE pessoa = ?"
     # CORREÇÃO: usar database_name em vez de db_path
-    result = fetch_one(query, (cod_pessoa,), database_name='lyceum.tbl')
+    result = fetch_one(query, (cod_pessoa,), database_name='lyceum')
     return result is not None
 
 def buscar_e_salvar_pessoa_por_id(cod_pessoa: int, buscar_alunos: bool = True) -> dict | None:

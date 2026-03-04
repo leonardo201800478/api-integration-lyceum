@@ -36,7 +36,7 @@ class ImportadorOfertas:
     # -------------------------------------------------------------------------
     def _tabela_existe(self, nome_tabela: str) -> bool:
         try:
-            with get_db_connection(database_name='qstione.tbl') as conn:
+            with get_db_connection(database_name='qstione') as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     SELECT 1 FROM INFORMATION_SCHEMA.TABLES
@@ -49,7 +49,7 @@ class ImportadorOfertas:
 
     def _indice_existe(self, nome_indice: str) -> bool:
         try:
-            with get_db_connection(database_name='qstione.tbl') as conn:
+            with get_db_connection(database_name='qstione') as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT 1 FROM sys.indexes WHERE name = ?", (nome_indice,))
                 return cursor.fetchone() is not None
@@ -60,7 +60,7 @@ class ImportadorOfertas:
     def _criar_tabela(self):
         if self._tabela_existe('imp_005_ofertas'):
             try:
-                with get_db_connection(database_name='qstione.tbl') as conn:
+                with get_db_connection(database_name='qstione') as conn:
                     cursor = conn.cursor()
                     cursor.execute("""
                         SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
@@ -77,7 +77,7 @@ class ImportadorOfertas:
                         conn.commit()
             except Exception as e:
                 print(f"⚠️  Erro ao verificar colunas: {e}. Recriando tabela...")
-                with get_db_connection(database_name='qstione.tbl') as conn:
+                with get_db_connection(database_name='qstione') as conn:
                     conn.execute("DROP TABLE IF EXISTS imp_005_ofertas")
                     conn.commit()
 
@@ -98,7 +98,7 @@ class ImportadorOfertas:
             )
         """
         try:
-            with get_db_connection(database_name='qstione.tbl') as conn:
+            with get_db_connection(database_name='qstione') as conn:
                 conn.execute(create_sql)
                 conn.commit()
             print("✅ Tabela criada.")
@@ -113,7 +113,7 @@ class ImportadorOfertas:
         for nome_idx, sql_idx in indices:
             if not self._indice_existe(nome_idx):
                 try:
-                    with get_db_connection(database_name='qstione.tbl') as conn:
+                    with get_db_connection(database_name='qstione') as conn:
                         conn.execute(sql_idx)
                         conn.commit()
                     print(f"✅ Índice {nome_idx} criado.")
@@ -148,7 +148,7 @@ class ImportadorOfertas:
         """
         codigos = {}
         try:
-            with get_db_connection(database_name='qstione.tbl') as conn:
+            with get_db_connection(database_name='qstione') as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     SELECT codigoDisciplina FROM imp_002_disciplina
@@ -463,7 +463,7 @@ class ImportadorOfertas:
         total_atualizados = 0
         total_erros = 0
 
-        with get_db_connection(database_name='qstione.tbl') as conn:
+        with get_db_connection(database_name='qstione') as conn:
             cursor = conn.cursor()
             for reg in dados_transformados:
                 try:

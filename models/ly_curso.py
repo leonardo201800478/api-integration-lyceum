@@ -16,7 +16,7 @@ class LyCursoModel:
     """Modelo para tabela LY_CURSO com chave primária (SQL Server)."""
 
     TABLE_NAME = "LY_CURSO"
-    DB_NAME = "lyceum.tbl"  # nome do banco no SQL Server
+    DB_NAME = "lyceum"  # nome do banco no SQL Server
 
     # Lista de campos da API para mapeamento (exclui metadados)
     API_FIELDS = [

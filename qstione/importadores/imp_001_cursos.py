@@ -18,7 +18,7 @@ class ImportadorCursos:
 
     def _tabela_existe(self, nome_tabela: str) -> bool:
         try:
-            with get_db_connection(database_name='qstione.tbl') as conn:
+            with get_db_connection(database_name='qstione') as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     SELECT 1 FROM INFORMATION_SCHEMA.TABLES
@@ -31,7 +31,7 @@ class ImportadorCursos:
 
     def _indice_existe(self, nome_indice: str) -> bool:
         try:
-            with get_db_connection(database_name='qstione.tbl') as conn:
+            with get_db_connection(database_name='qstione') as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT 1 FROM sys.indexes WHERE name = ?", (nome_indice,))
                 return cursor.fetchone() is not None
@@ -57,7 +57,7 @@ class ImportadorCursos:
             )
         """
         try:
-            with get_db_connection(database_name='qstione.tbl') as conn:
+            with get_db_connection(database_name='qstione') as conn:
                 conn.execute(create_sql)
                 conn.commit()
             print("✅ Tabela criada.")
@@ -67,7 +67,7 @@ class ImportadorCursos:
 
         if not self._indice_existe('idx_cursos_nome'):
             try:
-                with get_db_connection(database_name='qstione.tbl') as conn:
+                with get_db_connection(database_name='qstione') as conn:
                     conn.execute("CREATE INDEX idx_cursos_nome ON imp_001_cursos(nomeCurso)")
                     conn.commit()
                 print("✅ Índice criado.")
@@ -151,7 +151,7 @@ class ImportadorCursos:
         total_atualizados = 0
         total_erros = 0
 
-        with get_db_connection(database_name='qstione.tbl') as conn:
+        with get_db_connection(database_name='qstione') as conn:
             cursor = conn.cursor()
             for reg in dados_transformados:
                 try:

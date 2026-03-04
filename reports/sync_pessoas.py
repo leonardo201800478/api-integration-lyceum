@@ -21,7 +21,7 @@ def verificar_e_sincronizar_pessoas():
         WHERE P.pessoa IS NULL AND A.pessoa IS NOT NULL
     """
     
-    with get_db_connection(database_name='lyceum.tbl') as conn:
+    with get_db_connection(database_name='lyceum') as conn:
         cursor = conn.cursor()
         cursor.execute(query_faltantes)
         faltantes = [row[0] for row in cursor.fetchall()]

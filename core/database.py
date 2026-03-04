@@ -14,7 +14,7 @@ def _resolve_database_name(database_name: str | None) -> str:
 def get_db_connection(database_name: str | None = None):
     """
     Retorna uma conexão pyodbc com o SQL Server.
-    :param database_name: Nome do banco de dados (ex: 'lyceum.tbl', 'qstione.tbl').
+    :param database_name: Nome do banco de dados (ex: 'lyceum', 'qstione').
     """
     database = _resolve_database_name(database_name)
 

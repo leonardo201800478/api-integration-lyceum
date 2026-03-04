@@ -15,7 +15,7 @@ class LyCurriculoModel:
     """Modelo para tabela LY_CURRICULO (SQL Server) sem chave primária natural."""
 
     TABLE_NAME = "LY_CURRICULO"
-    DB_NAME = "lyceum.tbl"  # Nome do banco no SQL Server
+    DB_NAME = "lyceum"  # Nome do banco no SQL Server
 
     # Lista de campos da API para mapeamento
     API_FIELDS = [

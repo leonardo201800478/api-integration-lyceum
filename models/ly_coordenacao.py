@@ -16,7 +16,7 @@ class LyCoordenacaoModel:
     """Modelo para tabela LY_COORDENACAO - SQL Server"""
 
     TABLE_NAME = "LY_COORDENACAO"
-    DB_NAME = "lyceum.tbl"  # nome do banco no SQL Server
+    DB_NAME = "lyceum"  # nome do banco no SQL Server
 
     # Campos esperados da API (excluindo metadados)
     API_FIELDS = [

@@ -14,7 +14,7 @@ class LyTurmaDocenteModel:
     """Modelo para tabela LY_TURMA_DOCENTE (SQL Server)"""
 
     TABLE_NAME = "LY_TURMA_DOCENTE"
-    DB_NAME = "lyceum.tbl"  # nome do banco no SQL Server
+    DB_NAME = "lyceum"  # nome do banco no SQL Server
 
     # Lista de campos da API para mapeamento
     API_FIELDS = [

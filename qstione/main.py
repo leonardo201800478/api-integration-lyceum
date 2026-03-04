@@ -216,7 +216,7 @@ class GestorQstione:
         print("⚠️  Exportação SQL ainda não adaptada para SQL Server.")
         return None
         # exportador = ExportadorSQL()
-        # arquivo = exportador.exportar_banco_completo('qstione.tbl', 'backups')
+        # arquivo = exportador.exportar_banco_completo('qstione', 'backups')
         # return arquivo
 
     # ----------------------------------------------------------------------
@@ -227,7 +227,7 @@ class GestorQstione:
         print(f"VERIFICAÇÃO DA TABELA: {nome_tabela}")
         print("="*60)
         try:
-            with get_db_connection(database_name='qstione.tbl') as conn:
+            with get_db_connection(database_name='qstione') as conn:
                 cursor = conn.cursor()
                 cursor.execute(f"SELECT COUNT(*) FROM {nome_tabela}")
                 total = cursor.fetchone()[0]

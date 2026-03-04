@@ -44,7 +44,7 @@ def criar_tabela_enrollment():
                 updated_at DATETIME DEFAULT GETDATE()
             );
             """
-            execute_query(create_sql, db_path='lxp.tbl')
+            execute_query(create_sql, db_path='lxp')
             logger.info("Tabela lxp_enrollment_class_subject criada com sucesso.")
         else:
             logger.info("Tabela já existe.")
@@ -104,7 +104,7 @@ def upsert_enrollment_batch(df):
                 row['externalEnrollmentTypeId'] if pd.notna(row['externalEnrollmentTypeId']) else None,
                 row['ext.info.tags'] if pd.notna(row['ext.info.tags']) else None
             )
-            execute_query(merge_sql, params, db_path='lxp.tbl')
+            execute_query(merge_sql, params, db_path='lxp')
             success_count += 1
         except Exception as e:
             logger.error(f"Erro no upsert para externalEnrollmentId={row['externalEnrollmentId']}: {e}")
@@ -114,7 +114,7 @@ def upsert_enrollment_batch(df):
 def run() -> bool:
     """
     Exporta dados de enturmações para o arquivo enrollment-class-subject.unifoa2.csv
-    e sincroniza a tabela lxp_enrollment_class_subject no banco lxp.tbl.
+    e sincroniza a tabela lxp_enrollment_class_subject no banco lxp.
     """
     logger.info("=== INÍCIO DA EXPORTAÇÃO DE ENTURMAÇÕES ===")
     try:
@@ -139,8 +139,8 @@ def run() -> bool:
             AND a.unidade_ensino = '002'
             ORDER BY externalEnrollmentId
         """
-        # Usa conexão com o banco 'lyceum.tbl'
-        with get_db_connection('lyceum.tbl') as conn:
+        # Usa conexão com o banco 'lyceum'
+        with get_db_connection('lyceum') as conn:
             df = pd.read_sql_query(query_lyceum, conn)
         logger.info(f"{len(df)} registros obtidos da tabela LY_ALUNO.")
 

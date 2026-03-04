@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 class LyProvaDiscipModel:
     TABLE_NAME = "LY_PROVA_DISCIP"
-    DB_NAME = "lyceum.tbl"  # nome do banco no SQL Server
+    DB_NAME = "lyceum"  # nome do banco no SQL Server
 
     # Lista de campos da API (conforme documentação)
     API_FIELDS = [

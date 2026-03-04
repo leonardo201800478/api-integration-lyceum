@@ -79,7 +79,7 @@ def get_dados_contatos_filtros(anos, semestres, unidade_responsavel, curso=None)
     """
     
     try:
-        with get_db_connection(database_name='lyceum.tbl') as conn:
+        with get_db_connection(database_name='lyceum') as conn:
             df = pd.read_sql_query(query, conn, params=params)
         
         # Substituir NaN por string vazia
