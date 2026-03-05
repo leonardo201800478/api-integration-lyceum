@@ -16,7 +16,8 @@ def criar_tabela_curriculum():
             SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES 
             WHERE TABLE_NAME = 'lxp_curriculum'
         """
-        result = fetch_one(query_check, db_path='lxp')
+        # CORREÇÃO: substituir db_path por database_name
+        result = fetch_one(query_check, database_name='lxp')
         if result is None:
             logger.error("fetch_one retornou None. Possível erro de conexão.")
             return False
@@ -37,7 +38,8 @@ def criar_tabela_curriculum():
                 updated_at DATETIME DEFAULT GETDATE()
             );
             """
-            execute_query(create_sql, db_path='lxp')
+            # CORREÇÃO: substituir db_path por database_name
+            execute_query(create_sql, database_name='lxp')
             logger.info("Tabela lxp_curriculum criada com sucesso.")
         else:
             logger.info("Tabela lxp_curriculum já existe.")
@@ -89,7 +91,8 @@ def upsert_curriculum(curriculum_data):
             curriculum_data['endDate'],
             curriculum_data['isActive']
         )
-        execute_query(merge_sql, params, db_path='lxp')
+        # CORREÇÃO: substituir db_path por database_name
+        execute_query(merge_sql, params, database_name='lxp')
         logger.info("Upsert concluído com sucesso.")
         return True
     except Exception as e:

@@ -22,7 +22,7 @@ def criar_tabela_enrollment():
             SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES 
             WHERE TABLE_NAME = 'lxp_enrollment_class_subject'
         """
-        result = fetch_one(query_check, db_path='lxp')
+        result = fetch_one(query_check, database_name='lxp')
         if result is None:
             logger.error("fetch_one retornou None. Possível erro de conexão.")
             return False
@@ -44,7 +44,7 @@ def criar_tabela_enrollment():
                 updated_at DATETIME DEFAULT GETDATE()
             );
             """
-            execute_query(create_sql, db_path='lxp')
+            execute_query(create_sql, database_name='lxp')
             logger.info("Tabela lxp_enrollment_class_subject criada com sucesso.")
         else:
             logger.info("Tabela já existe.")
@@ -104,7 +104,7 @@ def upsert_enrollment_batch(df):
                 row['externalEnrollmentTypeId'] if pd.notna(row['externalEnrollmentTypeId']) else None,
                 row['ext.info.tags'] if pd.notna(row['ext.info.tags']) else None
             )
-            execute_query(merge_sql, params, db_path='lxp')
+            execute_query(merge_sql, params, database_name='lxp')
             success_count += 1
         except Exception as e:
             logger.error(f"Erro no upsert para externalEnrollmentId={row['externalEnrollmentId']}: {e}")
@@ -139,8 +139,8 @@ def run() -> bool:
             AND a.unidade_ensino = '002'
             ORDER BY externalEnrollmentId
         """
-        # Usa conexão com o banco 'lyceum'
-        with get_db_connection('lyceum') as conn:
+        # Usa conexão com o banco 'lyceum' (nome do banco conforme configurado no .env)
+        with get_db_connection(database_name='lyceum') as conn:
             df = pd.read_sql_query(query_lyceum, conn)
         logger.info(f"{len(df)} registros obtidos da tabela LY_ALUNO.")
 
