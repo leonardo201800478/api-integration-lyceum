@@ -1,21 +1,23 @@
 # sync/sync_ly_pessoa_by_id.py
 import sys
 from pathlib import Path
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from core.api_client import get_pessoa_client, get_aluno_client
-from core.database import fetch_one
+from core.database import fetch_one, get_db_connection
 from core.logger import logger
 from models.ly_pessoa import LyPessoaModel
 from models.ly_aluno import AlunoModel
 
+
 def pessoa_existe_no_banco(cod_pessoa: int) -> bool:
     """Verifica se a pessoa já existe na tabela LY_PESSOA pela chave 'pessoa'."""
     query = "SELECT 1 FROM LY_PESSOA WHERE pessoa = ?"
-    # CORREÇÃO: usar database_name em vez de db_path
     result = fetch_one(query, (cod_pessoa,), database_name='lyceum')
     return result is not None
+
 
 def buscar_e_salvar_pessoa_por_id(cod_pessoa: int, buscar_alunos: bool = True) -> dict | None:
     """
@@ -55,13 +57,11 @@ def buscar_e_salvar_pessoa_por_id(cod_pessoa: int, buscar_alunos: bool = True) -
             aluno_client = get_aluno_client()
             try:
                 endpoint_alunos = f"/pessoas/{cod_pessoa}/alunos"
-                alunos = aluno_client.get(endpoint_alunos)  # Retorna lista de alunos
+                alunos = aluno_client.get(endpoint_alunos)
                 if alunos and isinstance(alunos, list):
                     logger.info(f"Encontrados {len(alunos)} alunos para a pessoa {cod_pessoa}. Inserindo/atualizando...")
                     for aluno_data in alunos:
-                        # Mapeamento dos campos da API para os nomes esperados pelo modelo AlunoModel
                         aluno_adaptado = {
-                            # Campos obrigatórios e principais
                             'aluno': aluno_data.get('codAluno'),
                             'pessoa': aluno_data.get('codPessoa'),
                             'nome_compl': aluno_data.get('nomeAluno'),
@@ -73,7 +73,6 @@ def buscar_e_salvar_pessoa_por_id(cod_pessoa: int, buscar_alunos: bool = True) -
                             'unidade_fisica': aluno_data.get('unidadeFisica'),
                             'unidade_ensino': aluno_data.get('unidadeEnsino'),
                             'sit_aluno': aluno_data.get('situacaoAluno'),
-                            # Campos que podem vir como None (mapeamos mesmo assim)
                             'stamp_atualizacao': aluno_data.get('stampAtualizacao'),
                             'dt_ingresso': aluno_data.get('dtIngresso'),
                             'e_mail_interno': aluno_data.get('eMailInterno'),
@@ -107,10 +106,9 @@ def buscar_e_salvar_pessoa_por_id(cod_pessoa: int, buscar_alunos: bool = True) -
                             'outra_faculdade': aluno_data.get('outraFaculdade'),
                             'areacnpq': aluno_data.get('areacnpq'),
                             'grupo': aluno_data.get('grupo'),
-                            'turma_pref': aluno_data.get('turmaPref') or aluno_data.get('turma'),  # fallback para 'turma'
+                            'turma_pref': aluno_data.get('turmaPref') or aluno_data.get('turma'),
                             'cred_educativo': aluno_data.get('credEducativo'),
                         }
-                        # Remove chaves com valor None se desejar, mas o modelo lida com None
                         if aluno_adaptado['aluno'] is None:
                             logger.warning(f"Registro de aluno sem matrícula (codAluno) para pessoa {cod_pessoa}, ignorado.")
                             continue
@@ -138,6 +136,64 @@ def buscar_e_salvar_pessoa_por_id(cod_pessoa: int, buscar_alunos: bool = True) -
         return None
     finally:
         pessoa_client.close()
+
+
+def _buscar_pessoas_pendentes() -> list[int]:
+    """
+    Retorna os cod_pessoa presentes em LY_ALUNO que ainda não existem em LY_PESSOA.
+    Centraliza a query que antes ficava duplicada em reports/sync_pessoas.py,
+    eliminando a necessidade de subprocess naquele módulo.
+    """
+    query = """
+        SELECT DISTINCT A.pessoa
+        FROM LY_ALUNO A
+        LEFT JOIN LY_PESSOA P ON A.pessoa = P.pessoa
+        WHERE P.pessoa IS NULL
+          AND A.pessoa IS NOT NULL
+    """
+    with get_db_connection(database_name='lyceum') as conn:
+        cursor = conn.cursor()
+        cursor.execute(query)
+        return [row[0] for row in cursor.fetchall()]
+
+
+def run() -> bool:
+    """
+    Wrapper run() para integração com run_all.py.
+
+    Usa a mesma lógica de reports/sync_pessoas.py para encontrar pessoas
+    pendentes, mas chama buscar_e_salvar_pessoa_por_id() diretamente —
+    sem subprocess — garantindo execução no mesmo processo, com logs
+    unificados e sem overhead de subprocesso.
+    """
+    logger.info("[sync_ly_pessoa_by_id] Verificando pessoas pendentes em LY_PESSOA...")
+
+    try:
+        pendentes = _buscar_pessoas_pendentes()
+    except Exception as e:
+        logger.error(f"Erro ao consultar pessoas pendentes: {e}")
+        return False
+
+    if not pendentes:
+        logger.info("[sync_ly_pessoa_by_id] Nenhuma pessoa pendente. Tabelas ja sincronizadas.")
+        return True
+
+    total = len(pendentes)
+    logger.info(f"[sync_ly_pessoa_by_id] {total} pessoa(s) pendente(s) para sincronizacao.")
+
+    sucessos, falhas = 0, 0
+    for cod_pessoa in pendentes:
+        # buscar_alunos=False: alunos já foram sincronizados nas etapas anteriores
+        resultado = buscar_e_salvar_pessoa_por_id(cod_pessoa, buscar_alunos=False)
+        if resultado:
+            sucessos += 1
+        else:
+            falhas += 1
+            logger.warning(f"[sync_ly_pessoa_by_id] Falha ao sincronizar pessoa {cod_pessoa}.")
+
+    logger.info(f"[sync_ly_pessoa_by_id] Pessoas sincronizadas: {sucessos}/{total} | Falhas: {falhas}")
+    return falhas == 0
+
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
