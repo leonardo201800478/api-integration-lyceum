@@ -15,11 +15,9 @@ env/
 *.crt
 config.ini
 secrets.json
-lyceum.db
-qstione.db
 
 # Python
-pycache/
+__pycache__/
 *.py[cod]
 *$py.class
 *.so
@@ -55,17 +53,16 @@ logs/
 *.swo
 *~
 
-# Pastas
+# Pastas geradas em runtime
 backups/
 exportacoes/
+exports/
+tmp/
+temp/
 
-
-# Sistema
+# Sistema operacional
 .DS_Store
 Thumbs.db
 
 # Exportações temporárias
 *.csv
-exports/
-tmp/
-temp/
