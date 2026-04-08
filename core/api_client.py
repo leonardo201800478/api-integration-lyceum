@@ -2,6 +2,7 @@
 
 import requests
 import time
+import urllib3
 from typing import List, Optional, Any, Dict
 from core.config import config
 
@@ -38,6 +39,10 @@ class BaseAPIClient:
         # Usar sessão fornecida ou criar uma nova
         self.session = session or requests.Session()
 
+        # Suprime aviso de SSL apenas quando verificação estiver desabilitada
+        if config.LYCEUM_SSL_VERIFY is False:
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
     def get(self, endpoint: str, params: Optional[dict] = None) -> Any:
         """
         Executa uma requisição GET simples.
@@ -51,7 +56,8 @@ class BaseAPIClient:
                 auth=self.auth,
                 headers=self.headers,
                 params=params,
-                timeout=config.API_TIMEOUT
+                timeout=config.API_TIMEOUT,
+                verify=config.LYCEUM_SSL_VERIFY
             )
 
             if response.status_code != 200:
