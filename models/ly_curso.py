@@ -101,10 +101,47 @@ class LyCursoModel:
         return [row[0] for row in rows] if rows else []
 
     @classmethod
+    def _ensure_column_size(cls, column_name: str, new_length: int = 255):
+        """
+        Verifica e aumenta o tamanho de uma coluna NVARCHAR se necessário.
+        Aplica apenas para colunas do tipo NVARCHAR com tamanho menor que new_length.
+        """
+        if not cls._table_exists():
+            return
+
+        # Verifica o tipo e tamanho atual da coluna
+        check_sql = """
+            SELECT DATA_TYPE, CHARACTER_MAXIMUM_LENGTH
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_NAME = ? AND COLUMN_NAME = ?
+        """
+        row = fetch_one(check_sql, (cls.TABLE_NAME, column_name), database_name=cls.DB_NAME)
+        if not row:
+            logger.warning(f"Coluna {column_name} não encontrada na tabela {cls.TABLE_NAME}")
+            return
+
+        data_type, current_length = row
+        if data_type.upper() == 'NVARCHAR' and current_length and current_length < new_length:
+            logger.info(f"Aumentando tamanho da coluna '{column_name}' de {current_length} para {new_length}...")
+            alter_sql = f"ALTER TABLE [{cls.TABLE_NAME}] ALTER COLUMN [{column_name}] NVARCHAR({new_length})"
+            try:
+                execute_query(alter_sql, database_name=cls.DB_NAME)
+                logger.info(f"Coluna '{column_name}' ajustada com sucesso.")
+            except Exception as e:
+                logger.error(f"Erro ao ajustar coluna '{column_name}': {e}")
+        else:
+            logger.debug(f"Coluna '{column_name}' já está adequada (tipo={data_type}, tamanho={current_length})")
+
+    @classmethod
     def create_table(cls):
         """Cria a tabela LY_CURSO se não existir (SQL Server)."""
         if cls._table_exists():
-            logger.info(f"Tabela {cls.TABLE_NAME} já existe.")
+            logger.info(f"Tabela {cls.TABLE_NAME} já existe. Verificando tamanhos de colunas...")
+            # Ajusta colunas problemáticas mesmo se a tabela já existir
+            cls._ensure_column_size('titulo', 255)
+            cls._ensure_column_size('habilitacao', 500)  # já está 500, mas garantimos
+            cls._ensure_column_size('decreto', 1000)     # já está 1000
+            # Adicione outras colunas se necessário
             return True
 
         # SQL para criar a tabela com chave primária 'curso'
@@ -120,7 +157,7 @@ class LyCursoModel:
             [faculdade] NVARCHAR(50),
             [grupo_curso] NVARCHAR(50),
             [habilitacao] NVARCHAR(500),
-            [titulo] NVARCHAR(50),
+            [titulo] NVARCHAR(255),
             [mnemonico] NVARCHAR(20),
             [evento] NVARCHAR(50),
             [formatura] NVARCHAR(50),
@@ -291,6 +328,9 @@ class LyCursoModel:
         """Insere ou atualiza múltiplos cursos em lote."""
         if not data_list:
             return 0
+
+        # Antes de processar, garantir que as colunas estejam com tamanho adequado
+        cls._ensure_column_size('titulo', 255)
 
         success_count = 0
         error_count = 0
