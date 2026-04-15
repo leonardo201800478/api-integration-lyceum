@@ -59,6 +59,8 @@ exportacoes/
 exports/
 tmp/
 temp/
+ementa_sagres/
+ementa_sagres/pdf_ementas/
 
 # Sistema operacional
 .DS_Store
