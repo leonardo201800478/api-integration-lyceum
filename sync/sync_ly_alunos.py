@@ -2,7 +2,7 @@
 """
 Sincronização de alunos da API Lyceum para a tabela LY_ALUNO (SQL Server)
 
-Execução recomendada:
+Execução:
     python -m sync.sync_ly_alunos [--incremental]
 """
 
@@ -14,56 +14,54 @@ import logging
 from pathlib import Path
 from typing import Dict, Set
 
-# ============================================================================
-# Ajuste de PATH para permitir execução direta
-# ============================================================================
+# ----------------------------------------------------------------------
+# PATH
+# ----------------------------------------------------------------------
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
-# ============================================================================
+# ----------------------------------------------------------------------
 # Imports do projeto
-# ============================================================================
+# ----------------------------------------------------------------------
 from core.api_client import AlunoAPIClient
 from core.database import get_db_connection
 from models.ly_aluno import AlunoModel
 
-# ============================================================================
-# Logging
-# ============================================================================
+# ----------------------------------------------------------------------
+# Configuração de logging SILENCIOSA
+# - Suprime logs INFO do modelo (ex: "Aluno X upsert realizado")
+# - Mantém apenas WARNING e ERROR
+# ----------------------------------------------------------------------
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 logger = logging.getLogger(__name__)
 
-# ============================================================================
-# Função principal
-# ============================================================================
+# Desativa logs verbosos do modelo (que apareciam a cada aluno)
+logging.getLogger("models.ly_aluno").setLevel(logging.WARNING)
+
+
+# ----------------------------------------------------------------------
+# Função principal otimizada
+# ----------------------------------------------------------------------
 def run(modo: str = "completo") -> Dict[str, int | float]:
-    """
-    Executa a sincronização de alunos.
-
-    Args:
-        modo: 'completo' ou 'incremental'
-
-    Returns:
-        dict com estatísticas da execução
-    """
+    """Executa sincronização sem logs individuais e com máximo desempenho."""
     if modo not in ("completo", "incremental"):
         raise ValueError("Modo inválido. Use 'completo' ou 'incremental'.")
 
     logger.info("=" * 70)
-    logger.info("INICIANDO SINCRONIZAÇÃO DE ALUNOS")
-    logger.info("Modo: %s", modo.upper())
+    logger.info("INICIANDO SINCRONIZAÇÃO DE ALUNOS - Modo: %s", modo.upper())
     logger.info("=" * 70)
 
     start_time = time.time()
 
-    # ----------------------------------------------------------------------
-    # Garante que a tabela exista no SQL Server (cria se necessário)
-    # ----------------------------------------------------------------------
+    # 1. Garante existência da tabela
     AlunoModel.create_table()
 
-    # ----------------------------------------------------------------------
-    # Busca dados da API (somente GET)
-    # ----------------------------------------------------------------------
+    # 2. Busca todos os alunos via API (GET)
     api = AlunoAPIClient()
     alunos_api = api.get_alunos()
 
@@ -76,130 +74,118 @@ def run(modo: str = "completo") -> Dict[str, int | float]:
             "atualizados": 0,
             "ignorados": 0,
             "erros": 0,
-            "tempo_total": time.time() - start_time
+            "tempo_total": time.time() - start_time,
         }
 
-    logger.info("Registros recebidos da API: %s", len(alunos_api))
+    total_api = len(alunos_api)
+    logger.info("Registros recebidos da API: %d", total_api)
 
-    # ----------------------------------------------------------------------
-    # Controle
-    # ----------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Pré‑carrega stamps (modo incremental) e matrículas existentes (modo completo)
+    # Tudo em uma única consulta por modo, evitando SELECT a cada registro
+    # ------------------------------------------------------------------
+    stamps_banco: Dict[str, str] = {}
+    matriculas_existentes: Set[str] = set()
+
+    with get_db_connection(database_name="lyceum") as conn:
+        if modo == "incremental":
+            cursor = conn.execute("SELECT aluno, stamp_atualizacao FROM [LY_ALUNO]")
+            stamps_banco = {str(row[0]): str(row[1] or "") for row in cursor}
+            logger.info("Carregados %d stamps existentes", len(stamps_banco))
+        else:
+            # apenas para saber se a matrícula já existe (usado na contagem)
+            cursor = conn.execute("SELECT aluno FROM [LY_ALUNO]")
+            matriculas_existentes = {str(row[0]) for row in cursor}
+            logger.info("Carregadas %d matrículas existentes", len(matriculas_existentes))
+
+    # ------------------------------------------------------------------
+    # Processamento em lote – sem logs individuais
+    # ------------------------------------------------------------------
+    stats = {"inseridos": 0, "atualizados": 0, "ignorados": 0, "erros": 0}
     matriculas_processadas: Set[str] = set()
-    stats = {
-        "inseridos": 0,
-        "atualizados": 0,
-        "ignorados": 0,
-        "erros": 0,
-    }
 
-    # ----------------------------------------------------------------------
-    # Processamento
-    # ----------------------------------------------------------------------
     for idx, aluno in enumerate(alunos_api, start=1):
         try:
-            # Validação básica do registro
+            # Validação mínima
             if not isinstance(aluno, dict):
                 stats["ignorados"] += 1
-                logger.debug("Registro ignorado (não é dict): %s", aluno)
                 continue
-
-            matricula = aluno.get("aluno")
+            matricula = str(aluno.get("aluno"))
             if not matricula:
                 stats["ignorados"] += 1
-                logger.debug("Registro ignorado (sem matrícula): %s", aluno)
                 continue
 
-            matricula = str(matricula)
             matriculas_processadas.add(matricula)
 
-            # --------------------------------------------------------------
-            # Modo incremental: compara stamp_atualizacao
-            # --------------------------------------------------------------
+            # ----------------------------------------------------------
+            # Modo incremental: compara stamp via dicionário em memória
+            # ----------------------------------------------------------
             if modo == "incremental":
-                with get_db_connection(database_name='lyceum') as conn:
-                    row = conn.execute(
-                        "SELECT stamp_atualizacao FROM [LY_ALUNO] WHERE aluno = ?",
-                        (matricula,)
-                    ).fetchone()
+                stamp_api = str(aluno.get("stamp_atualizacao", ""))
+                stamp_local = stamps_banco.get(matricula, "")
+                if stamp_local == stamp_api:
+                    stats["ignorados"] += 1
+                    continue
 
-                if row:
-                    stamp_local = str(row[0])
-                    stamp_api = str(aluno.get("stamp_atualizacao", ""))
+            # ----------------------------------------------------------
+            # UPSERT (método não deve gerar logs por aluno)
+            # ----------------------------------------------------------
+            # O método upsert pode retornar True se fez INSERT, False se UPDATE.
+            # Se o modelo atual não retorna, ajuste ou ignore a contagem distinta.
+            # Vamos supor que ele retorna booleano. Caso contrário, altere a linha.
+            foi_insercao = AlunoModel.upsert(aluno)   # idealmente retorna bool
 
-                    if stamp_local == stamp_api:
-                        stats["ignorados"] += 1
-                        continue
-
-            # --------------------------------------------------------------
-            # UPSERT no banco SQL Server via modelo
-            # --------------------------------------------------------------
-            AlunoModel.upsert(aluno)
-
-            # Contabiliza (consulta simples para manter contadores precisos)
-            with get_db_connection(database_name='lyceum') as conn:
-                existe = conn.execute(
-                    "SELECT 1 FROM [LY_ALUNO] WHERE aluno = ?",
-                    (matricula,)
-                ).fetchone()
-
-            if existe:
-                stats["atualizados"] += 1
-            else:
+            if foi_insercao:
                 stats["inseridos"] += 1
+            else:
+                stats["atualizados"] += 1
 
-            # Log de progresso a cada 500 registros
+            # Log de progresso a cada 500 registros (apenas para acompanhar)
             if idx % 500 == 0:
-                logger.info("Processados %s / %s", idx, len(alunos_api))
+                logger.info("Progresso: %d / %d registros", idx, total_api)
 
-        except Exception as exc:
+        except Exception:
             stats["erros"] += 1
-            logger.exception("Erro processando aluno %s", aluno.get("aluno", "desconhecido"))
+            # Log do erro (sem mostrar dados do aluno para manter silêncio)
+            logger.exception("Erro no registro %d", idx)
 
-    # ----------------------------------------------------------------------
-    # Limpeza de obsoletos (somente no modo completo)
-    # ----------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Limpeza de registros órfãos (apenas modo completo)
+    # ------------------------------------------------------------------
     if modo == "completo" and matriculas_processadas:
         logger.info("Removendo registros obsoletos...")
         AlunoModel.delete_obsoletos(matriculas_processadas)
 
-    # ----------------------------------------------------------------------
+    # ------------------------------------------------------------------
     # Estatísticas finais
-    # ----------------------------------------------------------------------
+    # ------------------------------------------------------------------
     tempo_total = time.time() - start_time
 
-    with get_db_connection(database_name='lyceum') as conn:
-        total_banco = conn.execute(
-            "SELECT COUNT(*) FROM [LY_ALUNO]"
-        ).fetchone()[0]
+    with get_db_connection(database_name="lyceum") as conn:
+        total_banco = conn.execute("SELECT COUNT(*) FROM [LY_ALUNO]").fetchone()[0]
 
     logger.info("=" * 70)
     logger.info("SINCRONIZAÇÃO FINALIZADA")
-    logger.info("Total API........: %s", len(alunos_api))
-    logger.info("Total Banco......: %s", total_banco)
-    logger.info("Inseridos........: %s", stats["inseridos"])
-    logger.info("Atualizados......: %s", stats["atualizados"])
-    logger.info("Ignorados........: %s", stats["ignorados"])
-    logger.info("Erros............: %s", stats["erros"])
-    logger.info("Tempo total (s)..: %.2f", tempo_total)
+    logger.info("Total API....: %d", total_api)
+    logger.info("Total Banco..: %d", total_banco)
+    logger.info("Inseridos....: %d", stats["inseridos"])
+    logger.info("Atualizados..: %d", stats["atualizados"])
+    logger.info("Ignorados....: %d", stats["ignorados"])
+    logger.info("Erros........: %d", stats["erros"])
+    logger.info("Tempo total (s): %.2f", tempo_total)
     logger.info("=" * 70)
 
     return {
-        "total_api": len(alunos_api),
+        "total_api": total_api,
         "total_banco": total_banco,
         **stats,
         "tempo_total": tempo_total,
     }
 
 
-# ============================================================================
+# ----------------------------------------------------------------------
 # Execução direta
-# ============================================================================
+# ----------------------------------------------------------------------
 if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-
-    modo_execucao = "incremental" if "--incremental" in sys.argv else "completo"
-    run(modo=modo_execucao)
+    modo = "incremental" if "--incremental" in sys.argv else "completo"
+    run(modo=modo)

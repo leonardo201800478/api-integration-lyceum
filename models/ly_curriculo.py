@@ -205,7 +205,7 @@ class LyCurriculoModel:
             [stamp_atualizacao] NVARCHAR(50),
             [dt_homolog] NVARCHAR(20),
             [dt_extincao] NVARCHAR(20),
-            [modalidade] NVARCHAR(50),
+            [modalidade] NVARCHAR(255),
             [servico] NVARCHAR(50),
             [valor] NVARCHAR(50),
             [codigo_secundario] NVARCHAR(100),
