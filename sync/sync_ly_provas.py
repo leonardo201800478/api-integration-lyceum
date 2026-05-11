@@ -12,7 +12,6 @@ faz a chamada individual.
 """
 
 import logging
-import time
 from core.api_client import get_prova_client
 from models.ly_prova import LyProvaModel
 from models.ly_prova_discip import LyProvaDiscipModel
