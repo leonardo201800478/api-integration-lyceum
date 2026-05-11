@@ -1,7 +1,9 @@
+# qstione/importadores/imp_002_disciplina.py
 """
-qstione/importadores/imp_002_disciplina.py
 Importador para tabela imp_002_disciplina
-Adaptado para SQL Server com agregação por disciplina usando curso 999 para compartilhadas.
+Origem: LY_DISCIPLINA + LY_GRADE + LY_CURSO
+Filtros: FACULDADES_INCLUIDAS (curso) e AREAS_CONHECIMENTO_INCLUIDAS (disciplina)
+Período extraído de LY_GRADE.serie_ideal (não fixo)
 """
 
 from core.database import get_db_connection
@@ -16,8 +18,6 @@ from qstione.core.validacoes import (
     validar_codigo_curso
 )
 from qstione.config.filtros import (
-    ANO_VIGENTE,
-    PERIODOS_VIGENTES,
     FACULDADES_INCLUIDAS,
     AREAS_CONHECIMENTO_INCLUIDAS
 )
@@ -29,7 +29,7 @@ class ImportadorDisciplinas:
         pass
 
     # -------------------------------------------------------------------------
-    # Funções auxiliares para verificação de existência de tabelas/índices
+    # Funções auxiliares para tabela destino
     # -------------------------------------------------------------------------
     def _tabela_existe(self, nome_tabela: str) -> bool:
         try:
@@ -116,50 +116,33 @@ class ImportadorDisciplinas:
                 print(f"✅ Índice {nome_idx} já existe.")
 
     # -------------------------------------------------------------------------
-    # Obter dados do Lyceum (todas as combinações disciplina/curso com ofertas)
+    # Obter dados do Lyceum (disciplina + cursos + períodos) com filtros
     # -------------------------------------------------------------------------
     def obter_dados_lyceum(self):
+        """Retorna todas as combinações disciplina/curso que atendem aos filtros."""
+        faculdades_placeholders = ','.join(['?'] * len(FACULDADES_INCLUIDAS))
+        areas_placeholders = ','.join(['?'] * len(AREAS_CONHECIMENTO_INCLUIDAS))
+
+        query = f"""
+            SELECT DISTINCT
+                d.disciplina,
+                d.nome_compl,
+                g.curso,
+                c.nome as nome_curso,
+                g.serie_ideal
+            FROM LY_GRADE g
+            INNER JOIN LY_DISCIPLINA d ON d.disciplina = g.disciplina
+            INNER JOIN LY_CURSO c ON c.curso = g.curso
+            WHERE c.ativo = 'S'
+              AND c.faculdade IN ({faculdades_placeholders})
+              AND (d.area_conhecimento IN ({areas_placeholders})
+                   OR d.area_conhecimento IS NULL
+                   OR d.area_conhecimento = '')
+            ORDER BY d.disciplina, g.curso
+        """
+        params = (*FACULDADES_INCLUIDAS, *AREAS_CONHECIMENTO_INCLUIDAS)
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            periodos_placeholders = ','.join(['?'] * len(PERIODOS_VIGENTES))
-            areas_nao_nulas = [a for a in AREAS_CONHECIMENTO_INCLUIDAS if a is not None and a != '']
-            areas_placeholders = ','.join(['?'] * len(areas_nao_nulas))
-
-            query = f"""
-                SELECT DISTINCT
-                    g.disciplina,
-                    d.nome_compl,
-                    g.curso,
-                    c.nome as nome_curso,
-                    g.serie_ideal
-                FROM LY_GRADE g
-                INNER JOIN LY_DISCIPLINA d
-                    ON d.disciplina = g.disciplina
-                INNER JOIN LY_CURSO c
-                    ON c.curso = g.curso
-                WHERE c.ativo = 'S'
-                  AND c.faculdade IN ({','.join(['?'] * len(FACULDADES_INCLUIDAS))})
-                  AND EXISTS (
-                      SELECT 1
-                      FROM LY_TURMA t
-                      WHERE t.disciplina = g.disciplina
-                        AND t.ano = ?
-                        AND t.semestre IN ({periodos_placeholders})
-                        AND t.sit_turma = 'aberta'
-                        AND d.faculdade IN ({','.join(['?'] * len(FACULDADES_INCLUIDAS))})
-                        AND (d.area_conhecimento IN ({areas_placeholders})
-                             OR d.area_conhecimento IS NULL
-                             OR d.area_conhecimento = '')
-                  )
-                ORDER BY g.disciplina, g.curso
-            """
-            params = (
-                *FACULDADES_INCLUIDAS,
-                ANO_VIGENTE,
-                *PERIODOS_VIGENTES,
-                *FACULDADES_INCLUIDAS,
-                *areas_nao_nulas
-            )
             cursor.execute(query, params)
             return cursor.fetchall()
 
@@ -167,11 +150,11 @@ class ImportadorDisciplinas:
     # Transformar dados (agregando por disciplina)
     # -------------------------------------------------------------------------
     def transformar_dados(self, dados_lyceum):
-        # Estrutura: {disciplina: {"nome_compl": nome, "cursos": {curso: {"nome_curso": nome, "periodos": set()}}}
+        """
+        Estrutura: {disciplina: {"nome_compl": nome, "cursos": {curso: {"nome_curso": nome, "periodos": set()}}}
+        """
         disciplinas = {}
-        for registro in dados_lyceum:
-            disciplina, nome_compl, curso, nome_curso, serie_ideal = registro
-
+        for disciplina, nome_compl, curso, nome_curso, serie_ideal in dados_lyceum:
             if disciplina not in disciplinas:
                 disciplinas[disciplina] = {
                     "nome_compl": nome_compl,
@@ -196,7 +179,7 @@ class ImportadorDisciplinas:
                 print(f"  ⚠️  Código da disciplina inválido: {disciplina}")
                 continue
 
-            # Validar e normalizar nome da disciplina
+            # Validar/normalizar nome da disciplina
             nome_disciplina = validar_nome_disciplina(nome_compl)
             if nome_disciplina is None:
                 nome_disciplina = truncar_texto(nome_compl, 100)
@@ -207,44 +190,37 @@ class ImportadorDisciplinas:
 
             # Determinar se é compartilhada (mais de um curso)
             if len(cursos) > 1:
-                # Usar curso especial '999' (TURMAS COMPARTILHADAS)
                 codigo_curso = '999'
                 nome_curso = 'TURMAS COMPARTILHADAS'
-                # Determinar o período: menor valor entre todos os períodos de todos os cursos
+                # Período = menor valor entre todos os períodos de todos os cursos
                 todos_periodos = set()
                 for c in cursos.values():
                     todos_periodos.update(c["periodos"])
-                # Converter para inteiros e pegar o mínimo
                 periodos_int = [converter_inteiro(p) for p in todos_periodos if p is not None]
                 if not periodos_int:
                     print(f"  ⚠️  Nenhum período válido para disciplina {disciplina}")
                     continue
                 periodo = min(periodos_int)
             else:
-                # Único curso
                 codigo_curso, curso_info = next(iter(cursos.items()))
                 nome_curso = curso_info["nome_curso"]
-                # Extrair período (pode haver mais de um? teoricamente não, mas vamos pegar o primeiro)
                 periodo_raw = next(iter(curso_info["periodos"]))
                 periodo = converter_inteiro(periodo_raw)
 
-            # Aplicar regra de período 0 -> 1
+            # Converter período 0 -> 1
             if periodo == 0:
                 periodo = 1
                 cont_periodo_zero += 1
                 print(f"  ⚠️  Período 0 convertido para 1 na disciplina {disciplina} (curso {codigo_curso})")
 
-            # Validar período
             if periodo is None or periodo < 1:
                 print(f"  ⚠️  Período inválido para disciplina {disciplina}: {periodo}")
                 continue
 
-            # Validar código do curso
             if not validar_codigo_curso(codigo_curso):
-                print(f"  ⚠️  Código do curso inválido: {codigo_curso} para a disciplina {disciplina}")
+                print(f"  ⚠️  Código do curso inválido: {codigo_curso} para disciplina {disciplina}")
                 continue
 
-            # Gerar código da disciplina formatado
             codigo_disciplina_final = gerar_codigo_disciplina_curso(
                 disciplina,
                 nome_curso,
@@ -327,14 +303,16 @@ class ImportadorDisciplinas:
     # -------------------------------------------------------------------------
     def executar_importacao(self):
         print("=" * 70)
-        print("IMPORTAÇÃO: imp_002_disciplina")
+        print("IMPORTAÇÃO: imp_002_disciplina (com filtros e período variável)")
         print("=" * 70)
+        print(f"FACULDADES_INCLUIDAS: {FACULDADES_INCLUIDAS}")
+        print(f"AREAS_CONHECIMENTO_INCLUIDAS: {AREAS_CONHECIMENTO_INCLUIDAS}")
 
         # 1. Obter dados do Lyceum
         dados_lyceum = self.obter_dados_lyceum()
-        print(f"📊 Registros encontrados no Lyceum (combinações disciplina/curso): {len(dados_lyceum)}")
+        print(f"📊 Combinações disciplina/curso encontradas: {len(dados_lyceum)}")
 
-        # 2. Transformar dados (agregando por disciplina)
+        # 2. Transformar dados
         print("🔄 Transformando dados...")
         dados_transformados = self.transformar_dados(dados_lyceum)
         print(f"✅ Registros únicos para importação: {len(dados_transformados)}")
