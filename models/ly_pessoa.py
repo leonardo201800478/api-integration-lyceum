@@ -11,42 +11,157 @@ from core.database import get_db_connection, execute_query, fetch_all, fetch_one
 
 logger = logging.getLogger(__name__)
 
+
 class LyPessoaModel:
     TABLE_NAME = "LY_PESSOA"
     DB_NAME = "lyceum"
 
     # Lista de campos conforme API (excluindo metadados internos)
     API_FIELDS = [
-        'alist_csm', 'alist_dtexp', 'alist_num', 'alist_rm', 'alist_serie',
-        'area_prof', 'autoriza_envio_mail', 'bairro', 'cargo', 'celular', 'cep',
-        'cert_nasc_cartorio_exped', 'cert_nasc_cartorio_uf', 'cert_nasc_emissao',
-        'cert_nasc_folha', 'cert_nasc_livro', 'cert_nasc_matricula', 'cert_nasc_num',
-        'conselho_regional', 'contribui_renda', 'cor_raca', 'cpf', 'cprof_dtexp',
-        'cprof_num', 'cprof_serie', 'cprof_uf', 'cr_cat', 'cr_csm', 'cr_dtexp',
-        'cr_num', 'cr_rm', 'cr_serie', 'credo', 'ddd_fax_res', 'ddd_fone',
-        'ddd_fone_celular', 'ddd_fone_comercial', 'ddd_fone_recado', 'ddd_resp_fone',
-        'depto_com', 'divida_biblio', 'dt_falecimento', 'dt_nasc', 'e_mail',
-        'e_mail_com', 'e_mail_interno', 'end_compl', 'end_correto', 'end_municipio',
-        'end_num', 'end_pais', 'endcom', 'endcom_bairro', 'endcom_cep', 'endcom_compl',
-        'endcom_municipio', 'endcom_num', 'endcom_pais', 'endereco', 'especializacao',
-        'est_civil', 'etnia', 'fax', 'fax_res', 'fone', 'fone_com', 'fone_recados',
-        'formacao_mae', 'formacao_pai', 'hab_tac', 'hab_tac_data', 'id_censo',
-        'latitude', 'longitude', 'mailbox', 'municipio_nasc', 'nacionalidade',
-        'necessidade_especial', 'nome_abrev', 'nome_compl', 'nome_conjuge',
-        'nome_empresa', 'nome_mae', 'nome_pai', 'nome_social', 'nr_regua',
-        'num_func', 'obs', 'obs_cel', 'obs_fax', 'obs_fax_res', 'obs_tel_com',
-        'obs_tel_rec', 'obs_tel_res', 'orgao_militar', 'pais_nasc', 'passaporte',
-        'permite_usar_imagem', 'permiteacescadsemsenha', 'pessoa',
-        'pre_nome_social', 'profissao', 'qt_filhos', 'renda_familiar', 'renda_mensal',
-        'resp_bairro', 'resp_cep', 'resp_cpf', 'resp_email', 'resp_end_compl',
-        'resp_end_municipio', 'resp_end_num', 'resp_end_pais', 'resp_endereco',
-        'resp_est_civil', 'resp_fone', 'resp_fone_obs', 'resp_municipio_nasc',
-        'resp_nacionalidade', 'resp_nome_compl', 'resp_rg_dtexp', 'resp_rg_emissor',
-        'resp_rg_num', 'resp_rg_tipo', 'resp_rg_uf', 'resp_senha', 'resp_sexo',
-        'rg_dtexp', 'rg_emissor', 'rg_num', 'rg_tipo', 'rg_uf', 'senha_alterada',
-        'senha_tac', 'sexo', 'stamp_atualizacao', 'teleitor_dtexp', 'teleitor_mun',
-        'teleitor_num', 'teleitor_secao', 'teleitor_zona', 'tipo_docmilitar',
-        'tipo_sanguineo', 'winusuario'
+        "alist_csm",
+        "alist_dtexp",
+        "alist_num",
+        "alist_rm",
+        "alist_serie",
+        "area_prof",
+        "autoriza_envio_mail",
+        "bairro",
+        "cargo",
+        "celular",
+        "cep",
+        "cert_nasc_cartorio_exped",
+        "cert_nasc_cartorio_uf",
+        "cert_nasc_emissao",
+        "cert_nasc_folha",
+        "cert_nasc_livro",
+        "cert_nasc_matricula",
+        "cert_nasc_num",
+        "conselho_regional",
+        "contribui_renda",
+        "cor_raca",
+        "cpf",
+        "cprof_dtexp",
+        "cprof_num",
+        "cprof_serie",
+        "cprof_uf",
+        "cr_cat",
+        "cr_csm",
+        "cr_dtexp",
+        "cr_num",
+        "cr_rm",
+        "cr_serie",
+        "credo",
+        "ddd_fax_res",
+        "ddd_fone",
+        "ddd_fone_celular",
+        "ddd_fone_comercial",
+        "ddd_fone_recado",
+        "ddd_resp_fone",
+        "depto_com",
+        "divida_biblio",
+        "dt_falecimento",
+        "dt_nasc",
+        "e_mail",
+        "e_mail_com",
+        "e_mail_interno",
+        "end_compl",
+        "end_correto",
+        "end_municipio",
+        "end_num",
+        "end_pais",
+        "endcom",
+        "endcom_bairro",
+        "endcom_cep",
+        "endcom_compl",
+        "endcom_municipio",
+        "endcom_num",
+        "endcom_pais",
+        "endereco",
+        "especializacao",
+        "est_civil",
+        "etnia",
+        "fax",
+        "fax_res",
+        "fone",
+        "fone_com",
+        "fone_recados",
+        "formacao_mae",
+        "formacao_pai",
+        "hab_tac",
+        "hab_tac_data",
+        "id_censo",
+        "latitude",
+        "longitude",
+        "mailbox",
+        "municipio_nasc",
+        "nacionalidade",
+        "necessidade_especial",
+        "nome_abrev",
+        "nome_compl",
+        "nome_conjuge",
+        "nome_empresa",
+        "nome_mae",
+        "nome_pai",
+        "nome_social",
+        "nr_regua",
+        "num_func",
+        "obs",
+        "obs_cel",
+        "obs_fax",
+        "obs_fax_res",
+        "obs_tel_com",
+        "obs_tel_rec",
+        "obs_tel_res",
+        "orgao_militar",
+        "pais_nasc",
+        "passaporte",
+        "permite_usar_imagem",
+        "permiteacescadsemsenha",
+        "pessoa",
+        "pre_nome_social",
+        "profissao",
+        "qt_filhos",
+        "renda_familiar",
+        "renda_mensal",
+        "resp_bairro",
+        "resp_cep",
+        "resp_cpf",
+        "resp_email",
+        "resp_end_compl",
+        "resp_end_municipio",
+        "resp_end_num",
+        "resp_end_pais",
+        "resp_endereco",
+        "resp_est_civil",
+        "resp_fone",
+        "resp_fone_obs",
+        "resp_municipio_nasc",
+        "resp_nacionalidade",
+        "resp_nome_compl",
+        "resp_rg_dtexp",
+        "resp_rg_emissor",
+        "resp_rg_num",
+        "resp_rg_tipo",
+        "resp_rg_uf",
+        "resp_senha",
+        "resp_sexo",
+        "rg_dtexp",
+        "rg_emissor",
+        "rg_num",
+        "rg_tipo",
+        "rg_uf",
+        "senha_alterada",
+        "senha_tac",
+        "sexo",
+        "stamp_atualizacao",
+        "teleitor_dtexp",
+        "teleitor_mun",
+        "teleitor_num",
+        "teleitor_secao",
+        "teleitor_zona",
+        "tipo_docmilitar",
+        "tipo_sanguineo",
+        "winusuario",
     ]
 
     @classmethod
@@ -56,14 +171,14 @@ class LyPessoaModel:
             return None
 
         if isinstance(value, bool):
-            return 'S' if value else 'N'
+            return "S" if value else "N"
 
         if isinstance(value, (int, float)):
             return value
 
         if isinstance(value, str):
             value = value.strip()
-            if value.lower() in ['null', 'none', '']:
+            if value.lower() in ["null", "none", ""]:
                 return None
             return value
 
@@ -250,7 +365,7 @@ class LyPessoaModel:
                 f"CREATE INDEX idx_pessoa_cpf ON [{cls.TABLE_NAME}]([cpf])",
                 f"CREATE INDEX idx_pessoa_nome ON [{cls.TABLE_NAME}]([nome_compl])",
                 f"CREATE INDEX idx_pessoa_num_func ON [{cls.TABLE_NAME}]([num_func])",
-                f"CREATE INDEX idx_pessoa_stamp ON [{cls.TABLE_NAME}]([stamp_atualizacao])"
+                f"CREATE INDEX idx_pessoa_stamp ON [{cls.TABLE_NAME}]([stamp_atualizacao])",
             ]
             for idx in indexes:
                 try:
@@ -267,7 +382,7 @@ class LyPessoaModel:
     @classmethod
     def upsert(cls, data: Dict) -> bool:
         """Insere ou atualiza uma pessoa usando MERGE."""
-        pessoa_id = cls._normalize_value(data.get('pessoa'))
+        pessoa_id = cls._normalize_value(data.get("pessoa"))
         if pessoa_id is None:
             logger.warning("Registro sem campo 'pessoa' (chave primária).")
             return False
@@ -277,17 +392,16 @@ class LyPessoaModel:
         values = [cls._normalize_value(data.get(col)) for col in columns]
 
         # Montar MERGE dinâmico
-        col_list = ', '.join([f"[{col}]" for col in columns])
-        param_placeholders = ', '.join(['?' for _ in columns])
-        source_cols = ', '.join([f"source.[{col}]" for col in columns])
+        col_list = ", ".join([f"[{col}]" for col in columns])
+        param_placeholders = ", ".join(["?" for _ in columns])
+        source_cols = ", ".join([f"source.[{col}]" for col in columns])
 
         # Update set: todos exceto a chave
-        update_set = ', '.join([
-            f"target.[{col}] = source.[{col}]"
-            for col in columns if col != 'pessoa'
-        ])
+        update_set = ", ".join(
+            [f"target.[{col}] = source.[{col}]" for col in columns if col != "pessoa"]
+        )
         if update_set:
-            update_set += ', '
+            update_set += ", "
         update_set += "target.[data_atualizacao] = GETDATE()"
 
         insert_cols = f"{col_list}, [data_importacao], [data_atualizacao]"
@@ -313,24 +427,37 @@ class LyPessoaModel:
             return False
 
     @classmethod
-    def batch_upsert(cls, data_list: List[Dict]) -> int:
-        """Insere ou atualiza múltiplas pessoas em lote."""
+    def batch_upsert(cls, data_list: List[Dict], batch_size: int = 1000) -> int:
+        """
+        Insere ou atualiza múltiplas pessoas em lotes.
+
+        Processa registros em blocos de 1000 para evitar:
+        - transações gigantes
+        - excesso de memória
+        - timeout de commit
+        - travamentos por lock prolongado
+        """
+
         if not data_list:
+            logger.warning("Nenhum registro recebido para batch_upsert.")
             return 0
 
-        success = 0
-        error = 0
+        total = len(data_list)
+        total_success = 0
+        total_error = 0
+
         columns = cls.API_FIELDS
-        col_list = ', '.join([f"[{col}]" for col in columns])
-        param_placeholders = ', '.join(['?' for _ in columns])
-        source_cols = ', '.join([f"source.[{col}]" for col in columns])
-        update_set = ', '.join([
-            f"target.[{col}] = source.[{col}]"
-            for col in columns if col != 'pessoa'
-        ])
-        if update_set:
-            update_set += ', '
-        update_set += "target.[data_atualizacao] = GETDATE()"
+
+        col_list = ", ".join([f"[{col}]" for col in columns])
+        param_placeholders = ", ".join(["?" for _ in columns])
+        source_cols = ", ".join([f"source.[{col}]" for col in columns])
+
+        update_set = ", ".join(
+            [f"target.[{col}] = source.[{col}]" for col in columns if col != "pessoa"]
+        )
+
+        update_set += ", target.[data_atualizacao] = GETDATE()"
+
         insert_cols = f"{col_list}, [data_importacao], [data_atualizacao]"
         insert_vals = f"{source_cols}, GETDATE(), GETDATE()"
 
@@ -338,40 +465,89 @@ class LyPessoaModel:
             MERGE INTO [{cls.TABLE_NAME}] AS target
             USING (VALUES ({param_placeholders})) AS source ({col_list})
             ON target.[pessoa] = source.[pessoa]
+
             WHEN MATCHED THEN
                 UPDATE SET {update_set}
+
             WHEN NOT MATCHED THEN
                 INSERT ({insert_cols})
                 VALUES ({insert_vals});
         """
 
+        logger.info(
+            f"Iniciando batch_upsert de {total:,} registros (lotes de {batch_size})"
+        )
+
         with get_db_connection(database_name=cls.DB_NAME) as conn:
             cursor = conn.cursor()
-            for data in data_list:
-                pessoa_id = cls._normalize_value(data.get('pessoa'))
-                if pessoa_id is None:
-                    logger.warning("Registro sem pessoa, ignorado.")
-                    error += 1
-                    continue
-                values = [cls._normalize_value(data.get(col)) for col in columns]
-                try:
-                    cursor.execute(merge_sql, tuple(values))
-                    success += 1
-                except Exception as e:
-                    logger.error(f"Erro ao processar pessoa {pessoa_id}: {e}")
-                    error += 1
-            conn.commit()
 
-        logger.info(f"Batch upsert: {success} sucessos, {error} erros, total {len(data_list)}")
-        return success
+            try:
+                cursor.fast_executemany = True
+            except Exception:
+                pass
+
+            for lote_num, inicio in enumerate(range(0, total, batch_size), start=1):
+                fim = min(inicio + batch_size, total)
+
+                lote = data_list[inicio:fim]
+
+                sucesso_lote = 0
+                erro_lote = 0
+
+                logger.info(f"Lote {lote_num}: registros {inicio + 1:,} até {fim:,}")
+
+                for data in lote:
+                    pessoa_id = cls._normalize_value(data.get("pessoa"))
+
+                    if pessoa_id is None:
+                        erro_lote += 1
+                        total_error += 1
+                        continue
+
+                    values = [cls._normalize_value(data.get(col)) for col in columns]
+
+                    try:
+                        cursor.execute(merge_sql, tuple(values))
+
+                        sucesso_lote += 1
+                        total_success += 1
+
+                    except Exception as e:
+                        logger.error(f"Pessoa {pessoa_id}: {e}")
+
+                        erro_lote += 1
+                        total_error += 1
+
+                try:
+                    conn.commit()
+
+                    logger.info(
+                        f"Lote {lote_num} concluído. "
+                        f"Sucesso={sucesso_lote:,} "
+                        f"Erro={erro_lote:,}"
+                    )
+
+                except Exception as e:
+                    conn.rollback()
+
+                    logger.error(f"Erro ao confirmar lote {lote_num}: {e}")
+
+            logger.info(
+                "Batch finalizado | "
+                f"Sucesso={total_success:,} "
+                f"Erro={total_error:,} "
+                f"Total={total:,}"
+            )
+
+            return total_success
 
     @classmethod
     def get_summary(cls) -> Dict:
         """Retorna estatísticas da tabela."""
         try:
             queries = {
-                'total_pessoas': f"SELECT COUNT(*) FROM [{cls.TABLE_NAME}]",
-                'ultima_atualizacao': f"SELECT MAX([data_atualizacao]) FROM [{cls.TABLE_NAME}]"
+                "total_pessoas": f"SELECT COUNT(*) FROM [{cls.TABLE_NAME}]",
+                "ultima_atualizacao": f"SELECT MAX([data_atualizacao]) FROM [{cls.TABLE_NAME}]",
             }
             results = {}
             for key, query in queries.items():
