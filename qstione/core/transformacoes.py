@@ -97,8 +97,8 @@ def gerar_codigo_disciplina_curso(codigo_disciplina, nome_curso, curso_id):
     Returns:
         str: Código formatado da disciplina
     """
-    # Se for curso de medicina (IDs 093 ou 118), retorna apenas o código da disciplina
-    if curso_id in ['093', '118']:
+    # Se for curso de medicina (IDs 005 ou 014), retorna apenas o código da disciplina
+    if curso_id in ['005', '014']:
         return str(codigo_disciplina)[:30]
     
     # Extrair as três primeiras letras de cada palavra do nome do curso

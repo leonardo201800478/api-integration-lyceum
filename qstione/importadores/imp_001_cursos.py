@@ -95,7 +95,7 @@ class ImportadorCursos:
                     ON cr.curso = mc.curso
                    AND cr.curriculo = mc.curriculo
                 WHERE c.ativo = 'S'
-                  AND c.faculdade IN ('001', '002', '004')
+                  AND c.faculdade IN ('001')
             """
             cursor.execute(query)
             return cursor.fetchall()

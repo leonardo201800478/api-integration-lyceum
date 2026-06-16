@@ -13,11 +13,11 @@ estão centralizadas no topo para facilitar a manutenção a cada virada de per�
 
 # ANO e PERÍODO (semestre) vigentes para as cargas
 ANO_VIGENTE = 2026
-PERIODOS_VIGENTES = ['21', '22', '2']          # semestres letivos
+PERIODOS_VIGENTES = ['2']          # semestres letivos
 SEMESTRE_OFERTA_FIXO = '2026.2'               # formato AAAAS
 
 # Faculdades / Unidades organizacionais incluídas
-FACULDADES_INCLUIDAS = ['001', '002', '004']    # Nível de Curso
+FACULDADES_INCLUIDAS = ['001']    # Nível de Curso
 
 # Áreas de conhecimento que devem ser importadas
 # Inclui: Obrigatória, Optativa, Disciplinas Obrigatórias, Extensão Curricularizada, NULL e vazio
