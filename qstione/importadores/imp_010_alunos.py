@@ -4,7 +4,10 @@ Importador para tabela imp_010_alunos
 Adaptado para SQL Server usando core.database
 
 Exporta dados de alunos ativos do Lyceum para o Qstione.
-Filtro: LY_ALUNO.sit_aluno = 'Ativo'
+Filtros opcionais aplicados diretamente na LY_ALUNO:
+    - ano_ingresso
+    - sem_ingresso
+    - unidade_ensino
 
 Campos:
     - matriculaAluno:       NVARCHAR(20)  – aluno (ly_aluno.aluno)
@@ -15,6 +18,7 @@ Campos:
     - codigoIdentificacaoAVA: NVARCHAR(100) – sempre vazio
 """
 
+import argparse
 from core.database import get_db_connection
 from qstione.core.transformacoes import (
     truncar_texto,
@@ -26,8 +30,17 @@ from qstione.core.validacoes import validar_matricula, validar_nome, validar_cod
 
 class ImportadorAlunos:
 
-    def __init__(self):
-        pass
+    def __init__(self, ano=None, semestre=None, unidade=None):
+        """
+        Inicializa o importador com filtros opcionais para alunos.
+
+        :param ano: Ano de ingresso (campo ano_ingresso)
+        :param semestre: Semestre de ingresso (campo sem_ingresso)
+        :param unidade: Unidade de ensino (campo unidade_ensino)
+        """
+        self.ano = ano
+        self.semestre = semestre
+        self.unidade = unidade
 
     # -------------------------------------------------------------------------
     # Funções auxiliares para verificação de existência de tabelas/índices
@@ -114,15 +127,43 @@ class ImportadorAlunos:
                 print(f"⚠️ Índice idx_alunos_curso não pôde ser criado: {e}")
 
     # -------------------------------------------------------------------------
-    # Obter dados do Lyceum (apenas alunos ativos)
+    # Limpeza total da tabela (TRUNCATE)
+    # -------------------------------------------------------------------------
+    def _limpar_tabela(self):
+        """Remove todos os registros da tabela imp_010_alunos."""
+        try:
+            with get_db_connection(database_name='qstione') as conn:
+                conn.execute("TRUNCATE TABLE imp_010_alunos")
+                conn.commit()
+                print("🧹 Tabela imp_010_alunos esvaziada com sucesso.")
+        except Exception as e:
+            # Se TRUNCATE falhar (ex: permissão), tenta DELETE
+            print(f"⚠️  TRUNCATE falhou ({e}), tentando DELETE...")
+            try:
+                with get_db_connection(database_name='qstione') as conn:
+                    conn.execute("DELETE FROM imp_010_alunos")
+                    conn.commit()
+                    print("🧹 Tabela imp_010_alunos esvaziada via DELETE.")
+            except Exception as e2:
+                print(f"❌ Erro ao limpar tabela: {e2}")
+
+    # -------------------------------------------------------------------------
+    # Obter dados do Lyceum (apenas alunos ativos com filtros em LY_ALUNO)
     # -------------------------------------------------------------------------
     def obter_dados_lyceum(self):
         """
-        Obtém todos os alunos ativos da tabela LY_ALUNO (sit_aluno = 'Ativo').
+        Obtém alunos ativos (sit_aluno = 'Ativo') diretamente da tabela LY_ALUNO,
+        aplicando filtros opcionais nos campos:
+            - ano_ingresso
+            - sem_ingresso
+            - unidade_ensino
+
+        Se algum filtro for None, ele é ignorado.
         Retorna lista de tuplas (aluno, nome_compl, unidade_ensino, curso, turno)
         """
         with get_db_connection() as conn:
             cursor = conn.cursor()
+
             query = """
                 SELECT
                     aluno,
@@ -132,9 +173,24 @@ class ImportadorAlunos:
                     turno
                 FROM LY_ALUNO
                 WHERE sit_aluno = 'Ativo'
-                ORDER BY aluno
             """
-            cursor.execute(query)
+            params = []
+
+            if self.ano is not None:
+                query += " AND ano_ingresso = ?"
+                params.append(self.ano)
+
+            if self.semestre is not None:
+                query += " AND sem_ingresso = ?"
+                params.append(self.semestre)
+
+            if self.unidade is not None:
+                query += " AND unidade_ensino = ?"
+                params.append(self.unidade)
+
+            query += " ORDER BY aluno"
+
+            cursor.execute(query, params)
             return cursor.fetchall()
 
     # -------------------------------------------------------------------------
@@ -188,40 +244,46 @@ class ImportadorAlunos:
         return dados_transformados
 
     # -------------------------------------------------------------------------
-    # Importar para Qstione (MERGE)
+    # Importar para Qstione (INSERT simples após TRUNCATE)
     # -------------------------------------------------------------------------
     def importar_para_qstione(self, dados_transformados):
+        # Garantir que a tabela exista
         self._criar_tabela()
 
-        merge_sql = """
-            MERGE INTO imp_010_alunos AS target
-            USING (VALUES (?, ?, ?, ?, ?, ?)) AS source (matriculaAluno, nomeAluno, emailAluno, codigoCurso, turno, codigoIdentificacaoAVA)
-            ON target.matriculaAluno = source.matriculaAluno
-            WHEN MATCHED THEN
-                UPDATE SET
-                    nomeAluno = source.nomeAluno,
-                    emailAluno = source.emailAluno,
-                    codigoCurso = source.codigoCurso,
-                    turno = source.turno,
-                    codigoIdentificacaoAVA = source.codigoIdentificacaoAVA,
-                    data_atualizacao = GETDATE()
-            WHEN NOT MATCHED THEN
-                INSERT (matriculaAluno, nomeAluno, emailAluno, codigoCurso, turno, codigoIdentificacaoAVA, data_criacao, data_atualizacao)
-                VALUES (source.matriculaAluno, source.nomeAluno, source.emailAluno, source.codigoCurso, source.turno, source.codigoIdentificacaoAVA, GETDATE(), GETDATE());
+        # Limpar a tabela completamente
+        self._limpar_tabela()
+
+        if not dados_transformados:
+            print("ℹ️  Nenhum dado para importar.")
+            return {
+                'total_inseridos': 0,
+                'total_atualizados': 0,
+                'total_erros': 0,
+                'total_processados': 0
+            }
+
+        # Como a tabela foi truncada, usamos INSERT direto (não precisa de MERGE)
+        insert_sql = """
+            INSERT INTO imp_010_alunos (
+                matriculaAluno,
+                nomeAluno,
+                emailAluno,
+                codigoCurso,
+                turno,
+                codigoIdentificacaoAVA,
+                data_criacao,
+                data_atualizacao
+            ) VALUES (?, ?, ?, ?, ?, ?, GETDATE(), GETDATE())
         """
 
         total_inseridos = 0
-        total_atualizados = 0
         total_erros = 0
 
         with get_db_connection(database_name='qstione') as conn:
             cursor = conn.cursor()
             for reg in dados_transformados:
                 try:
-                    cursor.execute("SELECT 1 FROM imp_010_alunos WHERE matriculaAluno = ?", (reg['matriculaAluno'],))
-                    existe = cursor.fetchone()
-
-                    cursor.execute(merge_sql, (
+                    cursor.execute(insert_sql, (
                         reg['matriculaAluno'],
                         reg['nomeAluno'],
                         reg['emailAluno'],
@@ -229,20 +291,16 @@ class ImportadorAlunos:
                         reg['turno'],
                         reg['codigoIdentificacaoAVA']
                     ))
-
-                    if existe:
-                        total_atualizados += 1
-                    else:
-                        total_inseridos += 1
+                    total_inseridos += 1
                 except Exception as e:
                     total_erros += 1
-                    print(f"  ✗  Erro ao importar {reg['matriculaAluno']}: {e}")
+                    print(f"  ✗  Erro ao inserir {reg['matriculaAluno']}: {e}")
 
             conn.commit()
 
         return {
             'total_inseridos': total_inseridos,
-            'total_atualizados': total_atualizados,
+            'total_atualizados': 0,  # Não há atualizações, pois a tabela foi truncada
             'total_erros': total_erros,
             'total_processados': len(dados_transformados)
         }
@@ -255,7 +313,20 @@ class ImportadorAlunos:
         print("IMPORTAÇÃO: imp_010_alunos")
         print("=" * 70)
 
-        # 1. Obter dados do Lyceum (apenas ativos)
+        filtros_aplicados = []
+        if self.ano is not None:
+            filtros_aplicados.append(f"ano_ingresso={self.ano}")
+        if self.semestre is not None:
+            filtros_aplicados.append(f"sem_ingresso={self.semestre}")
+        if self.unidade is not None:
+            filtros_aplicados.append(f"unidade_ensino='{self.unidade}'")
+
+        if filtros_aplicados:
+            print(f"🔍 Filtros aplicados: {', '.join(filtros_aplicados)}")
+        else:
+            print("ℹ️  Nenhum filtro aplicado (todos os alunos ativos)")
+
+        # 1. Obter dados do Lyceum
         dados_lyceum = self.obter_dados_lyceum()
         print(f"📊 Registros encontrados no Lyceum: {len(dados_lyceum)}")
 
@@ -264,8 +335,8 @@ class ImportadorAlunos:
         dados_transformados = self.transformar_dados(dados_lyceum)
         print(f"✅ Registros válidos para importação: {len(dados_transformados)}")
 
-        # 3. Importar para Qstione
-        print("💾 Importando para banco Qstione...")
+        # 3. Importar para Qstione (com limpeza total)
+        print("💾 Importando para banco Qstione (limpeza total)...")
         resultado = self.importar_para_qstione(dados_transformados)
 
         print(f"\n📈 RESULTADO DA IMPORTAÇÃO:")
@@ -280,5 +351,12 @@ class ImportadorAlunos:
 if __name__ == "__main__":
     import logging
     logging.basicConfig(level=logging.INFO)
-    importador = ImportadorAlunos()
+
+    parser = argparse.ArgumentParser(description="Importação de alunos para Qstione com filtros opcionais (ano_ingresso, sem_ingresso, unidade_ensino)")
+    parser.add_argument('--ano', type=int, help="Ano de ingresso (campo ano_ingresso)")
+    parser.add_argument('--semestre', type=int, help="Semestre de ingresso (campo sem_ingresso)")
+    parser.add_argument('--unidade', type=str, help="Unidade de ensino (campo unidade_ensino)")
+    args = parser.parse_args()
+
+    importador = ImportadorAlunos(ano=args.ano, semestre=args.semestre, unidade=args.unidade)
     importador.executar_importacao()
