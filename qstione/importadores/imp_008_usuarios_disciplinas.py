@@ -2,6 +2,10 @@
 qstione/importadores/imp_008_usuarios_disciplinas.py
 Importador para tabela imp_008_usuarios_disciplinas
 Adaptado para SQL Server usando core.database e alinhado ao imp_002
+
+MODIFICAÇÃO: agora inclui, para cada disciplina, os e-mails dos coordenadores
+e membros do NDE dos cursos associados à disciplina via LY_GRADE,
+além dos docentes já existentes.
 """
 
 from core.database import get_db_connection
@@ -120,31 +124,79 @@ class ImportadorUsuariosDisciplinas:
                 """)
                 for row in cursor.fetchall():
                     codigo_completo = row[0]
-                    # Extrai a parte antes do primeiro '-' (código original)
                     if '-' in codigo_completo:
                         original = codigo_completo.split('-')[0]
                         codigos[original] = codigo_completo
                     else:
-                        # Se não tiver '-', assume que o próprio código é o original
                         codigos[codigo_completo] = codigo_completo
         except Exception as e:
             print(f"  ⚠️  Erro ao consultar imp_002_disciplina: {e}")
         return codigos
 
     # -------------------------------------------------------------------------
-    # Obter dados do Lyceum
+    # Buscar e-mails dos coordenadores e membros do NDE por curso (tabelas Qstione)
+    # -------------------------------------------------------------------------
+    def _obter_emails_nde_por_curso(self):
+        """
+        Retorna um dicionário: codigoCurso -> lista de e-mails (coordenador + membros)
+        a partir das tabelas imp_nde_cursos e imp_nde_membros.
+        """
+        emails_por_curso = {}
+        try:
+            with get_db_connection(database_name='qstione') as conn:
+                cursor = conn.cursor()
+                # Coordenadores
+                cursor.execute("""
+                    SELECT codigoCurso, emailCoordenador
+                    FROM imp_nde_cursos
+                    WHERE emailCoordenador IS NOT NULL AND emailCoordenador != ''
+                """)
+                for row in cursor.fetchall():
+                    curso = row[0]
+                    email = row[1]
+                    if curso not in emails_por_curso:
+                        emails_por_curso[curso] = []
+                    emails_por_curso[curso].append(email)
+
+                # Membros
+                cursor.execute("""
+                    SELECT codigoCurso, emailMembro
+                    FROM imp_nde_membros
+                    WHERE emailMembro IS NOT NULL AND emailMembro != ''
+                """)
+                for row in cursor.fetchall():
+                    curso = row[0]
+                    email = row[1]
+                    if curso not in emails_por_curso:
+                        emails_por_curso[curso] = []
+                    emails_por_curso[curso].append(email)
+
+        except Exception as e:
+            print(f"  ⚠️  Erro ao buscar e-mails do NDE: {e}")
+        return emails_por_curso
+
+    # -------------------------------------------------------------------------
+    # Obter dados do Lyceum (docentes + NDE)
     # -------------------------------------------------------------------------
     def obter_dados_lyceum(self):
         """
         Obtém do banco Lyceum os pares (disciplina, email) únicos,
-        respeitando os filtros de ano, período, faculdade e docente ativo.
+        respeitando os filtros de ano, período, faculdade.
+
+        Fontes:
+        1. Docentes ativos (LY_TURMA_DOCENTE + LY_DOCENTE) – original.
+        2. Coordenadores e membros do NDE, via LY_GRADE para obter o curso
+           de cada disciplina, e depois buscas nas tabelas imp_nde_* do Qstione.
         """
+        periodo_principal = PERIODOS_VIGENTES[0]
+        faculdades_placeholder = ','.join(['?'] * len(FACULDADES_INCLUIDAS))
+
+        # ------------------------------------------------------------
+        # 1. Docentes (consulta original)
+        # ------------------------------------------------------------
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            periodo_principal = PERIODOS_VIGENTES[0]
-            faculdades_placeholder = ','.join(['?'] * len(FACULDADES_INCLUIDAS))
-
-            query = f"""
+            query_docentes = f"""
                 SELECT DISTINCT
                     td.disciplina,
                     d.email
@@ -157,11 +209,57 @@ class ImportadorUsuariosDisciplinas:
                   AND td.periodo = ?
                   AND dsc.faculdade IN ({faculdades_placeholder})
                   AND d.ativo = 'S'
-                ORDER BY td.disciplina, d.email
             """
             params = [ANO_VIGENTE, periodo_principal] + FACULDADES_INCLUIDAS
-            cursor.execute(query, params)
-            return cursor.fetchall()
+            cursor.execute(query_docentes, params)
+            docentes = cursor.fetchall()  # lista de (disciplina, email)
+
+        # ------------------------------------------------------------
+        # 2. Disciplinas e seus cursos via LY_GRADE (para NDE)
+        # ------------------------------------------------------------
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            query_grade = f"""
+                SELECT DISTINCT
+                    td.disciplina,
+                    g.curso
+                FROM LY_TURMA_DOCENTE td
+                INNER JOIN LY_DISCIPLINA dsc
+                    ON dsc.disciplina = td.disciplina
+                INNER JOIN LY_GRADE g
+                    ON g.disciplina = td.disciplina
+                WHERE td.ano = ?
+                  AND td.periodo = ?
+                  AND dsc.faculdade IN ({faculdades_placeholder})
+            """
+            cursor.execute(query_grade, params)
+            pares_disciplina_curso = cursor.fetchall()  # lista de (disciplina, curso)
+
+        # ------------------------------------------------------------
+        # 3. Emails NDE por curso (tabelas Qstione)
+        # ------------------------------------------------------------
+        emails_nde_por_curso = self._obter_emails_nde_por_curso()
+
+        # ------------------------------------------------------------
+        # 4. Construir lista final de pares (disciplina, email)
+        # ------------------------------------------------------------
+        resultados = set()  # para evitar duplicatas
+
+        # Adiciona docentes
+        for disciplina, email in docentes:
+            if disciplina and email:
+                resultados.add((disciplina, email))
+
+        # Adiciona NDE
+        for disciplina, curso in pares_disciplina_curso:
+            if disciplina and curso:
+                emails_do_curso = emails_nde_por_curso.get(curso, [])
+                for email in emails_do_curso:
+                    if email:
+                        resultados.add((disciplina, email))
+
+        # Retorna como lista de tuplas
+        return list(resultados)
 
     # -------------------------------------------------------------------------
     # Transformar dados (usando mapeamento de disciplinas do imp_002)
@@ -262,7 +360,7 @@ class ImportadorUsuariosDisciplinas:
         print("=" * 70)
 
         dados_lyceum = self.obter_dados_lyceum()
-        print(f"📊 Registros encontrados no Lyceum (após DISTINCT): {len(dados_lyceum)}")
+        print(f"📊 Registros encontrados no Lyceum (após DISTINCT e união com NDE): {len(dados_lyceum)}")
 
         print("🔄 Transformando dados...")
         dados_transformados = self.transformar_dados(dados_lyceum)
