@@ -61,6 +61,7 @@ tmp/
 temp/
 ementa_sagres/
 ementa_sagres/pdf_ementas/
+qstione/nde
 
 # Sistema operacional
 .DS_Store
@@ -68,3 +69,4 @@ Thumbs.db
 
 # Exportações temporárias
 *.csv
+*.xlsx
