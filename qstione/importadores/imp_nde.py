@@ -44,7 +44,7 @@ class ImportadorNDE:
         except Exception:
             return False
 
-    # -------------------- Criação das tabelas --------------------
+    # -------------------- Criação das tabelas (com coluna status) --------------------
     def _criar_tabelas(self):
         if not self._tabela_existe('imp_nde_cursos'):
             print("🆕 Criando tabela imp_nde_cursos...")
@@ -54,6 +54,7 @@ class ImportadorNDE:
                     nomeCurso NVARCHAR(64) NOT NULL,
                     coordenador NVARCHAR(100) NOT NULL,
                     emailCoordenador NVARCHAR(100) NULL,
+                    status CHAR(1) NOT NULL DEFAULT 'S',   -- 'S' ativo, 'N' inativo
                     data_criacao DATETIME2 DEFAULT GETDATE(),
                     data_atualizacao DATETIME2 DEFAULT GETDATE(),
                     PRIMARY KEY (codigoCurso)
@@ -65,6 +66,17 @@ class ImportadorNDE:
             print("✅ Tabela imp_nde_cursos criada.")
         else:
             print("✅ Tabela imp_nde_cursos já existe.")
+            # Verifica se a coluna status já existe, caso contrário adiciona
+            with get_db_connection(database_name='qstione') as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_NAME = 'imp_nde_cursos' AND COLUMN_NAME = 'status'
+                """)
+                if not cursor.fetchone():
+                    print("   ↳ Adicionando coluna status à imp_nde_cursos...")
+                    conn.execute("ALTER TABLE imp_nde_cursos ADD status CHAR(1) NOT NULL DEFAULT 'S'")
+                    conn.commit()
 
         if not self._tabela_existe('imp_nde_membros'):
             print("🆕 Criando tabela imp_nde_membros...")
@@ -74,6 +86,7 @@ class ImportadorNDE:
                     codigoCurso NVARCHAR(30) NOT NULL,
                     nomeMembro NVARCHAR(100) NOT NULL,
                     emailMembro NVARCHAR(100) NULL,
+                    status CHAR(1) NOT NULL DEFAULT 'S',   -- 'S' ativo, 'N' inativo
                     data_criacao DATETIME2 DEFAULT GETDATE(),
                     data_atualizacao DATETIME2 DEFAULT GETDATE(),
                     CONSTRAINT fk_membros_cursos FOREIGN KEY (codigoCurso)
@@ -87,6 +100,16 @@ class ImportadorNDE:
             print("✅ Tabela imp_nde_membros criada.")
         else:
             print("✅ Tabela imp_nde_membros já existe.")
+            with get_db_connection(database_name='qstione') as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_NAME = 'imp_nde_membros' AND COLUMN_NAME = 'status'
+                """)
+                if not cursor.fetchone():
+                    print("   ↳ Adicionando coluna status à imp_nde_membros...")
+                    conn.execute("ALTER TABLE imp_nde_membros ADD status CHAR(1) NOT NULL DEFAULT 'S'")
+                    conn.commit()
 
         # Índices
         if not self._indice_existe('idx_nde_cursos_nome', 'imp_nde_cursos'):
@@ -244,9 +267,15 @@ class ImportadorNDE:
 
         return cursos_final, membros_unicos
 
-    # -------------------- Importação para o Qstione --------------------
+    # -------------------- Importação para o Qstione (com status) --------------------
     def importar_para_qstione(self, cursos_data, membros_data):
         self._criar_tabelas()
+
+        # Primeiro, marcar todos os registros existentes como inativos ('N')
+        with get_db_connection(database_name='qstione') as conn:
+            conn.execute("UPDATE imp_nde_cursos SET status = 'N', data_atualizacao = GETDATE()")
+            conn.execute("UPDATE imp_nde_membros SET status = 'N', data_atualizacao = GETDATE()")
+            conn.commit()
 
         merge_cursos = """
             MERGE INTO imp_nde_cursos AS target
@@ -257,10 +286,11 @@ class ImportadorNDE:
                     nomeCurso = source.nomeCurso,
                     coordenador = source.coordenador,
                     emailCoordenador = source.emailCoordenador,
+                    status = 'S',   -- ativo
                     data_atualizacao = GETDATE()
             WHEN NOT MATCHED THEN
-                INSERT (codigoCurso, nomeCurso, coordenador, emailCoordenador, data_criacao, data_atualizacao)
-                VALUES (source.codigoCurso, source.nomeCurso, source.coordenador, source.emailCoordenador, GETDATE(), GETDATE());
+                INSERT (codigoCurso, nomeCurso, coordenador, emailCoordenador, status, data_criacao, data_atualizacao)
+                VALUES (source.codigoCurso, source.nomeCurso, source.coordenador, source.emailCoordenador, 'S', GETDATE(), GETDATE());
         """
 
         merge_membros = """
@@ -272,10 +302,11 @@ class ImportadorNDE:
             WHEN MATCHED THEN
                 UPDATE SET
                     emailMembro = source.emailMembro,
+                    status = 'S',   -- ativo
                     data_atualizacao = GETDATE()
             WHEN NOT MATCHED THEN
-                INSERT (codigoCurso, nomeMembro, emailMembro, data_criacao, data_atualizacao)
-                VALUES (source.codigoCurso, source.nomeMembro, source.emailMembro, GETDATE(), GETDATE());
+                INSERT (codigoCurso, nomeMembro, emailMembro, status, data_criacao, data_atualizacao)
+                VALUES (source.codigoCurso, source.nomeMembro, source.emailMembro, 'S', GETDATE(), GETDATE());
         """
 
         total_inseridos_cursos = 0
@@ -368,7 +399,7 @@ class ImportadorNDE:
         print(f"✅ Cursos identificados: {len(cursos_data)}")
         print(f"✅ Membros identificados (após remoção de duplicatas): {len(membros_data)}")
 
-        print("💾 Importando para Qstione...")
+        print("💾 Importando para Qstione (com atualização de status)...")
         resultado = self.importar_para_qstione(cursos_data, membros_data)
 
         print(f"\n📈 RESULTADO DA IMPORTAÇÃO:")
@@ -381,6 +412,8 @@ class ImportadorNDE:
         print(f"  ✗ Erros totais: {resultado['total_erros']}")
         print(f"  📋 Total de cursos processados: {resultado['total_cursos']}")
         print(f"  📋 Total de membros processados: {resultado['total_membros']}")
+        print("\n✅ Registros presentes no arquivo foram marcados como 'S' (ativo).")
+        print("   Registros ausentes foram marcados como 'N' (inativo).")
 
         return cursos_data, membros_data
 

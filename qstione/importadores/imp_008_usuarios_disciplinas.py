@@ -6,6 +6,8 @@ Adaptado para SQL Server usando core.database e alinhado ao imp_002
 MODIFICAÇÃO: agora inclui, para cada disciplina, os e-mails dos coordenadores
 e membros do NDE dos cursos associados à disciplina via LY_GRADE,
 além dos docentes já existentes.
+- Somente registros com status = 'S' nas tabelas imp_nde_* são considerados.
+- Tabela imp_008_usuarios_disciplinas agora possui coluna STATUS ('S'/'N') para controle de ativos.
 """
 
 from core.database import get_db_connection
@@ -50,33 +52,39 @@ class ImportadorUsuariosDisciplinas:
 
     def _criar_tabela(self):
         if self._tabela_existe('imp_008_usuarios_disciplinas'):
-            try:
-                with get_db_connection(database_name='qstione') as conn:
-                    cursor = conn.cursor()
-                    cursor.execute("""
-                        SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
-                        WHERE TABLE_NAME = 'imp_008_usuarios_disciplinas'
-                          AND COLUMN_NAME IN ('data_criacao', 'data_atualizacao')
-                    """)
-                    colunas = [row[0] for row in cursor.fetchall()]
-                    if 'data_criacao' in colunas and 'data_atualizacao' in colunas:
-                        print("✅ Tabela imp_008_usuarios_disciplinas já existe com estrutura correta.")
-                        return
-                    else:
-                        print("⚠️  Colunas ausentes. Recriando tabela...")
-                        cursor.execute("DROP TABLE imp_008_usuarios_disciplinas")
-                        conn.commit()
-            except Exception as e:
-                print(f"⚠️  Erro ao verificar colunas: {e}. Recriando tabela...")
-                with get_db_connection(database_name='qstione') as conn:
-                    conn.execute("DROP TABLE IF EXISTS imp_008_usuarios_disciplinas")
+            # Verifica se coluna status existe, senão adiciona
+            with get_db_connection(database_name='qstione') as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_NAME = 'imp_008_usuarios_disciplinas'
+                      AND COLUMN_NAME = 'status'
+                """)
+                if not cursor.fetchone():
+                    print("   ↳ Adicionando coluna status à imp_008_usuarios_disciplinas...")
+                    conn.execute("ALTER TABLE imp_008_usuarios_disciplinas ADD status CHAR(1) NOT NULL DEFAULT 'S'")
                     conn.commit()
-
+                # Verifica se colunas data_criacao e data_atualizacao existem
+                cursor.execute("""
+                    SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_NAME = 'imp_008_usuarios_disciplinas'
+                      AND COLUMN_NAME IN ('data_criacao', 'data_atualizacao')
+                """)
+                colunas = [row[0] for row in cursor.fetchall()]
+                if 'data_criacao' in colunas and 'data_atualizacao' in colunas:
+                    print("✅ Tabela imp_008_usuarios_disciplinas já existe com estrutura correta.")
+                    return
+                else:
+                    print("⚠️  Colunas ausentes. Recriando tabela...")
+                    cursor.execute("DROP TABLE imp_008_usuarios_disciplinas")
+                    conn.commit()
+        # Se não existe ou foi recriada, cria nova com status
         print("🆕 Criando tabela imp_008_usuarios_disciplinas...")
         create_sql = """
             CREATE TABLE imp_008_usuarios_disciplinas (
                 codigoDisciplina NVARCHAR(30) NOT NULL,
                 emailUsuario NVARCHAR(100) NOT NULL,
+                status CHAR(1) NOT NULL DEFAULT 'S',
                 data_criacao DATETIME2 DEFAULT GETDATE(),
                 data_atualizacao DATETIME2 DEFAULT GETDATE(),
                 PRIMARY KEY (codigoDisciplina, emailUsuario)
@@ -135,21 +143,24 @@ class ImportadorUsuariosDisciplinas:
 
     # -------------------------------------------------------------------------
     # Buscar e-mails dos coordenadores e membros do NDE por curso (tabelas Qstione)
+    # Agora com filtro de STATUS = 'S' (apenas ativos)
     # -------------------------------------------------------------------------
     def _obter_emails_nde_por_curso(self):
         """
         Retorna um dicionário: codigoCurso -> lista de e-mails (coordenador + membros)
-        a partir das tabelas imp_nde_cursos e imp_nde_membros.
+        a partir das tabelas imp_nde_cursos e imp_nde_membros, considerando apenas
+        registros com status = 'S' (ativos).
         """
         emails_por_curso = {}
         try:
             with get_db_connection(database_name='qstione') as conn:
                 cursor = conn.cursor()
-                # Coordenadores
+                # Coordenadores ativos (status = 'S')
                 cursor.execute("""
                     SELECT codigoCurso, emailCoordenador
                     FROM imp_nde_cursos
                     WHERE emailCoordenador IS NOT NULL AND emailCoordenador != ''
+                      AND status = 'S'
                 """)
                 for row in cursor.fetchall():
                     curso = row[0]
@@ -158,11 +169,12 @@ class ImportadorUsuariosDisciplinas:
                         emails_por_curso[curso] = []
                     emails_por_curso[curso].append(email)
 
-                # Membros
+                # Membros ativos (status = 'S')
                 cursor.execute("""
                     SELECT codigoCurso, emailMembro
                     FROM imp_nde_membros
                     WHERE emailMembro IS NOT NULL AND emailMembro != ''
+                      AND status = 'S'
                 """)
                 for row in cursor.fetchall():
                     curso = row[0]
@@ -184,9 +196,9 @@ class ImportadorUsuariosDisciplinas:
         respeitando os filtros de ano, período, faculdade.
 
         Fontes:
-        1. Docentes ativos (LY_TURMA_DOCENTE + LY_DOCENTE) – original.
-        2. Coordenadores e membros do NDE, via LY_GRADE para obter o curso
-           de cada disciplina, e depois buscas nas tabelas imp_nde_* do Qstione.
+        1. Docentes ativos (LY_TURMA_DOCENTE + LY_DOCENTE) – sempre incluídos.
+        2. Coordenadores e membros do NDE (apenas status = 'S'), via LY_GRADE
+           para obter o curso de cada disciplina, e depois buscas nas tabelas imp_nde_*.
         """
         periodo_principal = PERIODOS_VIGENTES[0]
         faculdades_placeholder = ','.join(['?'] * len(FACULDADES_INCLUIDAS))
@@ -236,7 +248,7 @@ class ImportadorUsuariosDisciplinas:
             pares_disciplina_curso = cursor.fetchall()  # lista de (disciplina, curso)
 
         # ------------------------------------------------------------
-        # 3. Emails NDE por curso (tabelas Qstione)
+        # 3. Emails NDE por curso (apenas ativos) – tabelas Qstione
         # ------------------------------------------------------------
         emails_nde_por_curso = self._obter_emails_nde_por_curso()
 
@@ -245,12 +257,12 @@ class ImportadorUsuariosDisciplinas:
         # ------------------------------------------------------------
         resultados = set()  # para evitar duplicatas
 
-        # Adiciona docentes
+        # Adiciona docentes (sempre)
         for disciplina, email in docentes:
             if disciplina and email:
                 resultados.add((disciplina, email))
 
-        # Adiciona NDE
+        # Adiciona NDE (apenas ativos, já filtrados em _obter_emails_nde_por_curso)
         for disciplina, curso in pares_disciplina_curso:
             if disciplina and curso:
                 emails_do_curso = emails_nde_por_curso.get(curso, [])
@@ -297,10 +309,15 @@ class ImportadorUsuariosDisciplinas:
         return dados_transformados
 
     # -------------------------------------------------------------------------
-    # Importar para Qstione (MERGE)
+    # Importar para Qstione (MERGE) com status
     # -------------------------------------------------------------------------
     def importar_para_qstione(self, dados_transformados):
         self._criar_tabela()
+
+        # Primeiro, marcar todos os registros existentes como inativos ('N')
+        with get_db_connection(database_name='qstione') as conn:
+            conn.execute("UPDATE imp_008_usuarios_disciplinas SET status = 'N', data_atualizacao = GETDATE()")
+            conn.commit()
 
         merge_sql = """
             MERGE INTO imp_008_usuarios_disciplinas AS target
@@ -309,10 +326,11 @@ class ImportadorUsuariosDisciplinas:
                AND target.emailUsuario = source.emailUsuario
             WHEN MATCHED THEN
                 UPDATE SET
+                    status = 'S',
                     data_atualizacao = GETDATE()
             WHEN NOT MATCHED THEN
-                INSERT (codigoDisciplina, emailUsuario, data_criacao, data_atualizacao)
-                VALUES (source.codigoDisciplina, source.emailUsuario, GETDATE(), GETDATE());
+                INSERT (codigoDisciplina, emailUsuario, status, data_criacao, data_atualizacao)
+                VALUES (source.codigoDisciplina, source.emailUsuario, 'S', GETDATE(), GETDATE());
         """
 
         total_inseridos = 0
@@ -374,6 +392,8 @@ class ImportadorUsuariosDisciplinas:
         print(f"  ↻ Atualizados: {resultado['total_atualizados']}")
         print(f"  ✗ Erros: {resultado['total_erros']}")
         print(f"  📋 Total processados: {resultado['total_processados']}")
+        print("\n✅ Registros presentes no Lyceum foram marcados como 'S' (ativo).")
+        print("   Registros ausentes foram marcados como 'N' (inativo).")
 
         return dados_transformados
 
