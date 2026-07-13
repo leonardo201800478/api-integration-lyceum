@@ -1,7 +1,8 @@
+#!/usr/bin/env python3
 """
 models/ly_curriculo.py
 Modelo para tabela LY_CURRICULO usando core.database (SQL Server)
-ID gerado de forma determinística via concatenação: curso + curriculo
+ID gerado de forma determinística via concatenação: curso + curriculo + turno
 
 MIGRAÇÃO AUTOMÁTICA:
   Se a tabela existir com [id] INT/IDENTITY, o método _migrate_id_column()
@@ -17,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 class LyCurriculoModel:
-    """Modelo para tabela LY_CURRICULO (SQL Server) com ID composto curso+curriculo."""
+    """Modelo para tabela LY_CURRICULO com ID composto curso+curriculo+turno."""
 
     TABLE_NAME = "LY_CURRICULO"
     DB_NAME = "lyceum"
@@ -51,9 +52,16 @@ class LyCurriculoModel:
     # ------------------------------------------------------------------
 
     @classmethod
-    def _generate_id(cls, curso: Any, curriculo: Any) -> str:
-        """Gera ID determinístico: '<curso>_<curriculo>'  ex: '006_20262'"""
-        return f"{str(curso).strip()}_{str(curriculo).strip()}"
+    def _generate_id(cls, curso: Any, curriculo: Any, turno: Any) -> str:
+        """
+        Gera ID determinístico: '<curso>_<curriculo>_<turno>'
+        Exemplo: '006_20262_M' ou '006_20262_N' para turno vazio/None
+        """
+        # Normaliza cada parte, tratando None/'' como 'N' (para manter consistência)
+        def norm(val):
+            s = str(val).strip() if val is not None else ''
+            return s if s else 'N'
+        return f"{norm(curso)}_{norm(curriculo)}_{norm(turno)}"
 
     @classmethod
     def _normalize_value(cls, value: Any) -> Any:
@@ -108,7 +116,7 @@ class LyCurriculoModel:
         return row[0] if row else None
 
     # ------------------------------------------------------------------
-    # Migração automática  INT → NVARCHAR
+    # Migração automática INT → NVARCHAR
     # ------------------------------------------------------------------
 
     @classmethod
@@ -322,21 +330,23 @@ class LyCurriculoModel:
         """
         curriculo_id = cls._normalize_value(data.get('curriculo'))
         curso_id = cls._normalize_value(data.get('curso'))
+        turno_val = cls._normalize_value(data.get('turno'))  # pode ser None
 
         if not curriculo_id or not curso_id:
             return None, None, None
 
-        generated_id = cls._generate_id(curso_id, curriculo_id)
+        generated_id = cls._generate_id(curso_id, curriculo_id, turno_val)
 
-        columns = ['id', 'curriculo', 'curso']
-        values = [generated_id, curriculo_id, curso_id]
+        columns = ['id', 'curriculo', 'curso', 'turno']
+        values = [generated_id, curriculo_id, curso_id, turno_val]
 
+        # Adiciona os demais campos da API (excluindo os já incluídos)
         for field in cls.API_FIELDS:
-            if field not in ('curriculo', 'curso'):
+            if field not in ('curriculo', 'curso', 'turno'):
                 value = cls._normalize_value(data.get(field))
-                if value is not None:
-                    columns.append(field)
-                    values.append(value)
+                # Inclui mesmo que seja None – o INSERT aceita NULL
+                columns.append(field)
+                values.append(value)
 
         return generated_id, columns, values
 
