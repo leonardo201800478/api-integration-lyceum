@@ -28,7 +28,6 @@ class LyProvaModel:
         'trabalho', 'turma'
     ]
 
-    # Campos que formam a chave primária
     PK_FIELDS = ['ano', 'disciplina', 'prova', 'semestre', 'turma']
 
     @classmethod
@@ -52,7 +51,7 @@ class LyProvaModel:
             SELECT 1 FROM INFORMATION_SCHEMA.TABLES
             WHERE TABLE_NAME = ? AND TABLE_TYPE = 'BASE TABLE'
         """
-        result = fetch_one(query, (cls.TABLE_NAME,), db_path=cls.DB_NAME)
+        result = fetch_one(query, (cls.TABLE_NAME,), database_name=cls.DB_NAME)
         return result is not None
 
     @classmethod
@@ -112,9 +111,7 @@ class LyProvaModel:
         )
         """
         try:
-            execute_query(sql, db_path=cls.DB_NAME)
-
-            # Índices adicionais
+            execute_query(sql, database_name=cls.DB_NAME)
             indexes = [
                 f"CREATE INDEX idx_prova_prova ON [{cls.TABLE_NAME}]([prova])",
                 f"CREATE INDEX idx_prova_disciplina ON [{cls.TABLE_NAME}]([disciplina])",
@@ -123,11 +120,10 @@ class LyProvaModel:
             ]
             for idx_sql in indexes:
                 try:
-                    execute_query(idx_sql, db_path=cls.DB_NAME)
+                    execute_query(idx_sql, database_name=cls.DB_NAME)
                 except Exception as e:
                     logger.warning(f"Erro ao criar índice: {e}")
-
-            logger.info(f"Tabela {cls.TABLE_NAME} criada com sucesso (chave composta).")
+            logger.info(f"Tabela {cls.TABLE_NAME} criada com sucesso.")
             return True
         except Exception as e:
             logger.error(f"Erro ao criar tabela {cls.TABLE_NAME}: {e}")
@@ -135,19 +131,15 @@ class LyProvaModel:
 
     @classmethod
     def upsert(cls, data: Dict) -> bool:
-        """Insere ou atualiza uma prova (baseado na chave composta)."""
         try:
-            # Extrai valores da chave
             pk_values = [cls._normalize_value(data.get(field)) for field in cls.PK_FIELDS]
             if None in pk_values:
                 logger.warning(f"Registro sem chave completa: {data}")
                 return False
 
-            # Prepara colunas e valores (todos os campos)
             columns = cls.API_FIELDS
             values = [cls._normalize_value(data.get(field)) for field in columns]
 
-            # Colunas da chave
             col_list = ', '.join([f"[{col}]" for col in columns])
             param_placeholders = ', '.join(['?' for _ in columns])
             source_cols = ', '.join([f"source.[{col}]" for col in columns])
@@ -173,7 +165,7 @@ class LyProvaModel:
                     INSERT ({insert_cols})
                     VALUES ({insert_vals});
             """
-            execute_query(merge_sql, tuple(values), db_path=cls.DB_NAME)
+            execute_query(merge_sql, tuple(values), database_name=cls.DB_NAME)
             return True
         except Exception as e:
             logger.error(f"Erro ao upsert prova {data.get('prova')}: {e}")
@@ -185,7 +177,7 @@ class LyProvaModel:
             return 0
         success = 0
         errors = 0
-        with get_db_connection(db_path=cls.DB_NAME) as conn:
+        with get_db_connection(database_name=cls.DB_NAME) as conn:
             cursor = conn.cursor()
             for data in data_list:
                 try:
@@ -225,3 +217,21 @@ class LyProvaModel:
             conn.commit()
         logger.info(f"Batch upsert: {success} sucessos, {errors} erros, total {len(data_list)}")
         return success
+
+    @classmethod
+    def get_summary(cls) -> Dict:
+        try:
+            queries = {
+                'total_provas': f"SELECT COUNT(*) FROM [{cls.TABLE_NAME}]",
+                'ultima_atualizacao': f"SELECT MAX([data_atualizacao]) FROM [{cls.TABLE_NAME}]",
+                'disciplinas_distintas': f"SELECT COUNT(DISTINCT [disciplina]) FROM [{cls.TABLE_NAME}]",
+                'turmas_distintas': f"SELECT COUNT(DISTINCT [turma]) FROM [{cls.TABLE_NAME}]",
+            }
+            results = {}
+            for key, query in queries.items():
+                row = fetch_one(query, database_name=cls.DB_NAME)
+                results[key] = row[0] if row else 0
+            return results
+        except Exception as e:
+            logger.error(f"Erro ao obter resumo: {e}")
+            return {}

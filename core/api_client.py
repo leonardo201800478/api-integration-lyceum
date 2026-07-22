@@ -409,24 +409,8 @@ class ProvaDisciplinaAPIClient(BaseAPIClient):
         """
         return self.get_paginated("/v2/tabela/provas-disciplinas", params=kwargs)
 
-
 class ProvaAPIClient(BaseAPIClient):
-    """
-    Cliente para o endpoint /v2/tabela/provas
-    ATENÇÃO: este endpoint NÃO é paginado. Requer os parâmetros obrigatórios:
-        - pk[ano]
-        - pk[disciplina]
-        - pk[prova]
-        - pk[semestre]
-        - pk[turma]
-    Retorna um único objeto (não uma lista).
-    """
-
     def get_prova(self, ano: int, disciplina: str, prova: str, semestre: int, turma: str) -> Optional[dict]:
-        """
-        Obtém uma prova específica pelos parâmetros compostos.
-        Retorna o dicionário da prova ou None.
-        """
         params = {
             "pk[ano]": ano,
             "pk[disciplina]": disciplina,
@@ -435,18 +419,14 @@ class ProvaAPIClient(BaseAPIClient):
             "pk[turma]": turma,
         }
         data = self.get("/v2/tabela/provas", params=params)
-        
-        # A API pode retornar o objeto diretamente ou dentro de {'data': [...]}
         if isinstance(data, dict):
             if 'data' in data:
                 items = data['data']
                 if isinstance(items, list) and len(items) > 0:
                     return items[0]
             else:
-                # Assume que o próprio dicionário é a prova
                 return data
         return None
-
 
 # ==================================================
 # MÉTODOS DE CONVENIÊNCIA - Mantém compatibilidade

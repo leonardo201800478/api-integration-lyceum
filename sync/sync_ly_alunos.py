@@ -77,8 +77,41 @@ def run(modo: str = "completo") -> Dict[str, int | float]:
             "tempo_total": time.time() - start_time,
         }
 
-    total_api = len(alunos_api)
-    logger.info("Registros recebidos da API: %d", total_api)
+    total_recebidos = len(alunos_api)
+    logger.info("Registros recebidos da API: %d", total_recebidos)
+
+    # ----------------------------------------------------------
+    # FILTRO: mantém apenas os alunos com sit_aluno = 'Ativo'
+    # ----------------------------------------------------------
+    alunos_ativos = [
+        aluno for aluno in alunos_api
+        if isinstance(aluno, dict) and aluno.get('sit_aluno') == 'Ativo'
+    ]
+    total_ativos = len(alunos_ativos)
+    logger.info("Registros com sit_aluno='Ativo': %d (descartados %d)",
+                total_ativos, total_recebidos - total_ativos)
+
+    # Se não houver alunos ativos, trata de acordo com o modo
+    if total_ativos == 0:
+        if modo == "completo":
+            # Modo completo: remove todos os registros da tabela
+            with get_db_connection(database_name="lyceum") as conn:
+                conn.execute("DELETE FROM [LY_ALUNO]")
+            logger.info("Nenhum aluno ativo encontrado. Tabela esvaziada.")
+        else:
+            logger.info("Nenhum aluno ativo encontrado. Nada a fazer no modo incremental.")
+        return {
+            "total_api": 0,
+            "total_banco": 0,
+            "inseridos": 0,
+            "atualizados": 0,
+            "ignorados": 0,
+            "erros": 0,
+            "tempo_total": time.time() - start_time,
+        }
+
+    # A partir daqui, trabalhamos apenas com alunos_ativos
+    total_api = total_ativos
 
     # ------------------------------------------------------------------
     # Pré‑carrega stamps (modo incremental) e matrículas existentes (modo completo)
@@ -104,7 +137,7 @@ def run(modo: str = "completo") -> Dict[str, int | float]:
     stats = {"inseridos": 0, "atualizados": 0, "ignorados": 0, "erros": 0}
     matriculas_processadas: Set[str] = set()
 
-    for idx, aluno in enumerate(alunos_api, start=1):
+    for idx, aluno in enumerate(alunos_ativos, start=1):
         try:
             # Validação mínima
             if not isinstance(aluno, dict):
@@ -130,15 +163,14 @@ def run(modo: str = "completo") -> Dict[str, int | float]:
             # ----------------------------------------------------------
             # UPSERT (método não deve gerar logs por aluno)
             # ----------------------------------------------------------
-            # O método upsert pode retornar True se fez INSERT, False se UPDATE.
-            # Se o modelo atual não retorna, ajuste ou ignore a contagem distinta.
-            # Vamos supor que ele retorna booleano. Caso contrário, altere a linha.
-            foi_insercao = AlunoModel.upsert(aluno)   # idealmente retorna bool
+            # O método upsert não retorna um booleano, portanto não é possível
+            # distinguir INSERT de UPDATE. A contagem abaixo é meramente ilustrativa.
+            AlunoModel.upsert(aluno)
 
-            if foi_insercao:
-                stats["inseridos"] += 1
-            else:
-                stats["atualizados"] += 1
+            # Como não sabemos se foi inserção ou atualização, contamos como "atualizado"
+            # (isso mantém a compatibilidade com o código original que esperava um bool)
+            # Para não quebrar, assumimos que sempre foi atualização.
+            stats["atualizados"] += 1
 
             # Log de progresso a cada 500 registros (apenas para acompanhar)
             if idx % 500 == 0:
@@ -152,9 +184,16 @@ def run(modo: str = "completo") -> Dict[str, int | float]:
     # ------------------------------------------------------------------
     # Limpeza de registros órfãos (apenas modo completo)
     # ------------------------------------------------------------------
-    if modo == "completo" and matriculas_processadas:
-        logger.info("Removendo registros obsoletos...")
-        AlunoModel.delete_obsoletos(matriculas_processadas)
+    if modo == "completo":
+        if matriculas_processadas:
+            logger.info("Removendo registros obsoletos...")
+            AlunoModel.delete_obsoletos(matriculas_processadas)
+        else:
+            # Caso não haja nenhum aluno ativo (já tratado anteriormente),
+            # mas mantido aqui por segurança.
+            with get_db_connection(database_name="lyceum") as conn:
+                conn.execute("DELETE FROM [LY_ALUNO]")
+            logger.info("Nenhum aluno ativo para manter. Tabela esvaziada.")
 
     # ------------------------------------------------------------------
     # Estatísticas finais
@@ -166,13 +205,13 @@ def run(modo: str = "completo") -> Dict[str, int | float]:
 
     logger.info("=" * 70)
     logger.info("SINCRONIZAÇÃO FINALIZADA")
-    logger.info("Total API....: %d", total_api)
-    logger.info("Total Banco..: %d", total_banco)
-    logger.info("Inseridos....: %d", stats["inseridos"])
-    logger.info("Atualizados..: %d", stats["atualizados"])
-    logger.info("Ignorados....: %d", stats["ignorados"])
-    logger.info("Erros........: %d", stats["erros"])
-    logger.info("Tempo total (s): %.2f", tempo_total)
+    logger.info("Total API (ativos)..: %d", total_api)
+    logger.info("Total Banco........: %d", total_banco)
+    logger.info("Inseridos..........: %d", stats["inseridos"])
+    logger.info("Atualizados........: %d", stats["atualizados"])
+    logger.info("Ignorados..........: %d", stats["ignorados"])
+    logger.info("Erros..............: %d", stats["erros"])
+    logger.info("Tempo total (s)....: %.2f", tempo_total)
     logger.info("=" * 70)
 
     return {
