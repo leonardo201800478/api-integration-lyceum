@@ -1,156 +1,382 @@
 """
-qstione/api/qstione_client.py
+Cliente HTTP para comunicação com a Plataforma Qstione.
 
-Cliente HTTP exclusivo para o Integrador Qstione.
+Baseado na especificação:
+    Qstione - Especificações da Interface de Comunicação
+    Plataforma x IE - versão 1.2.10
 
-Características:
-    - Somente POST.
-    - Autenticação através de token.
-    - JSON como formato de comunicação.
-    - Sem GET.
-    - Sem paginação.
-    - Sem qualquer dependência do cliente Lyceum.
+Responsabilidades:
+    - montar os headers obrigatórios;
+    - serializar o array JSON;
+    - utilizar POST/HTTPS;
+    - utilizar ISO-8859-1;
+    - enviar somente os campos definidos pela transação;
+    - interpretar a mensagem de retorno;
+    - diferenciar sucesso, validação e execução;
+    - preservar os erros retornados pela Qstione.
 """
 
 from __future__ import annotations
 
+import json
 import logging
-from typing import Any, Dict, Optional
+from dataclasses import dataclass
+from typing import Any
 
 import requests
 
-from qstione.config.qstione_config import (
-    QSTIONE_BASE_URL,
-    QSTIONE_TOKEN,
-    QSTIONE_TIMEOUT,
-    QSTIONE_SSL_VERIFY,
-    validar_configuracao_qstione,
-)
+
+logger = logging.getLogger(__name__)
 
 
-logger = logging.getLogger(
-    "qstione.api.client"
-)
+# ============================================================================
+# ESPECIFICAÇÃO DA API
+# ============================================================================
+
+VERSAO_PROTOCOLO = "1.2.10"
+FORMATO_OPERACAO = "JSON"
 
 
-class QstioneAPIError(Exception):
+# ============================================================================
+# SCHEMAS OFICIAIS
+# ============================================================================
+
+CAMPOS_API = {
+    "IMP-016": (
+        "codigoUnidade",
+        "nomeCurto",
+        "nomeLongo",
+        "codigoUnidadeGestora",
+    ),
+
+    "IMP-001": (
+        "codigoCurso",
+        "nomeCurso",
+        "quantPeriodos",
+        "codigoUnidadeOrganizacional",
+    ),
+
+    "IMP-002": (
+        "codigoDisciplina",
+        "nomeDisciplina",
+        "codigoCurso",
+        "Período",
+    ),
+
+    "IMP-005": (
+        "codigoOferta",
+        "nomeOferta",
+        "codigoDisciplina",
+        "semestreOferta",
+        "codigoTipoOferta",
+        "codigoOfertaOrigem",
+        "turno",
+        "codigoIdentificacaoAVA",
+    ),
+
+    "IMP-006": (
+        "matriculaUsuario",
+        "codigoUsuario",
+        "emailUsuario",
+        "nomeUsuario",
+    ),
+
+    "IMP-007": (
+        "codigoCurso",
+        "emailUsuario",
+        "papelUsuario",
+    ),
+
+    "IMP-008": (
+        "codigoDisciplina",
+        "emailUsuario",
+    ),
+
+    "IMP-009": (
+        "codigoOferta",
+        "emailProfessor",
+    ),
+
+    "IMP-010": (
+        "matriculaAluno",
+        "nomeAluno",
+        "emailAluno",
+        "codigoCurso",
+        "turno",
+        "codigoIdentificacaoAVA",
+    ),
+
+    "IMP-011": (
+        "codigoOferta",
+        "matriculaAluno",
+        "codigoCurso",
+    ),
+
+    "IMP-013": (
+        "codigoUnidade",
+        "nomeUnidade",
+        "codigoCurso",
+        "codigoDisciplina",
+        "ordemExibicao",
+        "codigoAgrupamento",
+    ),
+}
+
+
+# ============================================================================
+# RESULTADO
+# ============================================================================
+
+@dataclass
+class ResultadoAPI:
+    """Representa o resultado de uma requisição à API Qstione."""
+
+    codigo_status: int
+    modo_execucao: str
+    id_requisicao: int
+    quantidade_erros: int
+    erros: list[dict[str, Any]]
+    status_http: int
+
+    @property
+    def sucesso(self) -> bool:
+        """Retorna True quando a operação foi executada com sucesso."""
+        return self.codigo_status == 0
+
+    @property
+    def falha_validacao(self) -> bool:
+        """Retorna True quando a Qstione rejeitou a validação."""
+        return self.codigo_status == 2
+
+    @property
+    def falha_execucao(self) -> bool:
+        """Retorna True quando houve falha durante a execução."""
+        return self.codigo_status == 3
+
+
+# ============================================================================
+# CLIENTE
+# ============================================================================
+
+class ClienteQstione:
     """
-    Exceção específica para erros da API Qstione.
-    """
+    Cliente responsável pela comunicação com a Plataforma Qstione.
 
-
-class QstioneAPIClient:
-    """
-    Cliente HTTP para comunicação com o Integrador Qstione.
-
-    O cliente é deliberadamente limitado ao método POST,
-    pois sua finalidade é exclusivamente enviar as cargas
-    geradas pelos importadores.
+    A classe não conhece as tabelas SQL. Ela recebe registros já
+    transformados para o formato da API.
     """
 
     def __init__(
         self,
-        session: Optional[requests.Session] = None,
-    ) -> None:
+        url: str,
+        token: str,
+        timeout: int = 120,
+        verificar_ssl: bool = True,
+    ):
         """
-        Inicializa o cliente Qstione.
+        Inicializa o cliente.
 
-        Args:
-            session:
-                Sessão requests opcional. Caso não seja informada,
-                uma nova sessão será criada.
+        Parameters
+        ----------
+        url:
+            URL do endpoint Qstione.
 
-        Raises:
-            RuntimeError:
-                Caso a configuração da API esteja incompleta.
+        token:
+            Token de identificação da instituição.
+
+        timeout:
+            Timeout da requisição em segundos.
+
+        verificar_ssl:
+            Define se o certificado HTTPS será validado.
         """
 
-        validar_configuracao_qstione()
+        self.url = url
+        self.token = token
+        self.timeout = timeout
+        self.verificar_ssl = verificar_ssl
 
-        self.base_url = QSTIONE_BASE_URL
+        self.session = requests.Session()
 
-        self.session = (
-            session
-            if session is not None
-            else requests.Session()
-        )
+    # ------------------------------------------------------------------------
+    # PAYLOAD
+    # ------------------------------------------------------------------------
 
-        self.headers = {
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-            "tokenIdInstituicao": QSTIONE_TOKEN,
+    @staticmethod
+    def preparar_registro(
+        transacao: str,
+        registro: dict[str, Any],
+    ) -> dict[str, Any]:
+        """
+        Remove qualquer coluna que não pertença ao schema oficial da API.
+
+        Essa função é uma barreira de segurança:
+        mesmo que a tabela SQL possua dezenas de colunas auxiliares,
+        somente os campos documentados para a transação serão enviados.
+        """
+
+        if transacao not in CAMPOS_API:
+            raise ValueError(
+                f"Transação não possui schema definido: {transacao}"
+            )
+
+        campos_permitidos = CAMPOS_API[transacao]
+
+        return {
+            campo: registro[campo]
+            for campo in campos_permitidos
+            if campo in registro
         }
 
-    def post(
+    # ------------------------------------------------------------------------
+    # LOTE
+    # ------------------------------------------------------------------------
+
+    def preparar_lote(
         self,
-        endpoint: str,
-        payload: Dict[str, Any],
-    ) -> Any:
+        transacao: str,
+        registros: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
         """
-        Envia uma carga para o Integrador Qstione.
+        Prepara todos os registros do lote.
 
-        Args:
-            endpoint:
-                Caminho do endpoint relativo à URL base.
-
-            payload:
-                Dados da carga em formato de dicionário.
-
-        Returns:
-            Conteúdo JSON retornado pela API.
-
-        Raises:
-            QstioneAPIError:
-                Caso ocorra erro HTTP ou erro de comunicação.
+        Nenhuma chave fora do schema da transação é preservada.
         """
 
-        url = (
-            f"{self.base_url}/"
-            f"{endpoint.lstrip('/')}"
+        return [
+            self.preparar_registro(transacao, registro)
+            for registro in registros
+        ]
+
+    # ------------------------------------------------------------------------
+    # POST
+    # ------------------------------------------------------------------------
+
+    def enviar(
+        self,
+        transacao: str,
+        registros: list[dict[str, Any]],
+    ) -> ResultadoAPI:
+        """
+        Envia um lote para a Plataforma Qstione.
+
+        O body é diretamente o array JSON, conforme a documentação.
+        """
+
+        if not registros:
+            return ResultadoAPI(
+                codigo_status=0,
+                modo_execucao="S",
+                id_requisicao=0,
+                quantidade_erros=0,
+                erros=[],
+                status_http=200,
+            )
+
+        payload = self.preparar_lote(
+            transacao,
+            registros,
         )
+
+        body = json.dumps(
+            payload,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("iso-8859-1")
+
+        headers = {
+            "versaoProtocolo": VERSAO_PROTOCOLO,
+            "tokenIdInstituicao": self.token,
+            "codigoTransacao": transacao,
+            "formatoOperacao": FORMATO_OPERACAO,
+            "quantidadeRegistros": str(len(payload)),
+            "Content-Type": "application/json",
+        }
 
         logger.info(
-            "POST Qstione Sandbox: %s",
-            url,
+            "Enviando %s | registros=%d",
+            transacao,
+            len(payload),
         )
 
-        try:
-            response = self.session.post(
-                url,
-                headers=self.headers,
-                json=payload,
-                timeout=QSTIONE_TIMEOUT,
-                verify=QSTIONE_SSL_VERIFY,
-            )
+        response = self.session.post(
+            self.url,
+            headers=headers,
+            data=body,
+            timeout=self.timeout,
+            verify=self.verificar_ssl,
+        )
 
-        except requests.RequestException as exc:
+        return self._interpretar_resposta(response)
 
-            logger.error(
-                "Erro de comunicação com Qstione: %s",
-                exc,
-            )
+    # ------------------------------------------------------------------------
+    # RESPOSTA
+    # ------------------------------------------------------------------------
 
-            raise QstioneAPIError(
-                f"Erro de comunicação com Qstione: {exc}"
-            ) from exc
-
-        if not response.ok:
-
-            logger.error(
-                "Qstione retornou HTTP %s: %s",
-                response.status_code,
-                response.text,
-            )
-
-            raise QstioneAPIError(
-                "Qstione retornou HTTP "
-                f"{response.status_code}: "
-                f"{response.text}"
-            )
+    @staticmethod
+    def _interpretar_resposta(
+        response: requests.Response,
+    ) -> ResultadoAPI:
+        """
+        Interpreta os headers e o body da resposta Qstione.
+        """
 
         try:
-            return response.json()
-
+            codigo_status = int(
+                response.headers.get("codigoStatus", "1")
+            )
         except ValueError:
+            codigo_status = 1
 
-            return response.text
+        try:
+            modo_execucao = response.headers.get(
+                "modoExecucao",
+                "S",
+            )
+        except Exception:
+            modo_execucao = "S"
+
+        try:
+            id_requisicao = int(
+                response.headers.get(
+                    "idRequisicao",
+                    "0",
+                )
+            )
+        except ValueError:
+            id_requisicao = 0
+
+        try:
+            quantidade_erros = int(
+                response.headers.get(
+                    "quantidadeRegistrosErro",
+                    "0",
+                )
+            )
+        except ValueError:
+            quantidade_erros = 0
+
+        erros = []
+
+        if response.content:
+            try:
+                dados = json.loads(
+                    response.content.decode("iso-8859-1")
+                )
+
+                if isinstance(dados, list):
+                    erros = dados
+
+            except Exception:
+                logger.exception(
+                    "Não foi possível interpretar registrosErro."
+                )
+
+        return ResultadoAPI(
+            codigo_status=codigo_status,
+            modo_execucao=modo_execucao,
+            id_requisicao=id_requisicao,
+            quantidade_erros=quantidade_erros,
+            erros=erros,
+            status_http=response.status_code,
+        )
