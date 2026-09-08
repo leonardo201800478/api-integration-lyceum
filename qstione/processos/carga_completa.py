@@ -1,33 +1,4 @@
-"""
-Carga completa Qstione.
-
-Executa as cargas na ordem definida pelas dependências da Plataforma:
-
-    01 IMP-016
-    02 IMP-001
-    03 IMP-002
-    04 IMP-005
-    05 IMP-006
-    06 IMP-007
-    07 IMP-008
-    08 IMP-009
-    09 IMP-010
-    10 IMP-011
-    11 IMP-013
-
-IMPORTANTE
-----------
-Os importadores continuam independentes.
-
-Este módulo apenas:
-
-    1. executa o importador;
-    2. lê a tabela resultante;
-    3. seleciona somente os campos documentados;
-    4. envia para a API;
-    5. valida a resposta;
-    6. passa para a próxima etapa.
-"""
+"""Orquestra a carga completa de dados do Lyceum para o Qstione."""
 
 from __future__ import annotations
 
@@ -36,490 +7,161 @@ import os
 import sys
 from dataclasses import dataclass
 
-# ============================================================================
-# PATH
-# ============================================================================
-
-ROOT = os.path.dirname(
-    os.path.dirname(
-        os.path.dirname(
-            os.path.abspath(__file__)
-        )
-    )
-)
-
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-
-# ============================================================================
-# IMPORTS DO PROJETO
-# ============================================================================
-
 from core.database import get_db_connection
-
-from qstione.api.cliente import (
-    CAMPOS_API,
-    ClienteQstione,
+from qstione.api.cliente import CAMPOS_API, ClienteQstione
+from qstione.config.qstione_config import (
+    QSTIONE_BASE_URL,
+    QSTIONE_TOKEN,
+    QSTIONE_SSL_VERIFY,
+    QSTIONE_TIMEOUT,
+    validar_configuracao_qstione,
 )
 
-
-# ============================================================================
-# LOG
-# ============================================================================
-
 logger = logging.getLogger(__name__)
+TAMANHO_LOTE = int(os.getenv("QSTIONE_TAMANHO_LOTE", "500"))
 
-
-# ============================================================================
-# CONFIGURAÇÃO
-# ============================================================================
-
-TAMANHO_LOTE = 500
-
-
-# ============================================================================
-# ETAPA
-# ============================================================================
 
 @dataclass(frozen=True)
 class Etapa:
-    """Representa uma etapa da carga completa."""
-
     numero: int
     transacao: str
     tabela: str
-    importador: str
+    importador: str | None = None
+    registro_fixo: bool = False
 
 
+# IMP-016 utiliza exclusivamente o registro fixo já existente na tabela.
 ETAPAS = (
-    Etapa(
-        1,
-        "IMP-016",
-        "imp_016_unidades_organizacionais",
-        "qstione.importadores.imp_016_unidades_organizacionais",
-    ),
-    Etapa(
-        2,
-        "IMP-001",
-        "imp_001_cursos",
-        "qstione.importadores.imp_001_cursos",
-    ),
-    Etapa(
-        3,
-        "IMP-002",
-        "imp_002_disciplina",
-        "qstione.importadores.imp_002_disciplina",
-    ),
-    Etapa(
-        4,
-        "IMP-005",
-        "imp_005_ofertas",
-        "qstione.importadores.imp_005_ofertas",
-    ),
-    Etapa(
-        5,
-        "IMP-006",
-        "imp_006_usuarios",
-        "qstione.importadores.imp_006_usuarios",
-    ),
-    Etapa(
-        6,
-        "IMP-007",
-        "imp_007_usuarios_cursos",
-        "qstione.importadores.imp_007_usuarios_cursos",
-    ),
-    Etapa(
-        7,
-        "IMP-008",
-        "imp_008_usuarios_disciplinas",
-        "qstione.importadores.imp_008_usuarios_disciplinas",
-    ),
-    Etapa(
-        8,
-        "IMP-009",
-        "imp_009_professores_ofertas",
-        "qstione.importadores.imp_009_professores_ofertas",
-    ),
-    Etapa(
-        9,
-        "IMP-010",
-        "imp_010_alunos",
-        "qstione.importadores.imp_010_alunos",
-    ),
-    Etapa(
-        10,
-        "IMP-011",
-        "imp_011_alunos_ofertas",
-        "qstione.importadores.imp_011_alunos_ofertas",
-    ),
-    Etapa(
-        11,
-        "IMP-013",
-        "imp_013_unidades_avaliacao",
-        "qstione.importadores.imp_013_unidades_avaliacao",
-    ),
+    Etapa(1, "IMP-016", "imp_016_unidades_organizacionais", registro_fixo=True),
+    Etapa(2, "IMP-001", "imp_001_cursos", "qstione.importadores.imp_001_cursos"),
+    Etapa(3, "IMP-002", "imp_002_disciplina", "qstione.importadores.imp_002_disciplina"),
+    Etapa(4, "IMP-005", "imp_005_ofertas", "qstione.importadores.imp_005_ofertas"),
+    Etapa(5, "IMP-006", "imp_006_usuarios", "qstione.importadores.imp_006_usuarios"),
+    Etapa(6, "IMP-007", "imp_007_usuarios_cursos", "qstione.importadores.imp_007_usuarios_cursos"),
+    Etapa(7, "IMP-008", "imp_008_usuarios_disciplinas", "qstione.importadores.imp_008_usuarios_disciplinas"),
+    Etapa(8, "IMP-009", "imp_009_professores_ofertas", "qstione.importadores.imp_009_professores_ofertas"),
+    Etapa(9, "IMP-010", "imp_010_alunos", "qstione.importadores.imp_010_alunos"),
+    Etapa(10, "IMP-011", "imp_011_alunos_ofertas", "qstione.importadores.imp_011_alunos_ofertas"),
+    Etapa(11, "IMP-013", "imp_013_unidades_avaliacao", "qstione.importadores.imp_013_unidades_avaliacao"),
 )
 
 
-# ============================================================================
-# ORQUESTRADOR
-# ============================================================================
-
 class CargaCompletaQstione:
-    """
-    Executa todas as cargas Qstione em sequência.
-    """
+    """Executa as cargas em ordem e interrompe no primeiro erro."""
 
-    def __init__(
-        self,
-        url: str,
-        token: str,
-        tamanho_lote: int = TAMANHO_LOTE,
-    ):
-        """
-        Inicializa o processo.
-
-        Parameters
-        ----------
-        url:
-            Endpoint da API Qstione.
-
-        token:
-            Token da instituição.
-
-        tamanho_lote:
-            Quantidade máxima de registros por requisição.
-        """
-
-        self.cliente = ClienteQstione(
-            url=url,
-            token=token,
-        )
-
+    def __init__(self, url: str = QSTIONE_BASE_URL, token: str = QSTIONE_TOKEN or "", tamanho_lote: int = TAMANHO_LOTE) -> None:
+        if tamanho_lote < 1:
+            raise ValueError("QSTIONE_TAMANHO_LOTE deve ser maior que zero.")
+        self.cliente = ClienteQstione(url=url, token=token, timeout=QSTIONE_TIMEOUT, ssl_verify=QSTIONE_SSL_VERIFY)
         self.tamanho_lote = tamanho_lote
 
-    # ------------------------------------------------------------------------
-    # IMPORTADOR
-    # ------------------------------------------------------------------------
-
     @staticmethod
-    def executar_importador(
-        etapa: Etapa,
-    ):
-        """
-        Importa dinamicamente o módulo e executa seu importador.
-        """
-
-        modulo = __import__(
-            etapa.importador,
-            fromlist=["*"],
-        )
-
+    def executar_importador(etapa: Etapa) -> None:
+        if etapa.registro_fixo or not etapa.importador:
+            return
+        modulo = __import__(etapa.importador, fromlist=["*"])
         classes = [
-            valor
-            for valor in vars(modulo).values()
+            valor for valor in vars(modulo).values()
             if isinstance(valor, type)
             and valor.__module__ == modulo.__name__
             and valor.__name__.startswith("Importador")
         ]
-
         if not classes:
-            raise RuntimeError(
-                f"Nenhuma classe Importador encontrada em "
-                f"{etapa.importador}"
-            )
-
-        classe = classes[0]
-
-        instancia = classe()
-
-        return instancia.executar_importacao()
-
-    # ------------------------------------------------------------------------
-    # LEITURA SQL
-    # ------------------------------------------------------------------------
+            raise RuntimeError(f"Nenhuma classe Importador encontrada em {etapa.importador}")
+        classes[0]().executar_importacao()
 
     @staticmethod
-    def ler_tabela(
-        tabela: str,
-        campos: tuple[str, ...],
-    ) -> list[dict]:
-        """
-        Lê da tabela somente os campos permitidos pela API.
-
-        Não utiliza SELECT *.
-        """
-
-        # Proteção contra nomes arbitrários.
+    def ler_tabela(tabela: str, campos: tuple[str, ...]) -> list[dict]:
         if not tabela.replace("_", "").isalnum():
-            raise ValueError(
-                f"Nome de tabela inválido: {tabela}"
-            )
-
-        for campo in campos:
-            if not campo.replace("_", "").isalnum():
-                raise ValueError(
-                    f"Campo inválido: {campo}"
-                )
-
-        lista_campos = ", ".join(
-            f"[{campo}]"
-            for campo in campos
-        )
-
-        sql = f"""
-            SELECT {lista_campos}
-            FROM dbo.[{tabela}]
-        """
-
-        with get_db_connection(
-            database_name="qstione"
-        ) as conn:
-
+            raise ValueError(f"Nome de tabela inválido: {tabela}")
+        if any(not campo.replace("_", "").isalnum() for campo in campos):
+            raise ValueError("Um ou mais campos da API possuem nome inválido.")
+        sql = f"SELECT {', '.join(f'[{campo}]' for campo in campos)} FROM dbo.[{tabela}]"
+        with get_db_connection(database_name="qstione") as conn:
             rows = conn.execute(sql).fetchall()
+        return [dict(zip(campos, row)) for row in rows]
 
-        return [
-            dict(
-                zip(campos, row)
-            )
-            for row in rows
-        ]
-
-    # ------------------------------------------------------------------------
-    # ENVIO
-    # ------------------------------------------------------------------------
-
-    def enviar_etapa(
-        self,
-        etapa: Etapa,
-        registros: list[dict],
-    ):
-        """
-        Divide a etapa em lotes e envia cada lote para a API.
-        """
-
+    def enviar_etapa(self, etapa: Etapa, registros: list[dict]) -> bool:
         total = len(registros)
+        print(f"   Registros preparados: {total}")
 
-        print(
-            f"   Registros preparados: {total}"
-        )
-
+        if etapa.registro_fixo and total != 1:
+            print(f"   ❌ IMP-016 deve conter exatamente 1 registro fixo; encontrados {total}.")
+            return False
         if total == 0:
-            print(
-                "   ⚠️ Nenhum registro para enviar."
-            )
+            print("   ⚠️ Nenhum registro para enviar.")
             return True
 
-        enviados = 0
+        for inicio in range(0, total, self.tamanho_lote):
+            lote = registros[inicio:inicio + self.tamanho_lote]
+            numero_lote = inicio // self.tamanho_lote + 1
+            print(f"   → Lote {numero_lote}: {len(lote)} registros")
+            resultado = self.cliente.enviar(etapa.transacao, lote)
 
-        for inicio in range(
-            0,
-            total,
-            self.tamanho_lote,
-        ):
-            lote = registros[
-                inicio:
-                inicio + self.tamanho_lote
-            ]
-
-            numero_lote = (
-                inicio // self.tamanho_lote
-            ) + 1
-
-            print(
-                f"   → Lote {numero_lote}: "
-                f"{len(lote)} registros"
-            )
-
-            resultado = self.cliente.enviar(
-                etapa.transacao,
-                lote,
-            )
+            # Uma resposta A significa apenas aceitação. Como a próxima etapa
+            # pode depender desta, não avançamos sem confirmação de conclusão.
+            if resultado.assincrono:
+                print(
+                    "   ❌ Operação assíncrona aceita pela API "
+                    f"(idRequisicao={resultado.id_requisicao}). "
+                    "Carga interrompida para preservar a ordem das dependências."
+                )
+                return False
 
             if not resultado.sucesso:
-
-                print(
-                    f"   ❌ API retornou "
-                    f"codigoStatus="
-                    f"{resultado.codigo_status}"
-                )
-
+                print(f"   ❌ API retornou codigoStatus={resultado.codigo_status} (HTTP {resultado.http_status}).")
                 for erro in resultado.erros:
                     print(
                         "      "
-                        f"registro="
-                        f"{erro.get('numeroRegistro')}; "
-                        f"excecao="
-                        f"{erro.get('nomeExcecao')}; "
-                        f"detalhes="
-                        f"{erro.get('detalhesFalha')}"
+                        f"registro={erro.get('numeroRegistro')}; "
+                        f"excecao={erro.get('nomeExcecao')}; "
+                        f"detalhes={erro.get('detalhesFalha')}"
                     )
-
                 return False
-
-            enviados += len(lote)
-
-            print(
-                f"   ✓ Lote processado: "
-                f"{enviados}/{total}"
-            )
-
+            print(f"   ✓ Lote processado: {min(inicio + len(lote), total)}/{total}")
         return True
 
-    # ------------------------------------------------------------------------
-    # ETAPA
-    # ------------------------------------------------------------------------
+    def executar_etapa(self, etapa: Etapa) -> bool:
+        print("\n" + "=" * 78)
+        print(f"[{etapa.numero:02d}/11] {etapa.transacao} - {etapa.tabela}")
+        print("=" * 78)
 
-    def executar_etapa(
-        self,
-        etapa: Etapa,
-    ) -> bool:
-        """
-        Executa uma etapa completa.
-        """
+        if etapa.registro_fixo:
+            print("   IMP-016: usando o único registro fixo já existente na tabela.")
+        else:
+            print("   Executando importador local...")
+            self.executar_importador(etapa)
 
-        print()
-        print(
-            "=" * 78
-        )
-
-        print(
-            f"[{etapa.numero:02d}/11] "
-            f"{etapa.transacao} "
-            f"- {etapa.tabela}"
-        )
-
-        print(
-            "=" * 78
-        )
-
-        print(
-            "   Executando importador local..."
-        )
-
-        self.executar_importador(etapa)
-
-        campos = CAMPOS_API[
-            etapa.transacao
-        ]
-
-        print(
-            "   Campos API:"
-        )
-
-        print(
-            "      "
-            + ", ".join(campos)
-        )
-
-        registros = self.ler_tabela(
-            etapa.tabela,
-            campos,
-        )
-
-        return self.enviar_etapa(
-            etapa,
-            registros,
-        )
-
-    # ------------------------------------------------------------------------
-    # PROCESSO COMPLETO
-    # ------------------------------------------------------------------------
+        campos = CAMPOS_API[etapa.transacao]
+        print(f"   Campos API: {', '.join(campos)}")
+        registros = self.ler_tabela(etapa.tabela, campos)
+        return self.enviar_etapa(etapa, registros)
 
     def executar(self) -> bool:
-        """
-        Executa todas as 11 etapas na ordem definida.
-        """
-
-        print()
-        print(
-            "=" * 78
-        )
-        print(
-            " CARGA COMPLETA QSTIONE"
-        )
-        print(
-            "=" * 78
-        )
-
-        for etapa in ETAPAS:
-
-            sucesso = self.executar_etapa(
-                etapa
-            )
-
-            if not sucesso:
-
-                print()
-                print(
-                    "!" * 78
-                )
-                print(
-                    f" PROCESSO INTERROMPIDO EM "
-                    f"{etapa.transacao}"
-                )
-                print(
-                    "!" * 78
-                )
-
-                return False
-
-        print()
-        print(
-            "=" * 78
-        )
-        print(
-            " CARGA COMPLETA CONCLUÍDA COM SUCESSO"
-        )
-        print(
-            "=" * 78
-        )
-
+        print("\n" + "=" * 78)
+        print(" CARGA COMPLETA QSTIONE")
+        print(" Protocolo: 1.2.10 | Dicionário: 1.15.0")
+        print("=" * 78)
+        try:
+            for etapa in ETAPAS:
+                if not self.executar_etapa(etapa):
+                    print("\n" + "!" * 78)
+                    print(f" PROCESSO INTERROMPIDO EM {etapa.transacao}")
+                    print("!" * 78)
+                    return False
+        finally:
+            self.cliente.close()
+        print("\n" + "=" * 78)
+        print(" CARGA COMPLETA CONCLUÍDA COM SUCESSO")
+        print("=" * 78)
         return True
 
 
-# ============================================================================
-# EXECUÇÃO
-# ============================================================================
-
 if __name__ == "__main__":
-
-    logging.basicConfig(
-        level=logging.INFO,
-        format=(
-            "%(asctime)s | "
-            "%(levelname)s | "
-            "%(name)s | "
-            "%(message)s"
-        ),
-    )
-
-    URL = os.environ.get(
-        "QSTIONE_API_URL"
-    )
-
-    TOKEN = os.environ.get(
-        "QSTIONE_TOKEN"
-    )
-
-    if not URL:
-        raise RuntimeError(
-            "Variável QSTIONE_API_URL não configurada."
-        )
-
-    if not TOKEN:
-        raise RuntimeError(
-            "Variável QSTIONE_TOKEN não configurada."
-        )
-
-    processo = CargaCompletaQstione(
-        url=URL,
-        token=TOKEN,
-    )
-
-    sucesso = processo.executar()
-
-    sys.exit(
-        0 if sucesso else 1
-    )
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
+    validar_configuracao_qstione()
+    sys.exit(0 if CargaCompletaQstione().executar() else 1)
