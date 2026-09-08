@@ -1,11 +1,10 @@
 """Teste controlado do IMP-007 no Sandbox Qstione.
 
-Valida a cadeia real de dependencias:
-    IMP-001 (curso) -> IMP-006 (usuario) -> IMP-007 (usuario x curso)
+Cadeia validada:
+    IMP-001 -> IMP-006 -> IMP-007
 
-O teste seleciona exatamente um vinculo existente em imp_007_usuarios_cursos,
-localiza as dependencias correspondentes nas tabelas locais e envia somente
-esses tres registros, nesta ordem. Nenhuma tabela local e alterada.
+Seleciona uma relacao real de imp_007_usuarios_cursos somente quando as
+respectivas dependencias locais tambem existem. Nenhuma tabela local e alterada.
 
 Uso:
     python tests/test_qstione_imp007_sandbox.py
@@ -23,7 +22,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from core.database import get_db_connection
-from qstione.api.cliente import ClienteQstione, CAMPOS_API
+from qstione.api.cliente import ClienteQstione
 from qstione.config.qstione_config import (
     QSTIONE_BASE_URL,
     QSTIONE_SSL_VERIFY,
@@ -45,52 +44,61 @@ logger.propagate = False
 
 
 def buscar_registros() -> tuple[dict, dict, dict]:
-    """Seleciona um vinculo real e suas dependencias locais."""
+    """Seleciona uma relacao com curso e usuario existentes localmente."""
+    sql = """
+        SELECT TOP 1
+            v.[codigoCurso],
+            v.[emailUsuario],
+            v.[papelUsuario],
+            c.[nomeCurso],
+            c.[quantPeriodos],
+            c.[codigoUnidadeOrganizacional],
+            u.[matriculaUsuario],
+            u.[codigoUsuario],
+            u.[emailUsuario],
+            u.[nomeUsuario]
+        FROM dbo.[imp_007_usuarios_cursos] v
+        INNER JOIN dbo.[imp_001_cursos] c
+            ON LTRIM(RTRIM(CAST(c.[codigoCurso] AS NVARCHAR(100)))) =
+               LTRIM(RTRIM(CAST(v.[codigoCurso] AS NVARCHAR(100))))
+        INNER JOIN dbo.[imp_006_usuarios] u
+            ON LOWER(LTRIM(RTRIM(u.[emailUsuario]))) =
+               LOWER(LTRIM(RTRIM(v.[emailUsuario])))
+        WHERE v.[codigoCurso] IS NOT NULL
+          AND LTRIM(RTRIM(CAST(v.[codigoCurso] AS NVARCHAR(100)))) <> ''
+          AND v.[emailUsuario] IS NOT NULL
+          AND LTRIM(RTRIM(v.[emailUsuario])) <> ''
+          AND v.[papelUsuario] IS NOT NULL
+          AND LTRIM(RTRIM(v.[papelUsuario])) <> ''
+        ORDER BY v.[codigoCurso], v.[emailUsuario]
+    """
+
     with get_db_connection(database_name="qstione") as conn:
-        vinculo_row = conn.execute(
-            """
-            SELECT TOP 1 codigoCurso, emailUsuario, papelUsuario
-            FROM dbo.imp_007_usuarios_cursos
-            ORDER BY codigoCurso, emailUsuario
-            """
-        ).fetchone()
+        row = conn.execute(sql).fetchone()
 
-        if vinculo_row is None:
-            raise RuntimeError("A tabela imp_007_usuarios_cursos nao possui registros.")
+    if row is None:
+        raise RuntimeError(
+            "Nao existe registro IMP-007 com dependencias locais completas "
+            "em IMP-001 e IMP-006."
+        )
 
-        codigo_curso, email_usuario, papel_usuario = vinculo_row
-
-        curso_row = conn.execute(
-            """
-            SELECT TOP 1 codigoCurso, nomeCurso, quantPeriodos, codigoUnidadeOrganizacional
-            FROM dbo.imp_001_cursos
-            WHERE codigoCurso = ?
-            """,
-            (codigo_curso,),
-        ).fetchone()
-
-        if curso_row is None:
-            raise RuntimeError(
-                f"Dependencia IMP-001 nao encontrada para codigoCurso={codigo_curso!r}."
-            )
-
-        usuario_row = conn.execute(
-            """
-            SELECT TOP 1 matriculaUsuario, codigoUsuario, emailUsuario, nomeUsuario
-            FROM dbo.imp_006_usuarios
-            WHERE emailUsuario = ?
-            """,
-            (email_usuario,),
-        ).fetchone()
-
-        if usuario_row is None:
-            raise RuntimeError(
-                f"Dependencia IMP-006 nao encontrada para emailUsuario={email_usuario!r}."
-            )
-
-    curso = dict(zip(CAMPOS_API["IMP-001"], curso_row))
-    usuario = dict(zip(CAMPOS_API["IMP-006"], usuario_row))
-    vinculo = dict(zip(CAMPOS_API["IMP-007"], vinculo_row))
+    vinculo = {
+        "codigoCurso": row[0],
+        "emailUsuario": row[1],
+        "papelUsuario": row[2],
+    }
+    curso = {
+        "codigoCurso": row[0],
+        "nomeCurso": row[3],
+        "quantPeriodos": row[4],
+        "codigoUnidadeOrganizacional": row[5],
+    }
+    usuario = {
+        "matriculaUsuario": row[6],
+        "codigoUsuario": row[7],
+        "emailUsuario": row[8],
+        "nomeUsuario": row[9],
+    }
 
     logger.info("DEPENDENCIA IMP-001 | %s", curso)
     logger.info("DEPENDENCIA IMP-006 | %s", usuario)
@@ -106,9 +114,10 @@ def validar(curso: dict, usuario: dict, vinculo: dict) -> None:
     if str(usuario["emailUsuario"]).strip().lower() != str(vinculo["emailUsuario"]).strip().lower():
         raise RuntimeError("Inconsistencia: IMP-007.emailUsuario difere do IMP-006.")
 
-    if not str(vinculo["papelUsuario"]).strip():
-        raise RuntimeError("IMP-007.papelUsuario esta vazio.")
-
+    if not str(vinculo["codigoCurso"]).strip():
+        raise RuntimeError("IMP-007.codigoCurso esta vazio.")
+    if not str(vinculo["emailUsuario"]).strip() or "@" not in str(vinculo["emailUsuario"]):
+        raise RuntimeError("IMP-007.emailUsuario invalido.")
     if str(vinculo["papelUsuario"]).strip() not in {"G", "C", "A", "P"}:
         raise RuntimeError(
             f"IMP-007.papelUsuario invalido: {vinculo['papelUsuario']!r}."
@@ -141,6 +150,7 @@ def enviar(cliente: ClienteQstione, transacao: str, registro: dict) -> bool:
     if resultado.corpo_bruto not in (None, [], {}):
         print("corpoResposta:")
         print(json.dumps(resultado.corpo_bruto, ensure_ascii=False, indent=2, default=str))
+        logger.info("CORPO RESPOSTA %s | %s", transacao, resultado.corpo_bruto)
 
     if resultado.assincrono:
         print(f"❌ {transacao} retornou modoExecucao=A; teste interrompido.")
@@ -188,6 +198,7 @@ def main() -> int:
         print(f"Dependencia detectada: IMP-007.emailUsuario = {vinculo['emailUsuario']}")
         print(f"Papel: {vinculo['papelUsuario']}")
         print("Ordem de envio: IMP-001 → IMP-006 → IMP-007")
+
     except Exception as exc:
         logger.exception("Falha na preparacao do teste IMP-007.")
         print(f"\n❌ Falha na validacao local: {exc}")
