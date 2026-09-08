@@ -1,8 +1,12 @@
 """
-Teste controlado da IMP-002 no sandbox Qstione.
+Teste controlado da cadeia IMP-001 -> IMP-002 no sandbox Qstione.
 
-Executa SOMENTE a IMP-002 com 1 registro da tabela local.
-Não executa outras transações e não altera os dados locais.
+Executa SOMENTE:
+    1. IMP-001 para o curso associado ao primeiro registro da IMP-002;
+    2. IMP-002 para esse mesmo registro.
+
+A finalidade é validar a dependência obrigatória entre curso e disciplina.
+Não altera os dados locais.
 
 Uso:
     python tests/test_qstione_imp002_sandbox.py
@@ -29,85 +33,50 @@ from qstione.config.qstione_config import (
 )
 
 
-TRANSACAO = "IMP-002"
-TABELA = "imp_002_disciplina"
+TABELA_CURSO = "imp_001_cursos"
+TABELA_DISCIPLINA = "imp_002_disciplina"
 
 
-def descobrir_colunas(tabela: str) -> set[str]:
-    with get_db_connection(database_name="qstione") as conn:
-        rows = conn.execute(
-            """
-            SELECT COLUMN_NAME
-            FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA = 'dbo'
-              AND TABLE_NAME = ?
-            """,
-            (tabela,),
-        ).fetchall()
-    return {str(row[0]) for row in rows}
-
-
-def ler_primeiro_registro() -> dict:
-    campos_api = CAMPOS_API[TRANSACAO]
-    colunas = descobrir_colunas(TABELA)
-    campos_disponiveis = [campo for campo in campos_api if campo in colunas]
-    campos_ausentes = [campo for campo in campos_api if campo not in colunas]
-
-    if campos_ausentes:
-        raise RuntimeError(
-            "A tabela local não possui campos obrigatórios da IMP-002: "
-            + ", ".join(campos_ausentes)
-        )
-
-    lista_campos = ", ".join(f"[{campo}]" for campo in campos_disponiveis)
-    sql = f"SELECT TOP 1 {lista_campos} FROM dbo.[{TABELA}] ORDER BY [codigoDisciplina]"
-
+def ler_registro_disciplina() -> dict:
+    campos = CAMPOS_API["IMP-002"]
+    sql = (
+        "SELECT TOP 1 "
+        + ", ".join(f"[{campo}]" for campo in campos)
+        + f" FROM dbo.[{TABELA_DISCIPLINA}] ORDER BY [codigoDisciplina]"
+    )
     with get_db_connection(database_name="qstione") as conn:
         row = conn.execute(sql).fetchone()
-
     if row is None:
-        raise RuntimeError(f"A tabela {TABELA} não possui registros para o teste.")
-
-    registro = dict(zip(campos_disponiveis, row))
-    print(f"   Colunas utilizadas: {', '.join(campos_disponiveis)}")
-    return registro
+        raise RuntimeError(f"A tabela {TABELA_DISCIPLINA} não possui registros.")
+    return dict(zip(campos, row))
 
 
-def main() -> int:
-    print("=" * 78)
-    print(" TESTE CONTROLADO — API QSTIONE SANDBOX")
-    print(" Protocolo: 1.2.10 | Dicionário: 1.15.0")
-    print(" Escopo: IMP-002, 1 registro")
-    print("=" * 78)
+def ler_curso(codigo_curso: str) -> dict:
+    campos = CAMPOS_API["IMP-001"]
+    sql = (
+        "SELECT TOP 1 "
+        + ", ".join(f"[{campo}]" for campo in campos)
+        + f" FROM dbo.[{TABELA_CURSO}] WHERE LTRIM(RTRIM([codigoCurso])) = ?"
+    )
+    with get_db_connection(database_name="qstione") as conn:
+        row = conn.execute(sql, (codigo_curso,)).fetchone()
+    if row is None:
+        raise RuntimeError(
+            f"Não foi encontrado na tabela {TABELA_CURSO} o curso "
+            f"associado à disciplina: {codigo_curso}."
+        )
+    return dict(zip(campos, row))
 
-    validar_configuracao_qstione()
 
-    print(f"Endpoint: {QSTIONE_BASE_URL}")
-    print(f"SSL verify: {QSTIONE_SSL_VERIFY}")
-    print(f"Timeout: {QSTIONE_TIMEOUT}s")
-    print("Token: configurado (não exibido)")
-
-    registro = ler_primeiro_registro()
-
+def enviar_e_exibir(cliente: ClienteQstione, transacao: str, registro: dict) -> bool:
     print()
     print("=" * 78)
-    print("TESTE IMP-002 — 1 registro")
+    print(f"TESTE {transacao} — 1 registro")
     print("=" * 78)
-    print(f"   Tabela: {TABELA}")
     print("   Payload:")
     print(json.dumps(registro, ensure_ascii=False, indent=2, default=str))
 
-    cliente = ClienteQstione(
-        url=QSTIONE_BASE_URL,
-        token=QSTIONE_TOKEN or "",
-        timeout=QSTIONE_TIMEOUT,
-        ssl_verify=QSTIONE_SSL_VERIFY,
-    )
-
-    try:
-        resultado = cliente.enviar(TRANSACAO, [registro])
-    finally:
-        cliente.close()
+    resultado = cliente.enviar(transacao, [registro])
 
     print("   Retorno:")
     print(f"      HTTP:              {resultado.http_status}")
@@ -122,10 +91,10 @@ def main() -> int:
 
     if resultado.assincrono:
         print("\n   ❌ A API aceitou a operação como assíncrona.")
-        return 1
+        return False
 
     if not resultado.sucesso:
-        print("\n   ❌ IMP-002 rejeitada pela API.")
+        print(f"\n   ❌ {transacao} rejeitada pela API.")
         for erro in resultado.erros:
             print(
                 "      "
@@ -133,12 +102,52 @@ def main() -> int:
                 f"excecao={erro.get('nomeExcecao')}; "
                 f"detalhes={erro.get('detalhesFalha')}"
             )
-        return 1
+        return False
 
-    print("   ✅ IMP-002 aceita com sucesso.")
+    print(f"   ✅ {transacao} aceita com sucesso.")
+    return True
+
+
+def main() -> int:
+    print("=" * 78)
+    print(" TESTE CONTROLADO — CADEIA IMP-001 + IMP-002")
+    print(" Protocolo: 1.2.10 | Dicionário: 1.15.0")
+    print(" Escopo: curso da primeira disciplina + 1 disciplina")
+    print("=" * 78)
+
+    validar_configuracao_qstione()
+    print(f"Endpoint: {QSTIONE_BASE_URL}")
+    print(f"SSL verify: {QSTIONE_SSL_VERIFY}")
+    print(f"Timeout: {QSTIONE_TIMEOUT}s")
+    print("Token: configurado (não exibido)")
+
+    disciplina = ler_registro_disciplina()
+    codigo_curso = str(disciplina["codigoCurso"]).strip()
+    curso = ler_curso(codigo_curso)
+
+    print(f"\n   Dependência detectada: IMP-002.codigoCurso = {codigo_curso}")
+    print("   O teste enviará primeiro esse curso à API e somente depois a disciplina.")
+
+    cliente = ClienteQstione(
+        url=QSTIONE_BASE_URL,
+        token=QSTIONE_TOKEN or "",
+        timeout=QSTIONE_TIMEOUT,
+        ssl_verify=QSTIONE_SSL_VERIFY,
+    )
+
+    try:
+        if not enviar_e_exibir(cliente, "IMP-001", curso):
+            return 1
+        if not enviar_e_exibir(cliente, "IMP-002", disciplina):
+            return 1
+    finally:
+        cliente.close()
+
     print()
     print("=" * 78)
-    print(" TESTE IMP-002 CONCLUÍDO")
+    print(" TESTE CONTROLADO CONCLUÍDO")
+    print(" IMP-001: OK")
+    print(" IMP-002: OK")
     print(" Nenhuma outra transação foi executada.")
     print("=" * 78)
     return 0
