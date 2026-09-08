@@ -3,10 +3,15 @@ Teste controlado da API Qstione no sandbox.
 
 Executa SOMENTE duas transações, com 1 registro de cada:
 
-    IMP-016 -> registro institucional fixo
+    IMP-016 -> registro institucional fixo já existente na tabela
     IMP-001 -> primeiro curso da tabela
 
 Não executa a carga completa e não altera os dados locais.
+
+IMPORTANTE:
+- codigoUnidadeGestora é opcional na IMP-016 segundo o dicionário 1.15.0.
+- A tabela local de IMP-016 pode não possuir essa coluna; nesse caso o campo
+  simplesmente não é enviado para a API.
 
 Uso:
     python tests/test_qstione_carga_sandbox.py
@@ -17,12 +22,9 @@ O token nunca é exibido no console.
 from __future__ import annotations
 
 import json
-import os
 import sys
 from pathlib import Path
 
-# Permite executar diretamente a partir da raiz do projeto ou pelo caminho
-# completo do arquivo.
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -38,9 +40,47 @@ from qstione.config.qstione_config import (
 )
 
 
+def obter_colunas_tabela(tabela: str) -> set[str]:
+    """Retorna as colunas existentes na tabela Qstione."""
+    sql = """
+        SELECT COLUMN_NAME
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = 'dbo'
+          AND TABLE_NAME = ?
+    """
+
+    with get_db_connection(database_name="qstione") as conn:
+        rows = conn.execute(sql, tabela).fetchall()
+
+    return {str(row[0]) for row in rows}
+
+
 def ler_primeiro_registro(tabela: str, campos: tuple[str, ...]) -> dict:
-    """Lê exatamente um registro da tabela Qstione."""
-    lista_campos = ", ".join(f"[{campo}]" for campo in campos)
+    """
+    Lê exatamente um registro da tabela Qstione.
+
+    Campos opcionais da API que não existem na tabela local são omitidos.
+    Campos obrigatórios da transação continuam sendo exigidos.
+    """
+    colunas_existentes = obter_colunas_tabela(tabela)
+    campos_presentes = tuple(campo for campo in campos if campo in colunas_existentes)
+
+    if not campos_presentes:
+        raise RuntimeError(
+            f"A tabela {tabela} não possui nenhuma das colunas esperadas: {campos}."
+        )
+
+    # Para IMP-016, codigoUnidadeGestora é opcional no dicionário Qstione.
+    if tabela == "imp_016_unidades_organizacionais":
+        campos_obrigatorios = {"codigoUnidade", "nomeLongo"}
+        ausentes = campos_obrigatorios - set(campos_presentes)
+        if ausentes:
+            raise RuntimeError(
+                f"A tabela {tabela} não possui campos obrigatórios da IMP-016: "
+                f"{sorted(ausentes)}."
+            )
+
+    lista_campos = ", ".join(f"[{campo}]" for campo in campos_presentes)
     sql = f"SELECT TOP 1 {lista_campos} FROM dbo.[{tabela}]"
 
     with get_db_connection(database_name="qstione") as conn:
@@ -51,20 +91,23 @@ def ler_primeiro_registro(tabela: str, campos: tuple[str, ...]) -> dict:
             f"A tabela {tabela} não possui registros para o teste."
         )
 
-    return dict(zip(campos, row))
+    registro = dict(zip(campos_presentes, row))
+
+    print(f"   Colunas utilizadas: {', '.join(campos_presentes)}")
+    campos_omitidos = tuple(campo for campo in campos if campo not in colunas_existentes)
+    if campos_omitidos:
+        print(
+            "   Campos opcionais ausentes na tabela local e omitidos do payload: "
+            + ", ".join(campos_omitidos)
+        )
+
+    return registro
 
 
 def exibir_registro(registro: dict) -> None:
     """Exibe o registro sem dados sensíveis de autenticação."""
     print("   Payload:")
-    print(
-        json.dumps(
-            registro,
-            ensure_ascii=False,
-            indent=2,
-            default=str,
-        )
-    )
+    print(json.dumps(registro, ensure_ascii=False, indent=2, default=str))
 
 
 def executar_transacao(
@@ -90,10 +133,7 @@ def executar_transacao(
     print(f"      codigoStatus:      {resultado.codigo_status}")
     print(f"      idRequisicao:      {resultado.id_requisicao}")
     print(f"      modoExecucao:      {resultado.modo_execucao}")
-    print(
-        "      quantidadeErros:  "
-        f"{resultado.quantidade_registros_erro}"
-    )
+    print(f"      quantidadeErros:   {resultado.quantidade_registros_erro}")
 
     if resultado.corpo_bruto not in (None, [], {}):
         print("      corpoResposta:")
