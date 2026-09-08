@@ -23,7 +23,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from core.database import get_db_connection
-from qstione.api.cliente import CAMPOS_API, ClienteQstione
+from qstione.api.cliente import ClienteQstione
 from qstione.config.qstione_config import (
     QSTIONE_BASE_URL,
     QSTIONE_SSL_VERIFY,
@@ -56,19 +56,19 @@ def selecionar_registro() -> dict:
         row = conn.execute(sql).fetchone()
     if row is None:
         raise RuntimeError("A tabela imp_008_usuarios_disciplinas nao possui registros.")
-    registro = {"codigoDisciplina": row[0], "emailUsuario": row[1]}
-    logger.info("REGISTRO IMP-008 SELECIONADO | %s", registro)
-    return registro
+    return {"codigoDisciplina": row[0], "emailUsuario": row[1]}
 
 
 def buscar_disciplina(codigo_disciplina: str) -> dict:
+    # IMPORTANTE: a tabela local do IMP-002 chama-se imp_002_disciplina
+    # (singular). O nome da tabela deve seguir exatamente o schema do projeto.
     sql = """
         SELECT TOP 1
             [codigoDisciplina],
             [nomeDisciplina],
             [codigoCurso],
             [periodo]
-        FROM dbo.[imp_002_disciplinas]
+        FROM dbo.[imp_002_disciplina]
         WHERE [codigoDisciplina] = ?
     """
     with get_db_connection(database_name="qstione") as conn:
