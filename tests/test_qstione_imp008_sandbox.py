@@ -5,6 +5,8 @@ Cadeia validada:
 
 O teste seleciona exatamente um registro real da tabela
 imp_008_usuarios_disciplinas e resolve as dependencias reais antes do envio.
+A selecao considera somente registros que possuam todas as dependencias
+locais necessarias, evitando que um registro orfao interrompa o teste.
 Nenhuma tabela local e alterada.
 
 Uso:
@@ -45,17 +47,42 @@ logger.propagate = False
 
 
 def selecionar_registro() -> dict:
+    """
+    Seleciona um vinculo IMP-008 que possua todas as dependencias locais.
+
+    Nao basta pegar TOP 1 de IMP-008: a tabela pode conter registros cujo
+    curso/disciplina/usuario de origem nao esteja presente nas tabelas-base.
+    O teste deve validar a cadeia API com uma amostra consistente.
+    """
     sql = """
         SELECT TOP 1
-            [codigoDisciplina],
-            [emailUsuario]
-        FROM dbo.[imp_008_usuarios_disciplinas]
-        ORDER BY [codigoDisciplina], [emailUsuario]
+            u.[codigoDisciplina],
+            u.[emailUsuario]
+        FROM dbo.[imp_008_usuarios_disciplinas] u
+        INNER JOIN dbo.[imp_002_disciplina] d
+            ON LTRIM(RTRIM(CAST(d.[codigoDisciplina] AS NVARCHAR(100)))) =
+               LTRIM(RTRIM(CAST(u.[codigoDisciplina] AS NVARCHAR(100))))
+        INNER JOIN dbo.[imp_001_cursos] c
+            ON LTRIM(RTRIM(CAST(c.[codigoCurso] AS NVARCHAR(100)))) =
+               LTRIM(RTRIM(CAST(d.[codigoCurso] AS NVARCHAR(100))))
+        INNER JOIN dbo.[imp_006_usuarios] usr
+            ON LOWER(LTRIM(RTRIM(usr.[emailUsuario]))) =
+               LOWER(LTRIM(RTRIM(u.[emailUsuario])))
+        WHERE NULLIF(LTRIM(RTRIM(CAST(u.[codigoDisciplina] AS NVARCHAR(100)))), '') IS NOT NULL
+          AND NULLIF(LTRIM(RTRIM(u.[emailUsuario])), '') IS NOT NULL
+        ORDER BY
+            u.[codigoDisciplina],
+            u.[emailUsuario]
     """
     with get_db_connection(database_name="qstione") as conn:
         row = conn.execute(sql).fetchone()
+
     if row is None:
-        raise RuntimeError("A tabela imp_008_usuarios_disciplinas nao possui registros.")
+        raise RuntimeError(
+            "Nao existe registro IMP-008 com dependencias locais completas "
+            "em IMP-002, IMP-001 e IMP-006."
+        )
+
     return {"codigoDisciplina": row[0], "emailUsuario": row[1]}
 
 
