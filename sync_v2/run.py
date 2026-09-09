@@ -12,9 +12,9 @@ import logging
 import time
 
 from sync_v2.endpoints import (
-    alunos, coordenacoes, curriculos, cursos, disciplinas, docentes, grades,
-    matriculas, pessoas, pessoas_pendentes, provas, provas_disciplinas,
-    turma_docentes, turmas,
+    aceit_contrato, alunos, coordenacoes, curriculos, cursos, disciplinas,
+    docentes, grades, matriculas, pessoas, pessoas_pendentes, provas,
+    provas_disciplinas, turma_docentes, turmas,
 )
 
 STAGES = [
@@ -32,6 +32,7 @@ STAGES = [
     ("matriculas", matriculas.run),
     ("provas", provas.run),
     ("provas_disciplinas", provas_disciplinas.run),
+    ("aceit_contrato", aceit_contrato.run),
 ]
 
 
@@ -49,10 +50,7 @@ def run(selected=None, alunos_modo="incremental") -> bool:
             continue
         logging.info("[V2] INÍCIO %s", name)
         try:
-            if name == "alunos":
-                result = fn(alunos_modo)
-            else:
-                result = fn()
+            result = fn(alunos_modo) if name == "alunos" else fn()
         except Exception:
             logging.exception("[V2] FALHA %s", name)
             return False
