@@ -22,6 +22,8 @@ FORMATO_OPERACAO = "JSON"
 
 # Os nomes abaixo são os nomes efetivamente enviados no JSON.
 # "periodo" corresponde ao campo definido como "Período" no dicionário.
+# No IMP-016, codigoUnidadeGestora é opcional na especificação; por isso,
+# a carga mínima utiliza apenas os três campos obrigatórios.
 CAMPOS_API: dict[str, tuple[str, ...]] = {
     "IMP-001": (
         "codigoCurso",
@@ -89,7 +91,6 @@ CAMPOS_API: dict[str, tuple[str, ...]] = {
         "codigoUnidade",
         "nomeCurto",
         "nomeLongo",
-        "codigoUnidadeGestora",
     ),
 }
 
@@ -186,8 +187,6 @@ class ClienteQstione:
                     f"{sorted(desconhecidos)}"
                 )
 
-            # Campos opcionais nulos são omitidos. Campos presentes com valor
-            # são preservados exatamente como vieram da tabela.
             payload.append({
                 campo: registro[campo]
                 for campo in campos
@@ -251,8 +250,6 @@ class ClienteQstione:
             0,
         )
 
-        # O protocolo devolve os registros de erro diretamente no corpo,
-        # sem wrapper "registrosErro".
         erros = corpo if isinstance(corpo, list) else []
 
         if codigo_status is None and response.status_code >= 400:
