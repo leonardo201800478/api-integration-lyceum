@@ -2,11 +2,16 @@
 qstione/importadores/imp_006_usuarios.py
 Importador para tabela imp_006_usuarios.
 
-A população de docentes é determinada por LY_TURMA_DOCENTE e por
-LY_COORDENACAO. Um coordenador pode existir no Qstione mesmo sem possuir
-nenhuma turma/disciplina docente no período vigente.
+A população de usuários é a união de três fontes:
+1. docentes presentes nas turmas elegíveis do período vigente;
+2. coordenadores cadastrados em LY_COORDENACAO nos cursos das faculdades
+   incluídas, mesmo sem turma/disciplina docente;
+3. membros ativos do NDE presentes em imp_nde_membros, mesmo sem turma ou
+   vínculo docente no período vigente.
 
-O NUM_FUNC é a origem da população; o cadastro é completado em LY_DOCENTE.
+O NUM_FUNC é utilizado como identificador do usuário. Para coordenadores e
+membros NDE sem turma, o cadastro é localizado diretamente em LY_DOCENTE pelo
+mailbox.
 """
 
 import os
@@ -44,7 +49,7 @@ DEBUG_NUM_FUNC = "6980"
 
 
 class ImportadorUsuarios:
-    """Importa docentes elegíveis e coordenadores dos cursos incluídos."""
+    """Importa docentes elegíveis, coordenadores e membros ativos do NDE."""
 
     def __init__(self):
         self.periodos_placeholders = ','.join(['?'] * len(PERIODOS_VIGENTES))
@@ -183,11 +188,88 @@ class ImportadorUsuarios:
 
         logger.info("===== FIM DIAGNÓSTICO NUM_FUNC=%s =====", nf)
 
+    def _obter_nde_usuarios(self):
+        """
+        Obtém os membros NDE ativos da tabela de apoio do Qstione e resolve
+        seus dados cadastrais em LY_DOCENTE pelo mailbox.
+
+        O NDE não depende de turma vigente: um membro ativo deve existir no
+        IMP-006 mesmo sem qualquer vínculo em LY_TURMA_DOCENTE.
+        """
+        try:
+            with get_db_connection(database_name='qstione') as conn:
+                rows_nde = conn.execute("""
+                    SELECT DISTINCT
+                        LTRIM(RTRIM(emailMembro)) AS emailMembro
+                    FROM imp_nde_membros
+                    WHERE emailMembro IS NOT NULL
+                      AND LTRIM(RTRIM(emailMembro)) <> ''
+                      AND UPPER(LTRIM(RTRIM(status))) = 'S'
+                """).fetchall()
+        except Exception:
+            logger.exception("Erro ao consultar membros NDE ativos.")
+            return []
+
+        emails = []
+        vistos = set()
+        for row in rows_nde:
+            email = converter_minusculas(str(row[0]).strip())
+            if not validar_email(email) or email in vistos:
+                continue
+            vistos.add(email)
+            emails.append(email)
+
+        if not emails:
+            logger.info("NDE ativos: 0")
+            return []
+
+        # O IN é montado em blocos para não depender de limites pequenos de
+        # parâmetros do driver/SQL Server.
+        resultado = []
+        bloco = 500
+
+        try:
+            with get_db_connection(database_name='lyceum') as conn:
+                for inicio in range(0, len(emails), bloco):
+                    parte = emails[inicio:inicio + bloco]
+                    placeholders = ','.join('?' for _ in parte)
+                    rows_docentes = conn.execute(f"""
+                        SELECT DISTINCT
+                            d.num_func,
+                            d.mailbox,
+                            COALESCE(d.nome_social, d.nome_compl) AS nome_completo,
+                            d.cpf,
+                            CAST(NULL AS NVARCHAR(30)) AS curso
+                        FROM LY_DOCENTE d
+                        WHERE LOWER(LTRIM(RTRIM(d.mailbox))) IN ({placeholders})
+                    """, tuple(parte)).fetchall()
+                    resultado.extend(rows_docentes)
+        except Exception:
+            logger.exception("Erro ao resolver membros NDE em LY_DOCENTE.")
+            return []
+
+        encontrados = {converter_minusculas(str(r[1]).strip()) for r in resultado if r[1] is not None}
+        logger.info(
+            "NDE ativos: %d | encontrados em LY_DOCENTE: %d | não encontrados: %d",
+            len(emails), len(encontrados), len(set(emails) - encontrados)
+        )
+
+        for email in sorted(set(emails) - encontrados):
+            logger.warning("NDE ativo não localizado em LY_DOCENTE pelo mailbox: %s", email)
+
+        return resultado
+
     def obter_dados_lyceum(self):
         """
-        A população é a união de docentes em turmas elegíveis e coordenadores
-        dos cursos das faculdades incluídas. Assim, um coordenador sem turma
-        docente no período vigente também é criado no IMP-006.
+        A população é a união de:
+        1. docentes encontrados em LY_TURMA_DOCENTE nas turmas elegíveis;
+        2. coordenadores encontrados em LY_COORDENACAO para cursos das
+           faculdades incluídas, mesmo sem turma;
+        3. membros NDE ativos de imp_nde_membros, mesmo sem turma.
+
+        A inclusão de coordenadores e NDE é feita como população de usuários,
+        não como população de turmas. O restante do fluxo de transformação e
+        reconstrução da tabela permanece inalterado.
         """
         query = f"""
             SELECT DISTINCT
@@ -243,12 +325,21 @@ class ImportadorUsuarios:
             cursor = conn.cursor()
             cursor.execute(query, params)
             rows = cursor.fetchall()
-            logger.info("CONSULTA FINAL: %d linhas retornadas", len(rows))
-            debug_rows = [r for r in rows if str(r[0]).strip() == DEBUG_NUM_FUNC]
-            logger.info("CONSULTA FINAL NUM_FUNC=%s: %d linhas", DEBUG_NUM_FUNC, len(debug_rows))
-            for row in debug_rows:
-                logger.info("CONSULTA FINAL NUM_FUNC=%s ROW=%s", DEBUG_NUM_FUNC, row)
-            return rows
+
+        # NDE é deliberadamente obtido fora da consulta principal porque a
+        # tabela imp_nde_membros pertence ao banco Qstione, enquanto LY_DOCENTE
+        # pertence ao Lyceum. Os registros são apenas adicionados à população;
+        # a transformação atual continua responsável por deduplicar por NUM_FUNC.
+        rows_nde = self._obter_nde_usuarios()
+        if rows_nde:
+            rows.extend(rows_nde)
+
+        logger.info("CONSULTA FINAL: %d linhas retornadas", len(rows))
+        debug_rows = [r for r in rows if str(r[0]).strip() == DEBUG_NUM_FUNC]
+        logger.info("CONSULTA FINAL NUM_FUNC=%s: %d linhas", DEBUG_NUM_FUNC, len(debug_rows))
+        for row in debug_rows:
+            logger.info("CONSULTA FINAL NUM_FUNC=%s ROW=%s", DEBUG_NUM_FUNC, row)
+        return rows
 
     def transformar_dados(self, dados_lyceum):
         """Monta um usuário por NUM_FUNC, sem exigir matrícula ou ativo."""
@@ -336,7 +427,7 @@ class ImportadorUsuarios:
         print("IMPORTAÇÃO: imp_006_usuarios")
         print("=" * 70)
         print(
-            f"🎓 Docentes + coordenadores: ano={ANO_VIGENTE}, "
+            f"🎓 Docentes + coordenadores + NDE: ano={ANO_VIGENTE}, "
             f"períodos={PERIODOS_VIGENTES}, faculdades={FACULDADES_INCLUIDAS}"
         )
         print(f"🔎 Log detalhado: {LOG_FILE}")
