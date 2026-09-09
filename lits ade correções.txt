@@ -1,4 +1,0 @@
-Qstione:
-
-1 - Erro ao trazer alunos do EAD;
-2 - Verificar porque as turmas de alguns cursos como engenharia não esta vindo;
