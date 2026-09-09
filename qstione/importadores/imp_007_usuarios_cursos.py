@@ -3,43 +3,16 @@ qstione/importadores/imp_007_usuarios_cursos.py
 
 Importador IMP-007 - Usuários x Cursos para o Qstione.
 
-REGRA FUNDAMENTAL DO QSTIONE
-----------------------------
-O Qstione exige que cada vínculo de usuário seja informado com um
-codigoCurso, porém o papelUsuario NÃO é independente por curso. O papel é
-único por usuário dentro da integração.
+REGRA FUNDAMENTAL
+-----------------
+O Qstione exige codigoCurso em cada vínculo, mas papelUsuario é global por
+usuário. A hierarquia é C > A > P. Assim, um usuário que seja membro do NDE
+(A) e também docente (P) deve ser A em TODOS os seus cursos.
 
-Portanto, a consolidação ocorre em duas etapas:
+G é administrativo/global e não participa da hierarquia C > A > P.
+O não é produzido por este importador.
 
-1. Reunir TODOS os cursos aos quais o usuário possui vínculo válido;
-2. Determinar o MAIOR papel do usuário pela hierarquia e propagar esse papel
-   para TODOS esses cursos.
-
-Hierarquia funcional:
-    C > A > P
-
-G é um papel administrativo fixo/global e não participa da hierarquia docente.
-O = Operador de Documentos não é produzido por este importador.
-
-Exemplo obrigatório:
-    usuário é C no curso 056 e P nos cursos 065 e 079
-    -> IMP-007 deve gerar C em 056, 065 e 079.
-
-Outro exemplo:
-    usuário é A no NDE de 006 e P nos cursos 017, 044 e 059
-    -> IMP-007 deve gerar A em 006, 017, 044 e 059.
-
-Assim, NÃO existe papel por curso. O curso define o vínculo exigido pelo
-Qstione; o papel é o maior papel efetivo do usuário e é propagado para todos
-os cursos aos quais ele está vinculado.
-
-CURSO 999
----------
-O código 999 representa exclusivamente uma turma compartilhada da origem
-Lyceum (LY_TURMA.curso NULL/vazio). Ele só deve aparecer para um usuário se
-esse usuário possuir efetivamente vínculo com uma turma compartilhada ou
-outra regra explícita que produza 999. O importador NÃO deve acrescentar 999
-artificialmente a todos os usuários C, A ou P.
+999 representa somente vínculo real com turma compartilhada.
 """
 
 from __future__ import annotations
@@ -78,20 +51,11 @@ PAPEL_AVALIADOR = "A"
 PAPEL_PROFESSOR = "P"
 PAPEIS_VALIDOS = {PAPEL_GERAL, PAPEL_COORDENADOR, PAPEL_AVALIADOR, PAPEL_PROFESSOR}
 
-# Menor número = maior prioridade.
-PRIORIDADE_PAPEIS = {
-    PAPEL_COORDENADOR: 1,
-    PAPEL_AVALIADOR: 2,
-    PAPEL_PROFESSOR: 3,
-}
-
 USUARIO_GERAL = "camila.felicio@foa.org.br"
 USUARIO_COORDENADOR = "gildo.bernardo@foa.org.br"
 
 
 class ImportadorUsuariosCursos:
-    """Importa e consolida usuários x cursos conforme a regra global de papel."""
-
     NOME_TABELA = "imp_007_usuarios_cursos"
 
     def __init__(self):
@@ -103,13 +67,9 @@ class ImportadorUsuariosCursos:
         self.faculdades_placeholders = ",".join("?" for _ in FACULDADES_INCLUIDAS)
         logger.info("=" * 80)
         logger.info("Inicializando imp_007_usuarios_cursos")
-        logger.info("ANO_VIGENTE=%s", ANO_VIGENTE)
-        logger.info("PERIODOS_VIGENTES=%s", PERIODOS_VIGENTES)
-        logger.info("FACULDADES_INCLUIDAS=%s", FACULDADES_INCLUIDAS)
-        logger.info("SITUACAO_TURMA_VALIDA=%s", SITUACAO_TURMA_VALIDA)
-        logger.info("Regra de papel: C > A > P | papel efetivo global por usuário")
-        logger.info("G = administrativo fixo/global")
-        logger.info("=")
+        logger.info("ANO_VIGENTE=%s | PERIODOS=%s | FACULDADES=%s", ANO_VIGENTE, PERIODOS_VIGENTES, FACULDADES_INCLUIDAS)
+        logger.info("Regra de papel: C > A > P | papel global por usuário")
+        logger.info("=" * 80)
 
     @staticmethod
     def _validar_email(email: Any) -> bool:
@@ -147,11 +107,16 @@ class ImportadorUsuariosCursos:
         nome = str(nome).strip()
         return (codigo or curso), (nome or codigo or curso)
 
+    def _normalizar_email(self, email: Any) -> Optional[str]:
+        if email is None:
+            return None
+        email = converter_minusculas(str(email).strip())
+        return email if self._validar_email(email) else None
+
     def _tabela_existe(self, nome_tabela: str) -> bool:
         with get_db_connection(database_name="qstione") as conn:
             row = conn.execute(
-                """SELECT 1 FROM INFORMATION_SCHEMA.TABLES
-                   WHERE TABLE_NAME = ? AND TABLE_TYPE = 'BASE TABLE'""",
+                "SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = ? AND TABLE_TYPE = 'BASE TABLE'",
                 (nome_tabela,),
             ).fetchone()
         return row is not None
@@ -160,8 +125,7 @@ class ImportadorUsuariosCursos:
         try:
             with get_db_connection(database_name="qstione") as conn:
                 row = conn.execute(
-                    """SELECT 1 FROM sys.indexes
-                       WHERE name = ? AND object_id = OBJECT_ID(?)""",
+                    "SELECT 1 FROM sys.indexes WHERE name = ? AND object_id = OBJECT_ID(?)",
                     (nome_indice, self.NOME_TABELA),
                 ).fetchone()
             return row is not None
@@ -169,20 +133,16 @@ class ImportadorUsuariosCursos:
             return False
 
     def _garantir_chave_primaria(self) -> None:
-        """Garante PK composta por curso + e-mail + papel."""
         with get_db_connection(database_name="qstione") as conn:
             row = conn.execute(
                 """
                 SELECT kc.name
                 FROM sys.key_constraints kc
                 INNER JOIN sys.index_columns ic
-                    ON ic.object_id = kc.parent_object_id
-                   AND ic.index_id = kc.unique_index_id
+                    ON ic.object_id = kc.parent_object_id AND ic.index_id = kc.unique_index_id
                 INNER JOIN sys.columns c
-                    ON c.object_id = ic.object_id
-                   AND c.column_id = ic.column_id
-                WHERE kc.parent_object_id = OBJECT_ID(?)
-                  AND kc.type = 'PK'
+                    ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+                WHERE kc.parent_object_id = OBJECT_ID(?) AND kc.type = 'PK'
                 GROUP BY kc.name
                 HAVING COUNT(*) = 3
                    AND SUM(CASE WHEN c.name = 'codigoCurso' THEN 1 ELSE 0 END) = 1
@@ -194,19 +154,15 @@ class ImportadorUsuariosCursos:
             if row:
                 return
             old = conn.execute(
-                """SELECT kc.name FROM sys.key_constraints kc
-                   WHERE kc.parent_object_id = OBJECT_ID(?) AND kc.type = 'PK'""",
+                "SELECT kc.name FROM sys.key_constraints kc WHERE kc.parent_object_id = OBJECT_ID(?) AND kc.type = 'PK'",
                 (self.NOME_TABELA,),
             ).fetchone()
             if old:
                 conn.execute(f"ALTER TABLE {self.NOME_TABELA} DROP CONSTRAINT [{old[0]}]")
             conn.execute(
-                f"""ALTER TABLE {self.NOME_TABELA}
-                    ADD CONSTRAINT PK_imp_007_usuarios_cursos
-                    PRIMARY KEY (codigoCurso, emailUsuario, papelUsuario)"""
+                f"ALTER TABLE {self.NOME_TABELA} ADD CONSTRAINT PK_imp_007_usuarios_cursos PRIMARY KEY (codigoCurso, emailUsuario, papelUsuario)"
             )
             conn.commit()
-            logger.info("🔧 PK do IMP-007 ajustada para (codigoCurso, emailUsuario, papelUsuario).")
 
     def _criar_tabela(self) -> None:
         if not self._tabela_existe(self.NOME_TABELA):
@@ -219,13 +175,11 @@ class ImportadorUsuariosCursos:
                         papelUsuario NVARCHAR(1) NOT NULL,
                         data_criacao DATETIME2 DEFAULT GETDATE(),
                         data_atualizacao DATETIME2 DEFAULT GETDATE(),
-                        CONSTRAINT PK_imp_007_usuarios_cursos
-                            PRIMARY KEY (codigoCurso, emailUsuario, papelUsuario)
+                        CONSTRAINT PK_imp_007_usuarios_cursos PRIMARY KEY (codigoCurso, emailUsuario, papelUsuario)
                     )
                     """
                 )
                 conn.commit()
-            logger.info("🆕 Tabela %s criada.", self.NOME_TABELA)
         else:
             self._garantir_chave_primaria()
         self._criar_indices()
@@ -273,10 +227,7 @@ class ImportadorUsuariosCursos:
             SELECT DISTINCT td.num_func, d.mailbox, t.curso
             FROM LY_TURMA_DOCENTE td
             INNER JOIN LY_TURMA t
-                ON t.ano = td.ano
-               AND t.semestre = td.periodo
-               AND t.turma = td.turma
-               AND t.disciplina = td.disciplina
+                ON t.ano = td.ano AND t.semestre = td.periodo AND t.turma = td.turma AND t.disciplina = td.disciplina
             LEFT JOIN LY_CURSO c ON c.curso = t.curso
             INNER JOIN LY_DOCENTE d ON d.num_func = td.num_func
             WHERE td.ano = ?
@@ -299,14 +250,17 @@ class ImportadorUsuariosCursos:
         return rows
 
     def obter_membros_nde(self) -> List[Tuple[Any, Any]]:
+        """Retorna somente NDE ativos, normalizando status, curso e e-mail."""
         sql = """
-            SELECT DISTINCT codigoCurso, emailMembro
+            SELECT DISTINCT
+                LTRIM(RTRIM(CAST(codigoCurso AS NVARCHAR(30)))) AS codigoCurso,
+                LTRIM(RTRIM(CAST(emailMembro AS NVARCHAR(100)))) AS emailMembro
             FROM imp_nde_membros
             WHERE codigoCurso IS NOT NULL
               AND LTRIM(RTRIM(CAST(codigoCurso AS NVARCHAR(30)))) <> ''
               AND emailMembro IS NOT NULL
-              AND LTRIM(RTRIM(emailMembro)) <> ''
-              AND status = 'S'
+              AND LTRIM(RTRIM(CAST(emailMembro AS NVARCHAR(100)))) <> ''
+              AND UPPER(LTRIM(RTRIM(CAST(status AS NVARCHAR(10))))) = 'S'
         """
         try:
             with get_db_connection(database_name="qstione") as conn:
@@ -314,26 +268,33 @@ class ImportadorUsuariosCursos:
         except Exception:
             logger.exception("Erro ao consultar imp_nde_membros.")
             return []
-        logger.info("👥 Avaliadores NDE encontrados: %d", len(rows))
-        return rows
+
+        validos: List[Tuple[Any, Any]] = []
+        invalidos = 0
+        for curso, email in rows:
+            email_normalizado = self._normalizar_email(email)
+            if not email_normalizado:
+                invalidos += 1
+                logger.warning("NDE ignorado por e-mail inválido: curso=%s | email=%s", curso, email)
+                continue
+            curso_unificado, _ = self._curso_unificado(curso)
+            if not self._validar_codigo_curso(curso_unificado):
+                invalidos += 1
+                logger.warning("NDE ignorado por curso inválido: curso=%s | email=%s", curso, email_normalizado)
+                continue
+            validos.append((curso_unificado, email_normalizado))
+
+        logger.info("👥 NDE ativos encontrados: %d | válidos: %d | descartados: %d", len(rows), len(validos), invalidos)
+        return validos
 
     def _obter_email_docente(self, num_func: Any) -> Optional[str]:
         try:
             with get_db_connection(database_name="lyceum") as conn:
-                row = conn.execute(
-                    "SELECT mailbox FROM LY_DOCENTE WHERE num_func = ?",
-                    (num_func,),
-                ).fetchone()
+                row = conn.execute("SELECT mailbox FROM LY_DOCENTE WHERE num_func = ?", (num_func,)).fetchone()
             return self._normalizar_email(row[0]) if row and row[0] else None
         except Exception:
             logger.exception("Erro obtendo mailbox do docente %s.", num_func)
             return None
-
-    def _normalizar_email(self, email: Any) -> Optional[str]:
-        if email is None:
-            return None
-        email = converter_minusculas(str(email).strip())
-        return email if self._validar_email(email) else None
 
     def _adicionar_candidato(
         self,
@@ -342,18 +303,19 @@ class ImportadorUsuariosCursos:
         papel: str,
         curso: Any,
         origem: str,
-    ) -> None:
+    ) -> bool:
         email = self._normalizar_email(email)
         papel = str(papel).strip().upper() if papel is not None else ""
         if not email or not self._validar_papel(papel):
             if email and papel not in PAPEIS_VALIDOS:
                 logger.warning("Papel inválido ignorado: %s | email=%s | origem=%s", papel, email, origem)
-            return
+            return False
         curso_unificado, _ = self._curso_unificado(curso)
         if not self._validar_codigo_curso(curso_unificado):
-            logger.warning("Código de curso inválido ignorado: %s | email=%s", curso_unificado, email)
-            return
+            logger.warning("Código de curso inválido ignorado: %s | email=%s | origem=%s", curso_unificado, email, origem)
+            return False
         candidatos[email][papel].add(curso_unificado)
+        return True
 
     def transformar_dados(
         self,
@@ -361,12 +323,6 @@ class ImportadorUsuariosCursos:
         coordenadores: Dict[Tuple[str, str], bool],
         membros_nde: List[Tuple[Any, Any]],
     ) -> List[Dict[str, str]]:
-        """
-        Consolida por usuário e só depois gera os vínculos.
-
-        Regra: o maior papel encontrado para o usuário é propagado para a
-        UNIÃO de todos os cursos aos quais esse usuário possui vínculo.
-        """
         candidatos: Dict[str, Dict[str, Set[str]]] = defaultdict(
             lambda: {
                 PAPEL_COORDENADOR: set(),
@@ -375,33 +331,37 @@ class ImportadorUsuariosCursos:
             }
         )
 
-        # P/C: cada vínculo docente/turma gera o curso real ao qual o usuário
-        # está ligado. Se ele também for coordenador daquele curso, o vínculo
-        # recebe C como candidato; caso contrário, recebe P.
+        # Primeiro todos os vínculos P/C.
         for num_func, email, curso in docentes_turmas:
             if num_func is None:
                 continue
             curso_unificado, _ = self._curso_unificado(curso)
             chave_coord = (str(num_func).strip(), curso_unificado)
             papel = PAPEL_COORDENADOR if chave_coord in coordenadores else PAPEL_PROFESSOR
-            self._adicionar_candidato(candidatos, email, papel, curso, "LY_COORDENACAO" if papel == PAPEL_COORDENADOR else "LY_TURMA_DOCENTE")
+            self._adicionar_candidato(
+                candidatos, email, papel, curso,
+                "LY_COORDENACAO" if papel == PAPEL_COORDENADOR else "LY_TURMA_DOCENTE",
+            )
 
-        # Coordenadores também entram mesmo que não possuam turma docente no
-        # período, pois LY_COORDENACAO é fonte própria do papel C.
+        # Coordenadores sem turma docente também são incluídos.
         for (num_func, curso), _ in coordenadores.items():
             email = self._obter_email_docente(num_func)
             if email:
                 self._adicionar_candidato(candidatos, email, PAPEL_COORDENADOR, curso, "LY_COORDENACAO")
 
-        # A: os cursos registrados no NDE também são vínculos de curso que
-        # precisam ser preservados. Se o usuário também possuir cursos como P,
-        # a consolidação abaixo unirá todos eles e propagará A para todos.
+        # IMPORTANTE: NDE é registrado separadamente e ANTES da consolidação.
+        # Isso garante que A nunca seja perdido para P.
+        emails_nde: Set[str] = set()
         for curso, email in membros_nde:
-            self._adicionar_candidato(candidatos, email, PAPEL_AVALIADOR, curso, "NDE")
+            email_normalizado = self._normalizar_email(email)
+            if not email_normalizado:
+                continue
+            if self._adicionar_candidato(candidatos, email_normalizado, PAPEL_AVALIADOR, curso, "NDE"):
+                emails_nde.add(email_normalizado)
 
-        # G: usuário administrativo fixo. Mantemos seus cursos efetivamente
-        # encontrados nas fontes e, quando não houver nenhum, 999 como vínculo
-        # técnico mínimo para a carga administrativa existente.
+        logger.info("👥 Usuários NDE efetivamente consolidados como candidatos A: %d", len(emails_nde))
+
+        # Usuário administrativo fixo.
         email_geral = self._normalizar_email(USUARIO_GERAL)
         if email_geral:
             cursos_geral = set()
@@ -411,8 +371,7 @@ class ImportadorUsuariosCursos:
                 cursos_geral.add(CURSO_COMPARTILHADO)
             candidatos[email_geral][PAPEL_GERAL] = cursos_geral
 
-        # Usuário especial já existente na integração. A regra global continua
-        # valendo: seus cursos efetivos são todos consolidados como C.
+        # Usuário coordenador especial existente na integração.
         email_coord_especial = self._normalizar_email(USUARIO_COORDENADOR)
         if email_coord_especial:
             cursos_coord = set()
@@ -423,25 +382,34 @@ class ImportadorUsuariosCursos:
 
         registros: List[Dict[str, str]] = []
         estatisticas = defaultdict(int)
+        nde_promovidos = 0
 
-        # AQUI está a regra crítica: o papel efetivo é definido uma única vez
-        # por usuário. Depois, o mesmo papel é aplicado a TODOS os cursos que
-        # compõem a união dos vínculos desse usuário.
         for email, papeis in sorted(candidatos.items()):
-            if email == email_geral and "G" in papeis:
+            if email == email_geral and papeis.get(PAPEL_GERAL):
                 papel_efetivo = PAPEL_GERAL
                 cursos = set(papeis[PAPEL_GERAL])
             elif papeis[PAPEL_COORDENADOR]:
                 papel_efetivo = PAPEL_COORDENADOR
-                cursos = set().union(*[v for k, v in papeis.items() if k in {PAPEL_COORDENADOR, PAPEL_AVALIADOR, PAPEL_PROFESSOR}])
+                cursos = set().union(*[
+                    papeis[k] for k in (PAPEL_COORDENADOR, PAPEL_AVALIADOR, PAPEL_PROFESSOR)
+                ])
             elif papeis[PAPEL_AVALIADOR]:
                 papel_efetivo = PAPEL_AVALIADOR
-                cursos = set().union(*[v for k, v in papeis.items() if k in {PAPEL_COORDENADOR, PAPEL_AVALIADOR, PAPEL_PROFESSOR}])
+                cursos = set().union(*[
+                    papeis[k] for k in (PAPEL_COORDENADOR, PAPEL_AVALIADOR, PAPEL_PROFESSOR)
+                ])
             elif papeis[PAPEL_PROFESSOR]:
                 papel_efetivo = PAPEL_PROFESSOR
                 cursos = set(papeis[PAPEL_PROFESSOR])
             else:
                 continue
+
+            if email in emails_nde and papel_efetivo == PAPEL_AVALIADOR and papeis[PAPEL_PROFESSOR]:
+                nde_promovidos += 1
+                logger.info(
+                    "⬆️ NDE: %s promovido de P para A | cursos consolidados=%d",
+                    email, len(cursos),
+                )
 
             for curso in sorted(cursos):
                 registros.append({
@@ -451,6 +419,17 @@ class ImportadorUsuariosCursos:
                 })
                 estatisticas[papel_efetivo] += 1
 
+        # Integridade: nenhum NDE ativo pode terminar como P.
+        resultado_por_email: Dict[str, str] = {}
+        for registro in registros:
+            resultado_por_email[registro["emailUsuario"]] = registro["papelUsuario"]
+        nde_com_p = [email for email in emails_nde if resultado_por_email.get(email) == PAPEL_PROFESSOR]
+        nde_sem_resultado = [email for email in emails_nde if email not in resultado_por_email]
+        if nde_com_p:
+            raise RuntimeError(f"Integridade IMP-007: NDE terminou como P: {nde_com_p}")
+        if nde_sem_resultado:
+            raise RuntimeError(f"Integridade IMP-007: NDE sem registro final: {nde_sem_resultado}")
+
         registros.sort(key=lambda r: (r["codigoCurso"], r["emailUsuario"], r["papelUsuario"]))
         logger.info("=" * 80)
         logger.info("📊 RESULTADO DA CONSOLIDAÇÃO")
@@ -458,8 +437,9 @@ class ImportadorUsuariosCursos:
         logger.info("   C = %d", estatisticas[PAPEL_COORDENADOR])
         logger.info("   A = %d", estatisticas[PAPEL_AVALIADOR])
         logger.info("   P = %d", estatisticas[PAPEL_PROFESSOR])
+        logger.info("   NDE promovidos P -> A = %d", nde_promovidos)
+        logger.info("   NDE sem P no resultado final = %d", len(nde_com_p))
         logger.info("   TOTAL = %d", len(registros))
-        logger.info("   Regra: papel máximo global propagado para todos os cursos do usuário")
         logger.info("=" * 80)
         return registros
 
