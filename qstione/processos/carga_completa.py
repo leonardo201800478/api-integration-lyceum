@@ -97,7 +97,8 @@ class CargaCompletaQstione:
             raise ValueError(f"Nome de tabela inválido: {tabela}")
         if any(not campo.replace("_", "").isalnum() for campo in campos):
             raise ValueError("Um ou mais campos da API possuem nome inválido.")
-        sql = f"SELECT {', '.join(f'[{campo}]' for campo in campos)} FROM dbo.[{tabela}]"
+        colunas = ", ".join("[" + campo + "]" for campo in campos)
+        sql = "SELECT " + colunas + " FROM dbo.[" + tabela + "]"
         with get_db_connection(database_name="qstione") as conn:
             rows = conn.execute(sql).fetchall()
         return [dict(zip(campos, row)) for row in rows]
@@ -105,6 +106,11 @@ class CargaCompletaQstione:
     @staticmethod
     def _validar_tabela_e_colunas(tabela: str, campos: tuple[str, ...]) -> int:
         """Valida a estrutura sem alterar dados e retorna a quantidade de registros."""
+        if not tabela.replace("_", "").isalnum():
+            raise ValueError(f"Nome de tabela inválido: {tabela}")
+        if any(not campo.replace("_", "").isalnum() for campo in campos):
+            raise ValueError("Um ou mais campos da API possuem nome inválido.")
+
         with get_db_connection(database_name="qstione") as conn:
             tabela_existe = conn.execute(
                 """
@@ -121,13 +127,12 @@ class CargaCompletaQstione:
 
             placeholders = ",".join("?" for _ in campos)
             rows = conn.execute(
-                f"""
+                """
                 SELECT COLUMN_NAME
                 FROM INFORMATION_SCHEMA.COLUMNS
                 WHERE TABLE_SCHEMA = 'dbo'
                   AND TABLE_NAME = ?
-                  AND COLUMN_NAME IN ({placeholders})
-                """,
+                  AND COLUMN_NAME IN (""" + placeholders + ")",
                 (tabela, *campos),
             ).fetchall()
             existentes = {row[0] for row in rows}
@@ -137,7 +142,10 @@ class CargaCompletaQstione:
                     f"Tabela dbo.{tabela}: campos ausentes: {', '.join(ausentes)}"
                 )
 
-            return conn.execute(f"SELECT COUNT(*) FROM dbo.[{tabela]}").fetchone()[0]
+            # Não usar f-string para montar este identificador: além de desnecessário,
+            # evita ambiguidades do parser em diferentes versões do Python.
+            sql_count = "SELECT COUNT(*) FROM dbo.[" + tabela + "]"
+            return conn.execute(sql_count).fetchone()[0]
 
     @staticmethod
     def _validar_importador_importavel(etapa: Etapa) -> None:
@@ -212,7 +220,11 @@ class CargaCompletaQstione:
                 print(f"✗ {etapa.transacao}: {exc}")
 
         try:
-            self.cliente.session.get(self.cliente.url, timeout=self.cliente.timeout, verify=self.cliente.ssl_verify)
+            self.cliente.session.get(
+                self.cliente.url,
+                timeout=self.cliente.timeout,
+                verify=self.cliente.ssl_verify,
+            )
             print("✓ Endpoint Qstione acessível")
         except Exception as exc:
             # GET pode ser recusado pelo endpoint sem significar indisponibilidade do POST.
@@ -220,87 +232,78 @@ class CargaCompletaQstione:
             print("  A conectividade final será validada pelo POST da carga.")
 
         if falhas:
-            print("\n" + "!" * 78)
-            print(" PREFLIGHT REPROVADO")
+            print("\n" + "=" * 78)
+            print(" PREFLIGHT FALHOU")
             for falha in falhas:
-                print(f" - {falha}")
-            print("!" * 78)
+                print(f"- {falha}")
             return False
 
         print("\n" + "=" * 78)
-        print(" PREFLIGHT APROVADO")
-        print(" Nenhum importador foi executado e nenhum dado foi alterado.")
+        print(" PREFLIGHT OK")
         print("=" * 78)
         return True
 
-    def enviar_etapa(self, etapa: Etapa, registros: list[dict]) -> bool:
-        total = len(registros)
-        print(f"   Registros preparados: {total}")
-
-        if etapa.registro_fixo and total != 1:
-            print(f"   ❌ IMP-016 deve conter exatamente 1 registro fixo; encontrados {total}.")
-            return False
-        if total == 0:
-            print("   ⚠️ Nenhum registro para enviar.")
+    def enviar_etapa(self, etapa: Etapa) -> bool:
+        registros = self.ler_tabela(etapa.tabela, CAMPOS_API[etapa.transacao])
+        if not registros:
+            if etapa.registro_fixo:
+                raise RuntimeError("IMP-016 precisa possuir o registro fixo configurado.")
+            logger.warning("%s: tabela sem registros; etapa ignorada.", etapa.transacao)
             return True
 
+        total = len(registros)
         for inicio in range(0, total, self.tamanho_lote):
             lote = registros[inicio:inicio + self.tamanho_lote]
-            numero_lote = inicio // self.tamanho_lote + 1
-            print(f"   → Lote {numero_lote}: {len(lote)} registros")
+            numero_lote = (inicio // self.tamanho_lote) + 1
+            total_lotes = (total + self.tamanho_lote - 1) // self.tamanho_lote
+            print(
+                f"\n[{etapa.transacao}] lote {numero_lote}/{total_lotes} "
+                f"({len(lote)} registros)"
+            )
             resultado = self.cliente.enviar(etapa.transacao, lote)
-
-            if resultado.assincrono:
-                print(
-                    "   ❌ Operação assíncrona aceita pela API "
-                    f"(idRequisicao={resultado.id_requisicao}). "
-                    "Carga interrompida para preservar a ordem das dependências."
-                )
-                return False
-
             if not resultado.sucesso:
-                print(f"   ❌ API retornou codigoStatus={resultado.codigo_status} (HTTP {resultado.http_status}).")
+                print(f"✗ {etapa.transacao}: falha na API (status={resultado.codigo_status})")
                 for erro in resultado.erros:
                     print(
-                        "      "
-                        f"registro={erro.get('numeroRegistro')}; "
-                        f"excecao={erro.get('nomeExcecao')}; "
-                        f"detalhes={erro.get('detalhesFalha')}"
+                        f"  registro={erro.get('numeroRegistro')} | "
+                        f"{erro.get('nomeExcecao')}: {erro.get('detalhesFalha')}"
                     )
                 return False
-            print(f"   ✓ Lote processado: {min(inicio + len(lote), total)}/{total}")
+            if resultado.assincrono:
+                print(
+                    f"✗ {etapa.transacao}: API respondeu modo assíncrono; "
+                    "a carga completa exige confirmação síncrona."
+                )
+                return False
+            print(f"✓ {etapa.transacao}: lote processado com sucesso")
         return True
-
-    def executar_etapa(self, etapa: Etapa) -> bool:
-        print("\n" + "=" * 78)
-        print(f"[{etapa.numero:02d}/{len(ETAPAS):02d}] {etapa.transacao} - {etapa.tabela}")
-        print("=" * 78)
-
-        if etapa.registro_fixo:
-            print("   IMP-016: usando o único registro fixo já existente na tabela.")
-        else:
-            print("   Executando importador local...")
-            self.executar_importador(etapa)
-
-        campos = CAMPOS_API[etapa.transacao]
-        print(f"   Campos API: {', '.join(campos)}")
-        registros = self.ler_tabela(etapa.tabela, campos)
-        return self.enviar_etapa(etapa, registros)
 
     def executar(self) -> bool:
         print("\n" + "=" * 78)
-        print(" CARGA COMPLETA QSTIONE")
-        print(" Protocolo: 1.2.10 | Dicionário: 1.15.0")
+        print(" CARGA COMPLETA LYCEUM → QSTIONE")
         print("=" * 78)
-        try:
-            for etapa in ETAPAS:
-                if not self.executar_etapa(etapa):
-                    print("\n" + "!" * 78)
-                    print(f" PROCESSO INTERROMPIDO EM {etapa.transacao}")
-                    print("!" * 78)
+        print(f"Endpoint: {self.cliente.url}")
+        print(f"Tamanho do lote: {self.tamanho_lote}")
+
+        for etapa in ETAPAS:
+            print(f"\n{'-' * 78}\nETAPA {etapa.numero}/{len(ETAPAS)} — {etapa.transacao}\n{'-' * 78}")
+            try:
+                if etapa.registro_fixo:
+                    registros = self.ler_tabela(etapa.tabela, CAMPOS_API[etapa.transacao])
+                    if len(registros) != 1:
+                        raise RuntimeError(
+                            f"IMP-016 deve conter exatamente 1 registro fixo; encontrados {len(registros)}."
+                        )
+                else:
+                    self.executar_importador(etapa)
+                if not self.enviar_etapa(etapa):
+                    print(f"\n✗ Carga interrompida em {etapa.transacao}.")
                     return False
-        finally:
-            self.cliente.close()
+            except Exception:
+                logger.exception("Erro durante %s", etapa.transacao)
+                print(f"\n✗ Carga interrompida em {etapa.transacao}.")
+                return False
+
         print("\n" + "=" * 78)
         print(" CARGA COMPLETA CONCLUÍDA COM SUCESSO")
         print("=" * 78)
@@ -308,7 +311,7 @@ class CargaCompletaQstione:
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
     validar_configuracao_qstione()
     if "--preflight" in sys.argv:
         carga = CargaCompletaQstione()
