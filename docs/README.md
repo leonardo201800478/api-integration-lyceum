@@ -20,6 +20,19 @@ Documento principal da integração Lyceum → Qstione. Registra:
 - critérios de aceite;
 - orientações para manutenção futura.
 
+### [IMP_007_USUARIOS_CURSOS.md](IMP_007_USUARIOS_CURSOS.md)
+
+Documento específico da regra de usuários x cursos do IMP-007. Registra explicitamente:
+
+- diferença entre vínculo de curso e papel do usuário;
+- hierarquia global `C > A > P`;
+- papel máximo único por usuário;
+- propagação do papel máximo para todos os cursos do usuário;
+- comportamento de coordenadores que também lecionam em outros cursos;
+- comportamento de avaliadores NDE que também possuem vínculos docentes;
+- regra do código técnico `999` para turmas compartilhadas;
+- critérios de aceite do IMP-007.
+
 ## Regra de documentação
 
 Toda alteração funcional relevante deve atualizar a documentação correspondente.
@@ -32,6 +45,8 @@ Em especial, qualquer mudança em:
 - situação de turma;
 - regra de turma compartilhada;
 - relacionamento aluno/curso;
+- relacionamento usuário/curso/papel;
+- hierarquia de papéis;
 - relacionamento professor/oferta;
 - contrato da API;
 - ordem de carga;
