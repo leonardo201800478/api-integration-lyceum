@@ -22,8 +22,7 @@ FORMATO_OPERACAO = "JSON"
 
 # Os nomes abaixo são os nomes efetivamente enviados no JSON.
 # "periodo" corresponde ao campo definido como "Período" no dicionário.
-# No IMP-016, codigoUnidadeGestora é opcional na especificação; por isso,
-# a carga mínima utiliza apenas os três campos obrigatórios.
+# No IMP-016, codigoUnidadeGestora é opcional na especificação.
 CAMPOS_API: dict[str, tuple[str, ...]] = {
     "IMP-001": (
         "codigoCurso",
@@ -93,6 +92,55 @@ CAMPOS_API: dict[str, tuple[str, ...]] = {
         "nomeLongo",
     ),
 }
+
+# A interface Qstione 1.2.10 exige ISO-8859-1. Alguns dados acadêmicos,
+# entretanto, podem conter pontuação Unicode comum em textos copiados do
+# sistema, como en dash/em dash e aspas tipográficas. Esses caracteres não
+# existem no ISO-8859-1. Fazemos uma normalização conservadora para equivalentes
+# representáveis, sem remover os acentos normalmente suportados pelo charset.
+CARACTERES_NAO_LATIN1 = str.maketrans({
+    "\u2010": "-",   # hyphen
+    "\u2011": "-",   # non-breaking hyphen
+    "\u2012": "-",   # figure dash
+    "\u2013": "-",   # en dash
+    "\u2014": "-",   # em dash
+    "\u2015": "-",   # horizontal bar
+    "\u2018": "'",   # left single quotation mark
+    "\u2019": "'",   # right single quotation mark
+    "\u201a": "'",   # single low-9 quotation mark
+    "\u201c": '"',   # left double quotation mark
+    "\u201d": '"',   # right double quotation mark
+    "\u201e": '"',   # double low-9 quotation mark
+    "\u2026": "...", # horizontal ellipsis
+    "\u2022": "*",   # bullet
+    "\u00a0": " ",   # non-breaking space
+})
+
+
+def _normalizar_para_iso_8859_1(valor: Any) -> Any:
+    """Normaliza apenas caracteres Unicode sem representação em ISO-8859-1."""
+    if isinstance(valor, str):
+        normalizado = valor.translate(CARACTERES_NAO_LATIN1)
+        # Falha explicitamente para caracteres ainda incompatíveis, em vez de
+        # corromper silenciosamente o conteúdo com '?' ou bytes inválidos.
+        try:
+            normalizado.encode("iso-8859-1")
+        except UnicodeEncodeError as exc:
+            caractere = normalizado[exc.start:exc.end]
+            raise UnicodeEncodeError(
+                "iso-8859-1",
+                normalizado,
+                exc.start,
+                exc.end,
+                "caractere Unicode não representável no protocolo Qstione: "
+                f"U+{ord(caractere[0]):04X}",
+            ) from None
+        return normalizado
+    if isinstance(valor, list):
+        return [_normalizar_para_iso_8859_1(item) for item in valor]
+    if isinstance(valor, dict):
+        return {chave: _normalizar_para_iso_8859_1(item) for chave, item in valor.items()}
+    return valor
 
 
 @dataclass
@@ -192,6 +240,8 @@ class ClienteQstione:
                 for campo in campos
                 if campo in registro and registro[campo] is not None
             })
+
+        payload = _normalizar_para_iso_8859_1(payload)
 
         body_text = json.dumps(
             payload,
