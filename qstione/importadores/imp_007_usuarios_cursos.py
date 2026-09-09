@@ -1,182 +1,27 @@
-
 """
 qstione/importadores/imp_007_usuarios_cursos.py
 
-Importador independente para imp_007_usuarios_cursos.
+Importador de usuários por curso para o Qstione.
 
-===============================================================================
 REGRAS DE NEGÓCIO
-===============================================================================
-
-1. LY_TURMA é a fonte de verdade para determinar o curso do docente.
-
-2. A faculdade da turma é determinada exclusivamente por:
-
-       LY_TURMA.curso
-            ↓
-       LY_CURSO.curso
-            ↓
-       LY_CURSO.faculdade
-
-3. LY_DISCIPLINA.faculdade NÃO é utilizada para determinar
-   a faculdade da turma.
-
-4. São considerados:
-
-       - ANO_VIGENTE;
-       - TODOS os PERIODOS_VIGENTES;
-       - SITUACAO_TURMA_VALIDA;
-       - FACULDADES_INCLUIDAS.
-
-5. O código do curso segue exatamente MAPEAMENTO_CURSOS
-   definido em imp_002_disciplina.py.
-
-6. Somente docentes ativos são considerados.
-
-7. O e-mail do docente é obtido de LY_DOCENTE.mailbox.
-
-8. USUÁRIOS ESPECIAIS:
-
-       camila.felicio@foa.org.br -> G
-
-       gildo.bernardo@foa.org.br -> C
-
-9. COORDENADORES:
-
-       origem:
-           LY_COORDENACAO
-
-       papel:
-           C
-
-10. AVALIADORES:
-
-       origem:
-           imp_nde_membros
-
-       papel:
-           A
-
-11. DEMAIS DOCENTES:
-
-       origem:
-           LY_TURMA_DOCENTE
-
-       papel:
-           P
-
-12. PRIORIDADE GLOBAL DE PAPÉIS:
-
-       G > C > A > P
-
-    Essa prioridade vale para TODOS os cursos.
-
-13. Se o mesmo usuário aparecer no mesmo curso com mais de um papel:
-
-       G + C -> G
-       G + A -> G
-       G + P -> G
-
-       C + A -> C
-       C + P -> C
-
-       A + P -> A
-
-14. O papel C sempre prevalece sobre A e P,
-    independentemente da origem do outro vínculo.
-
-15. O papel A sempre prevalece sobre P,
-    independentemente da origem do outro vínculo.
-
-16. Todo usuário encontrado em um curso real também recebe
-    acesso ao curso 999, preservando o papel:
-
-       P -> P
-       C -> C
-       A -> A
-       G -> G
-
-17. O curso 999 NÃO recebe papel adicional para membros NDE
-    apenas por serem NDE.
-
-18. Os usuários especiais seguem a mesma regra de consolidação.
-
-19. A tabela é reconstruída a cada execução.
-
-20. Chave lógica:
-
-       (codigoCurso, emailUsuario)
-
-21. O processo é idempotente:
-    executar novamente produz a mesma fotografia da origem,
-    respeitando as regras acima.
-
-===============================================================================
-IMPORTANTE SOBRE A PRIORIDADE
-===============================================================================
-
-A prioridade NÃO depende da ordem em que os registros são encontrados.
-
-Exemplo:
-
-    primeiro:
-        professor P
-
-    depois:
-        coordenador C
-
-Resultado:
-
-        C
-
-Da mesma forma:
-
-    primeiro:
-        NDE A
-
-    depois:
-        professor P
-
-Resultado:
-
-        A
-
-E:
-
-    primeiro:
-        professor P
-
-    depois:
-        usuário especial G
-
-Resultado:
-
-        G
-
-Isso é garantido pela função _melhor_papel().
-
-===============================================================================
-CURSO 999
-===============================================================================
-
-O 999 representa o curso compartilhado.
-
-Um usuário vinculado ao curso 056 como C terá:
-
-       056 | usuario@exemplo.com | C
-       999 | usuario@exemplo.com | C
-
-Um usuário vinculado ao curso 056 como A terá:
-
-       056 | usuario@exemplo.com | A
-       999 | usuario@exemplo.com | A
-
-Um professor:
-
-       056 | usuario@exemplo.com | P
-       999 | usuario@exemplo.com | P
-
-===============================================================================
+-----------------
+P = Professor: origem nos vínculos docente/turma válidos.
+A = Avaliador de Questões: origem na tabela imp_nde_membros.
+C = Coordenador de curso: origem em LY_COORDENACAO.
+G = Gestor da Plataforma: usuário fixo/configurado no código.
+O = Operador de Documentos: não é produzido pela lógica docente deste importador.
+
+Hierarquia global de papéis:
+    G > C > A > P
+
+A hierarquia é aplicada POR USUÁRIO, antes da geração dos vínculos finais.
+Assim, um coordenador não permanece como professor em outro curso, e um
+avaliador não decai para professor em cursos onde também possua vínculo docente.
+
+Curso 999:
+    P/C/G podem receber o vínculo 999 conforme as regras de compartilhamento.
+    A não recebe 999 automaticamente, pois seu papel é global e não representa
+    um vínculo acadêmico com o curso compartilhado.
 """
 
 from __future__ import annotations
@@ -184,1820 +29,463 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
-
-# =============================================================================
-# PATH DO PROJETO
-# =============================================================================
-
-ROOT = os.path.dirname(
-    os.path.dirname(
-        os.path.dirname(
-            os.path.abspath(__file__)
-        )
-    )
-)
-
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-
-# =============================================================================
-# IMPORTS DO PROJETO
-# =============================================================================
-
 from core.database import get_db_connection
-
-from qstione.core.transformacoes import (
-    converter_minusculas,
-)
-
-from qstione.core.validacoes import (
-    validar_codigo_curso,
-    validar_email,
-    validar_papel_usuario,
-)
-
+from qstione.core.transformacoes import converter_minusculas
 from qstione.config.filtros import (
     ANO_VIGENTE,
     PERIODOS_VIGENTES,
     FACULDADES_INCLUIDAS,
     SITUACAO_TURMA_VALIDA,
 )
+from qstione.importadores.imp_002_disciplina import MAPEAMENTO_CURSOS
 
-from qstione.importadores.imp_002_disciplina import (
-    MAPEAMENTO_CURSOS,
-)
-
-
-# =============================================================================
-# LOG
-# =============================================================================
-
-logger = logging.getLogger(
-    "imp_007_usuarios_cursos"
-)
-
+logger = logging.getLogger("imp_007_usuarios_cursos")
 if not logger.handlers:
-
     handler = logging.StreamHandler()
-
-    handler.setFormatter(
-        logging.Formatter(
-            "%(asctime)s | %(levelname)s | %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
-    )
-
-    logger.addHandler(
-        handler
-    )
-
-logger.setLevel(
-    logging.INFO
-)
-
-
-# =============================================================================
-# CONSTANTES
-# =============================================================================
+    handler.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(message)s", datefmt="%Y-%m-%d %H:%M:%S"))
+    logger.addHandler(handler)
+logger.setLevel(logging.INFO)
 
 CURSO_COMPARTILHADO = "999"
-
 PAPEL_GERAL = "G"
-
 PAPEL_COORDENADOR = "C"
-
 PAPEL_AVALIADOR = "A"
-
 PAPEL_PROFESSOR = "P"
-
-
-# =============================================================================
-# USUÁRIOS ESPECIAIS
-# =============================================================================
-
-USUARIO_GERAL = (
-    "camila.felicio@foa.org.br"
-)
-
-USUARIO_COORDENADOR = (
-    "gildo.bernardo@foa.org.br"
-)
-
-
-# =============================================================================
-# PRIORIDADE DOS PAPÉIS
-# =============================================================================
-#
-# Quanto MENOR o número, MAIOR a prioridade.
-#
-# Portanto:
-#
-#       G = 1
-#       C = 2
-#       A = 3
-#       P = 4
-#
-# Isso permite comparar os papéis independentemente da ordem
-# em que os registros forem encontrados.
-# =============================================================================
-
+PAPEIS_VALIDOS = {PAPEL_GERAL, PAPEL_COORDENADOR, PAPEL_AVALIADOR, PAPEL_PROFESSOR}
 PRIORIDADE_PAPEIS = {
-
     PAPEL_GERAL: 1,
-
     PAPEL_COORDENADOR: 2,
-
     PAPEL_AVALIADOR: 3,
-
     PAPEL_PROFESSOR: 4,
 }
 
+# Usuário administrativo fixo definido para esta integração.
+USUARIO_GERAL = "camila.felicio@foa.org.br"
+# Mantido como usuário especial de coordenação já existente na integração.
+USUARIO_COORDENADOR = "gildo.bernardo@foa.org.br"
 
-# =============================================================================
-# IMPORTADOR
-# =============================================================================
 
 class ImportadorUsuariosCursos:
-    """
-    Importa usuários por curso para o Qstione.
+    """Importa e consolida os usuários dos cursos para o IMP-007."""
 
-    Fontes:
-
-        LY_TURMA_DOCENTE
-        LY_COORDENACAO
-        imp_nde_membros
-        usuários especiais
-
-    A consolidação final ocorre pela chave:
-
-        (codigoCurso, emailUsuario)
-
-    com prioridade:
-
-        G > C > A > P
-    """
-
-    # =========================================================================
-    # INIT
-    # =========================================================================
+    NOME_TABELA = "imp_007_usuarios_cursos"
 
     def __init__(self):
-
         if not PERIODOS_VIGENTES:
-
-            raise ValueError(
-                "PERIODOS_VIGENTES não pode estar vazio."
-            )
-
+            raise ValueError("PERIODOS_VIGENTES não pode estar vazio.")
         if not FACULDADES_INCLUIDAS:
-
-            raise ValueError(
-                "FACULDADES_INCLUIDAS não pode estar vazio."
-            )
-
-        self.periodos_placeholders = ",".join(
-            "?"
-            for _ in PERIODOS_VIGENTES
-        )
-
-        self.faculdades_placeholders = ",".join(
-            "?"
-            for _ in FACULDADES_INCLUIDAS
-        )
-
-        logger.info(
-            "=" * 80
-        )
-
-        logger.info(
-            "Inicializando imp_007_usuarios_cursos"
-        )
-
-        logger.info(
-            "ANO_VIGENTE=%s",
-            ANO_VIGENTE,
-        )
-
-        logger.info(
-            "PERIODOS_VIGENTES=%s",
-            PERIODOS_VIGENTES,
-        )
-
-        logger.info(
-            "FACULDADES_INCLUIDAS=%s",
-            FACULDADES_INCLUIDAS,
-        )
-
-        logger.info(
-            "SITUACAO_TURMA_VALIDA=%s",
-            SITUACAO_TURMA_VALIDA,
-        )
-
-        logger.info(
-            "Prioridade: G > C > A > P"
-        )
-
-        logger.info(
-            "=" * 80
-        )
-
-    # =========================================================================
-    # NORMALIZAÇÃO DE CURSO
-    # =========================================================================
+            raise ValueError("FACULDADES_INCLUIDAS não pode estar vazio.")
+        self.periodos_placeholders = ",".join("?" for _ in PERIODOS_VIGENTES)
+        self.faculdades_placeholders = ",".join("?" for _ in FACULDADES_INCLUIDAS)
+        logger.info("=" * 80)
+        logger.info("Inicializando imp_007_usuarios_cursos")
+        logger.info("ANO_VIGENTE=%s", ANO_VIGENTE)
+        logger.info("PERIODOS_VIGENTES=%s", PERIODOS_VIGENTES)
+        logger.info("FACULDADES_INCLUIDAS=%s", FACULDADES_INCLUIDAS)
+        logger.info("SITUACAO_TURMA_VALIDA=%s", SITUACAO_TURMA_VALIDA)
+        logger.info("Hierarquia efetiva: G > C > A > P")
+        logger.info("=")
 
     @staticmethod
-    def _curso_unificado(
-        curso: Any
-    ) -> Tuple[str, str]:
-        """
-        Converte um curso original para o código utilizado pelo Qstione.
+    def _validar_email(email: Any) -> bool:
+        if email is None:
+            return False
+        email = str(email).strip()
+        if not email or "@" not in email or " " in email:
+            return False
+        partes = email.split("@")
+        return len(partes) == 2 and bool(partes[0]) and "." in partes[1]
 
-        Retorno:
+    @staticmethod
+    def _validar_codigo_curso(codigo: Any) -> bool:
+        if codigo is None:
+            return False
+        codigo = str(codigo).strip()
+        return bool(codigo) and len(codigo) <= 30
 
-            (
-                codigo_curso,
-                nome_curso
-            )
+    @staticmethod
+    def _validar_papel(papel: Any) -> bool:
+        return papel is not None and str(papel).strip().upper() in PAPEIS_VALIDOS
 
-        Regras:
-
-            NULL / vazio / 999
-                -> 999 / COMPARTILHADA
-
-            curso presente em MAPEAMENTO_CURSOS
-                -> código e nome mapeados
-
-            curso não mapeado
-                -> mantém o código original
-                   e utiliza o próprio código como nome
-
-        IMPORTANTE:
-
-        Esta função somente deve ser chamada depois que a faculdade
-        e demais informações dependentes do curso original já tiverem
-        sido resolvidas.
-        """
-
+    @staticmethod
+    def _curso_unificado(curso: Any) -> Tuple[str, str]:
         if curso is None:
-
-            return (
-                CURSO_COMPARTILHADO,
-                "COMPARTILHADA",
-            )
-
-        curso = str(
-            curso
-        ).strip()
-
-        if not curso:
-
-            return (
-                CURSO_COMPARTILHADO,
-                "COMPARTILHADA",
-            )
-
-        if curso == CURSO_COMPARTILHADO:
-
-            return (
-                CURSO_COMPARTILHADO,
-                "COMPARTILHADA",
-            )
-
-        mapeamento = (
-            MAPEAMENTO_CURSOS.get(
-                curso
-            )
-        )
-
-        if mapeamento is None:
-
-            logger.debug(
-                "Curso %s não possui mapeamento. "
-                "Mantendo código original.",
-                curso,
-            )
-
-            return (
-                curso,
-                curso,
-            )
-
+            return CURSO_COMPARTILHADO, "COMPARTILHADA"
+        curso = str(curso).strip()
+        if not curso or curso == CURSO_COMPARTILHADO:
+            return CURSO_COMPARTILHADO, "COMPARTILHADA"
+        mapeamento = MAPEAMENTO_CURSOS.get(curso)
+        if not mapeamento:
+            return curso, curso
         codigo, nome = mapeamento
+        codigo = str(codigo).strip()
+        nome = str(nome).strip()
+        return (codigo or curso), (nome or codigo or curso)
 
-        codigo = str(
-            codigo
-        ).strip()
-
-        nome = str(
-            nome
-        ).strip()
-
-        if not codigo:
-
-            logger.warning(
-                "Mapeamento inválido para curso %s. "
-                "Usando curso original.",
-                curso,
-            )
-
-            return (
-                curso,
-                curso,
-            )
-
-        return (
-            codigo,
-            nome or codigo,
-        )
-
-    # =========================================================================
-    # TABELA
-    # =========================================================================
-
-    def _tabela_existe(
-        self,
-        nome_tabela: str,
-    ) -> bool:
-        """
-        Verifica se uma tabela existe no banco Qstione.
-        """
-
+    def _tabela_existe(self, nome_tabela: str) -> bool:
         try:
-
-            with get_db_connection(
-                database_name="qstione"
-            ) as conn:
-
+            with get_db_connection(database_name="qstione") as conn:
                 row = conn.execute(
-                    """
-                    SELECT 1
-
-                    FROM INFORMATION_SCHEMA.TABLES
-
-                    WHERE TABLE_NAME = ?
-
-                      AND TABLE_TYPE = 'BASE TABLE'
-                    """,
-                    (
-                        nome_tabela,
-                    ),
+                    """SELECT 1 FROM INFORMATION_SCHEMA.TABLES
+                       WHERE TABLE_NAME = ? AND TABLE_TYPE = 'BASE TABLE'""",
+                    (nome_tabela,),
                 ).fetchone()
-
             return row is not None
-
         except Exception:
-
-            logger.exception(
-                "Erro ao verificar tabela %s.",
-                nome_tabela,
-            )
-
+            logger.exception("Erro ao verificar tabela %s.", nome_tabela)
             return False
 
-    # =========================================================================
-    # ÍNDICE
-    # =========================================================================
-
-    def _indice_existe(
-        self,
-        nome_indice: str,
-    ) -> bool:
-        """
-        Verifica se um índice existe no banco.
-        """
-
+    def _indice_existe(self, nome_indice: str) -> bool:
         try:
-
-            with get_db_connection(
-                database_name="qstione"
-            ) as conn:
-
+            with get_db_connection(database_name="qstione") as conn:
                 row = conn.execute(
-                    """
-                    SELECT 1
-
-                    FROM sys.indexes
-
-                    WHERE name = ?
-                    """,
-                    (
-                        nome_indice,
-                    ),
+                    """SELECT 1 FROM sys.indexes
+                       WHERE name = ? AND object_id = OBJECT_ID(?)""",
+                    (nome_indice, self.NOME_TABELA),
                 ).fetchone()
-
             return row is not None
-
         except Exception:
-
             return False
 
-    # =========================================================================
-    # CRIAÇÃO DA TABELA
-    # =========================================================================
+    def _garantir_chave_primaria(self) -> None:
+        """Garante PK composta por curso + e-mail + papel."""
+        with get_db_connection(database_name="qstione") as conn:
+            row = conn.execute(
+                """
+                SELECT kc.name
+                FROM sys.key_constraints kc
+                INNER JOIN sys.index_columns ic
+                    ON ic.object_id = kc.parent_object_id
+                   AND ic.index_id = kc.unique_index_id
+                INNER JOIN sys.columns c
+                    ON c.object_id = ic.object_id
+                   AND c.column_id = ic.column_id
+                WHERE kc.parent_object_id = OBJECT_ID(?)
+                  AND kc.type = 'PK'
+                GROUP BY kc.name
+                HAVING COUNT(*) = 3
+                   AND SUM(CASE WHEN c.name = 'codigoCurso' THEN 1 ELSE 0 END) = 1
+                   AND SUM(CASE WHEN c.name = 'emailUsuario' THEN 1 ELSE 0 END) = 1
+                   AND SUM(CASE WHEN c.name = 'papelUsuario' THEN 1 ELSE 0 END) = 1
+                """,
+                (self.NOME_TABELA,),
+            ).fetchone()
+            if row:
+                return
 
-    def _criar_tabela(
-        self
-    ) -> None:
-        """
-        Cria a tabela de destino caso ainda não exista.
-        """
-
-        tabela = (
-            "imp_007_usuarios_cursos"
-        )
-
-        if not self._tabela_existe(
-            tabela
-        ):
-
-            logger.info(
-                "🆕 Criando tabela %s...",
-                tabela,
+            old = conn.execute(
+                """SELECT kc.name FROM sys.key_constraints kc
+                   WHERE kc.parent_object_id = OBJECT_ID(?) AND kc.type = 'PK'""",
+                (self.NOME_TABELA,),
+            ).fetchone()
+            if old:
+                conn.execute(f"ALTER TABLE {self.NOME_TABELA} DROP CONSTRAINT [{old[0]}]")
+            conn.execute(
+                f"""ALTER TABLE {self.NOME_TABELA}
+                    ADD CONSTRAINT PK_imp_007_usuarios_cursos
+                    PRIMARY KEY (codigoCurso, emailUsuario, papelUsuario)"""
             )
+            conn.commit()
+            logger.info("🔧 PK do IMP-007 ajustada para (codigoCurso, emailUsuario, papelUsuario).")
 
-            with get_db_connection(
-                database_name="qstione"
-            ) as conn:
-
+    def _criar_tabela(self) -> None:
+        if not self._tabela_existe(self.NOME_TABELA):
+            with get_db_connection(database_name="qstione") as conn:
                 conn.execute(
-                    """
-                    CREATE TABLE imp_007_usuarios_cursos (
-
-                        codigoCurso NVARCHAR(30)
-                            NOT NULL,
-
-                        emailUsuario NVARCHAR(100)
-                            NOT NULL,
-
-                        papelUsuario NVARCHAR(1)
-                            NOT NULL,
-
-                        data_criacao DATETIME2
-                            DEFAULT GETDATE(),
-
-                        data_atualizacao DATETIME2
-                            DEFAULT GETDATE(),
-
-                        PRIMARY KEY (
-                            codigoCurso,
-                            emailUsuario
-                        )
+                    f"""
+                    CREATE TABLE {self.NOME_TABELA} (
+                        codigoCurso NVARCHAR(30) NOT NULL,
+                        emailUsuario NVARCHAR(100) NOT NULL,
+                        papelUsuario NVARCHAR(1) NOT NULL,
+                        data_criacao DATETIME2 DEFAULT GETDATE(),
+                        data_atualizacao DATETIME2 DEFAULT GETDATE(),
+                        CONSTRAINT PK_imp_007_usuarios_cursos
+                            PRIMARY KEY (codigoCurso, emailUsuario, papelUsuario)
                     )
                     """
                 )
-
                 conn.commit()
-
-            logger.info(
-                "✅ Tabela criada."
-            )
-
+            logger.info("🆕 Tabela %s criada.", self.NOME_TABELA)
+        else:
+            self._garantir_chave_primaria()
         self._criar_indices()
 
-    # =========================================================================
-    # ÍNDICES
-    # =========================================================================
-
-    def _criar_indices(
-        self
-    ) -> None:
-        """
-        Cria índices auxiliares.
-        """
-
+    def _criar_indices(self) -> None:
         indices = [
-
-            (
-                "idx_usuarios_cursos_email",
-
-                """
-                CREATE INDEX
-                    idx_usuarios_cursos_email
-                ON imp_007_usuarios_cursos(
-                    emailUsuario
-                )
-                """,
-            ),
-
-            (
-                "idx_usuarios_cursos_curso",
-
-                """
-                CREATE INDEX
-                    idx_usuarios_cursos_curso
-                ON imp_007_usuarios_cursos(
-                    codigoCurso
-                )
-                """,
-            ),
-
-            (
-                "idx_usuarios_cursos_papel",
-
-                """
-                CREATE INDEX
-                    idx_usuarios_cursos_papel
-                ON imp_007_usuarios_cursos(
-                    papelUsuario
-                )
-                """,
-            ),
+            ("idx_usuarios_cursos_email", f"CREATE INDEX idx_usuarios_cursos_email ON {self.NOME_TABELA}(emailUsuario)"),
+            ("idx_usuarios_cursos_curso", f"CREATE INDEX idx_usuarios_cursos_curso ON {self.NOME_TABELA}(codigoCurso)"),
+            ("idx_usuarios_cursos_papel", f"CREATE INDEX idx_usuarios_cursos_papel ON {self.NOME_TABELA}(papelUsuario)"),
         ]
-
         for nome, sql in indices:
-
-            if self._indice_existe(
-                nome
-            ):
+            if self._indice_existe(nome):
                 continue
-
             try:
-
-                with get_db_connection(
-                    database_name="qstione"
-                ) as conn:
-
-                    conn.execute(
-                        sql
-                    )
-
+                with get_db_connection(database_name="qstione") as conn:
+                    conn.execute(sql)
                     conn.commit()
-
-                logger.info(
-                    "🆕 Índice criado: %s",
-                    nome,
-                )
-
             except Exception as exc:
+                logger.warning("Não foi possível criar índice %s: %s", nome, exc)
 
-                logger.warning(
-                    "⚠️ Não foi possível criar "
-                    "índice %s: %s",
-                    nome,
-                    exc,
-                )
-
-    # =========================================================================
-    # COORDENADORES
-    # =========================================================================
-
-    def obter_coordenadores(
-        self
-    ) -> Dict[
-        Tuple[str, str],
-        bool,
-    ]:
-        """
-        Obtém os coordenadores por curso.
-
-        Retorna:
-
-            {
-                (
-                    num_func,
-                    curso_unificado
-                ): True
-            }
-
-        A faculdade é determinada através de:
-
-            LY_COORDENACAO.curso
-                ↓
-            LY_CURSO.faculdade
-        """
-
+    def obter_coordenadores(self) -> Dict[Tuple[str, str], bool]:
         sql = f"""
-            SELECT DISTINCT
-
-                co.num_func,
-
-                co.curso
-
+            SELECT DISTINCT co.num_func, co.curso
             FROM LY_COORDENACAO co
-
-            INNER JOIN LY_CURSO c
-
-                ON c.curso = co.curso
-
-            WHERE c.faculdade IN (
-                {self.faculdades_placeholders}
-            )
+            INNER JOIN LY_CURSO c ON c.curso = co.curso
+            WHERE c.faculdade IN ({self.faculdades_placeholders})
         """
-
         try:
-
-            with get_db_connection(
-                database_name="lyceum"
-            ) as conn:
-
-                rows = conn.execute(
-                    sql,
-                    tuple(
-                        FACULDADES_INCLUIDAS
-                    ),
-                ).fetchall()
-
+            with get_db_connection(database_name="lyceum") as conn:
+                rows = conn.execute(sql, tuple(FACULDADES_INCLUIDAS)).fetchall()
         except Exception:
-
-            logger.exception(
-                "❌ Erro ao consultar "
-                "LY_COORDENACAO."
-            )
-
+            logger.exception("Erro ao consultar LY_COORDENACAO.")
             return {}
-
         resultado = {}
-
-        for (
-            num_func,
-            curso,
-        ) in rows:
-
+        for num_func, curso in rows:
             if num_func is None:
                 continue
-
-            curso_unificado, _ = (
-                self._curso_unificado(
-                    curso
-                )
-            )
-
-            chave = (
-                str(
-                    num_func
-                ).strip(),
-
-                curso_unificado,
-            )
-
-            resultado[
-                chave
-            ] = True
-
-        logger.info(
-            "👤 Coordenadores encontrados: %d",
-            len(resultado),
-        )
-
+            curso_unificado, _ = self._curso_unificado(curso)
+            resultado[(str(num_func).strip(), curso_unificado)] = True
+        logger.info("👤 Coordenadores encontrados: %d", len(resultado))
         return resultado
 
-    # =========================================================================
-    # DOCENTES DAS TURMAS
-    # =========================================================================
-
-    def obter_docentes_turmas(
-        self
-    ) -> List[
-        Tuple[
-            Any,
-            Any,
-            Any,
-        ]
-    ]:
-        """
-        Obtém docentes das turmas válidas.
-
-        Retorna:
-
-            num_func
-            mailbox
-            curso_original
-
-        Faculdade:
-
-            LY_TURMA.curso
-                ↓
-            LY_CURSO.faculdade
-
-        Não utiliza LY_DISCIPLINA.faculdade.
-        """
-
+    def obter_docentes_turmas(self) -> List[Tuple[Any, Any, Any]]:
         sql = f"""
-            SELECT DISTINCT
-
-                td.num_func,
-
-                d.mailbox,
-
-                t.curso
-
+            SELECT DISTINCT td.num_func, d.mailbox, t.curso
             FROM LY_TURMA_DOCENTE td
-
             INNER JOIN LY_TURMA t
-
                 ON t.ano = td.ano
-
                AND t.semestre = td.periodo
-
                AND t.turma = td.turma
-
                AND t.disciplina = td.disciplina
-
-            INNER JOIN LY_CURSO c
-
-                ON c.curso = t.curso
-
-            INNER JOIN LY_DOCENTE d
-
-                ON d.num_func = td.num_func
-
+            INNER JOIN LY_CURSO c ON c.curso = t.curso
+            INNER JOIN LY_DOCENTE d ON d.num_func = td.num_func
             WHERE td.ano = ?
-
-              AND td.periodo IN (
-                  {self.periodos_placeholders}
-              )
-
+              AND td.periodo IN ({self.periodos_placeholders})
               AND t.sit_turma = ?
-
-              AND c.faculdade IN (
-                  {self.faculdades_placeholders}
-              )
-
-              AND (
-                  d.ativo = 'S'
-                  OR d.ativo IS NULL
-              )
-
+              AND c.faculdade IN ({self.faculdades_placeholders})
+              AND (d.ativo = 'S' OR d.ativo IS NULL)
               AND d.mailbox IS NOT NULL
-
-              AND LTRIM(RTRIM(
-                  d.mailbox
-              )) <> ''
-
-            ORDER BY
-
-                td.num_func,
-
-                t.curso,
-
-                d.mailbox
+              AND LTRIM(RTRIM(d.mailbox)) <> ''
+            ORDER BY td.num_func, t.curso, d.mailbox
         """
-
-        params = [
-
-            ANO_VIGENTE,
-
-            *PERIODOS_VIGENTES,
-
-            SITUACAO_TURMA_VALIDA,
-
-            *FACULDADES_INCLUIDAS,
-        ]
-
+        params = [ANO_VIGENTE, *PERIODOS_VIGENTES, SITUACAO_TURMA_VALIDA, *FACULDADES_INCLUIDAS]
         try:
-
-            with get_db_connection(
-                database_name="lyceum"
-            ) as conn:
-
-                rows = conn.execute(
-                    sql,
-                    tuple(params),
-                ).fetchall()
-
+            with get_db_connection(database_name="lyceum") as conn:
+                rows = conn.execute(sql, tuple(params)).fetchall()
         except Exception:
-
-            logger.exception(
-                "❌ Erro ao consultar "
-                "LY_TURMA_DOCENTE."
-            )
-
+            logger.exception("Erro ao consultar LY_TURMA_DOCENTE.")
             return []
-
-        logger.info(
-            "👨‍🏫 Vínculos docente/turma encontrados: %d",
-            len(rows),
-        )
-
-        # Diagnóstico dos vínculos encontrados para o docente 6980.
-        # Mantido como INFO temporariamente para confirmar no log que
-        # os registros T01/8829 e T02/8806 chegaram à transformação.
-        for row in rows:
-            num_func, mailbox, curso = row
-            if str(num_func).strip() == "6980":
-                logger.info(
-                    "🔎 DOCENTE 6980 encontrado: num_func=%s | mailbox=%s | curso=%s",
-                    num_func,
-                    mailbox,
-                    curso,
-                )
-
+        logger.info("👨‍🏫 Vínculos docente/turma encontrados: %d", len(rows))
         return rows
 
-    # =========================================================================
-    # MEMBROS NDE
-    # =========================================================================
-
-    def obter_membros_nde(
-        self
-    ) -> List[
-        Tuple[
-            Any,
-            Any,
-        ]
-    ]:
-        """
-        Obtém os avaliadores ativos do NDE.
-
-        Origem:
-
-            imp_nde_membros
-
-        Retorna:
-
-            codigoCurso
-            emailMembro
-        """
-
+    def obter_membros_nde(self) -> List[Tuple[Any, Any]]:
         sql = """
-            SELECT DISTINCT
-
-                codigoCurso,
-
-                emailMembro
-
+            SELECT DISTINCT codigoCurso, emailMembro
             FROM imp_nde_membros
-
             WHERE codigoCurso IS NOT NULL
-
-              AND LTRIM(RTRIM(
-                  CAST(
-                      codigoCurso
-                      AS NVARCHAR(30)
-                  )
-              )) <> ''
-
+              AND LTRIM(RTRIM(CAST(codigoCurso AS NVARCHAR(30)))) <> ''
               AND emailMembro IS NOT NULL
-
-              AND LTRIM(RTRIM(
-                  emailMembro
-              )) <> ''
-
+              AND LTRIM(RTRIM(emailMembro)) <> ''
               AND status = 'S'
         """
-
         try:
-
-            with get_db_connection(
-                database_name="qstione"
-            ) as conn:
-
-                rows = conn.execute(
-                    sql
-                ).fetchall()
-
+            with get_db_connection(database_name="qstione") as conn:
+                rows = conn.execute(sql).fetchall()
         except Exception:
-
-            logger.exception(
-                "❌ Erro ao consultar "
-                "imp_nde_membros."
-            )
-
+            logger.exception("Erro ao consultar imp_nde_membros.")
             return []
-
-        logger.info(
-            "👥 Avaliadores NDE encontrados: %d",
-            len(rows),
-        )
-
+        logger.info("👥 Avaliadores NDE encontrados: %d", len(rows))
         return rows
 
-    # =========================================================================
-    # PAPEL
-    # =========================================================================
-
     @staticmethod
-    def _melhor_papel(
-        papel_atual: Optional[str],
-        novo_papel: Optional[str],
-    ) -> Optional[str]:
-        """
-        Retorna o papel de MAIOR prioridade.
-
-        Hierarquia:
-
-            G > C > A > P
-
-        A ordem de chegada dos registros não influencia o resultado.
-        """
-
+    def _melhor_papel(papel_atual: Optional[str], novo_papel: Optional[str]) -> Optional[str]:
         if not papel_atual:
-
             return novo_papel
-
         if not novo_papel:
-
             return papel_atual
+        atual = str(papel_atual).strip().upper()
+        novo = str(novo_papel).strip().upper()
+        return novo if PRIORIDADE_PAPEIS.get(novo, 999) < PRIORIDADE_PAPEIS.get(atual, 999) else atual
 
-        papel_atual = str(
-            papel_atual
-        ).strip().upper()
-
-        novo_papel = str(
-            novo_papel
-        ).strip().upper()
-
-        prioridade_atual = (
-            PRIORIDADE_PAPEIS.get(
-                papel_atual,
-                999,
-            )
-        )
-
-        prioridade_nova = (
-            PRIORIDADE_PAPEIS.get(
-                novo_papel,
-                999,
-            )
-        )
-
-        if (
-            prioridade_nova
-            < prioridade_atual
-        ):
-
-            return novo_papel
-
-        return papel_atual
-
-    # =========================================================================
-    # ADICIONA REGISTRO
-    # =========================================================================
-
-    def _adicionar_registro(
-        self,
-        registros: Dict[
-            Tuple[str, str],
-            Dict[str, str],
-        ],
-        curso: Any,
-        email: Any,
-        papel: str,
-        origem: str,
-    ) -> None:
-        """
-        Adiciona ou consolida um vínculo.
-
-        Chave:
-
-            (codigoCurso, emailUsuario)
-
-        A prioridade é aplicada independentemente da origem.
-        """
-
-        # ---------------------------------------------------------------------
-        # E-MAIL
-        # ---------------------------------------------------------------------
-
+    def _normalizar_email(self, email: Any) -> Optional[str]:
         if email is None:
-            return
+            return None
+        email = converter_minusculas(str(email).strip())
+        return email if self._validar_email(email) else None
 
-        email = converter_minusculas(
-            str(
-                email
-            ).strip()
-        )
-
-        if not email:
-            return
-
-        if not validar_email(
-            email
-        ):
-
-            logger.warning(
-                "⚠️ E-mail inválido ignorado: %s",
-                email,
-            )
-
-            return
-
-        # ---------------------------------------------------------------------
-        # CURSO
-        # ---------------------------------------------------------------------
-
-        curso_unificado, _ = (
-            self._curso_unificado(
-                curso
-            )
-        )
-
-        curso_unificado = str(
-            curso_unificado
-        ).strip()
-
-        if not curso_unificado:
-
-            return
-
-        if not validar_codigo_curso(
-            curso_unificado
-        ):
-
-            logger.warning(
-                "⚠️ Código de curso inválido "
-                "ignorado: %s | email=%s",
-                curso_unificado,
-                email,
-            )
-
-            return
-
-        # ---------------------------------------------------------------------
-        # PAPEL
-        # ---------------------------------------------------------------------
-
-        # O papel já foi determinado pela origem do registro antes de chegar
-        # aqui. Não chamar determinar_papel_usuario() neste ponto:
-        # essa função exige num_func, curso e coordenadores_dict.
-        papel = str(
-            papel
-        ).strip().upper()
-
-        if not validar_papel_usuario(
-            papel
-        ):
-
-            logger.warning(
-                "⚠️ Papel inválido ignorado: "
-                "%s | curso=%s | email=%s",
-                papel,
-                curso_unificado,
-                email,
-            )
-
-            return
-
-        # ---------------------------------------------------------------------
-        # CHAVE
-        # ---------------------------------------------------------------------
-
-        chave = (
-            curso_unificado,
-            email,
-        )
-
-        existente = registros.get(
-            chave
-        )
-
-        # ---------------------------------------------------------------------
-        # PRIMEIRO REGISTRO
-        # ---------------------------------------------------------------------
-
-        if existente is None:
-
-            registros[
-                chave
-            ] = {
-
-                "codigoCurso":
-                    curso_unificado,
-
-                "emailUsuario":
-                    email,
-
-                "papelUsuario":
-                    papel,
-            }
-
-            logger.debug(
-                "➕ %s | %s | %s | origem=%s",
-                curso_unificado,
-                email,
-                papel,
-                origem,
-            )
-
-            return
-
-        # ---------------------------------------------------------------------
-        # CONSOLIDAÇÃO
-        # ---------------------------------------------------------------------
-
-        papel_anterior = (
-            existente[
-                "papelUsuario"
-            ]
-        )
-
-        melhor_papel = (
-            self._melhor_papel(
-                papel_anterior,
-                papel,
-            )
-        )
-
-        if melhor_papel != papel_anterior:
-
-            logger.debug(
-                "⬆️ Alterando papel: "
-                "%s | %s | %s -> %s | origem=%s",
-                curso_unificado,
-                email,
-                papel_anterior,
-                melhor_papel,
-                origem,
-            )
-
-            existente[
-                "papelUsuario"
-            ] = melhor_papel
-
-    # =========================================================================
-    # ADICIONA CURSO 999
-    # =========================================================================
-
-    def _adicionar_curso_compartilhado(
+    def _adicionar_candidato(
         self,
-        registros: Dict[
-            Tuple[str, str],
-            Dict[str, str],
-        ],
+        candidatos: Dict[str, Dict[str, Dict[str, set]]],
         email: Any,
         papel: str,
+        curso: Any,
         origem: str,
     ) -> None:
-        """
-        Adiciona o usuário ao curso 999 preservando seu papel.
+        email = self._normalizar_email(email)
+        if not email or not self._validar_papel(papel):
+            if email and not self._validar_papel(papel):
+                logger.warning("Papel inválido ignorado: %s | email=%s | origem=%s", papel, email, origem)
+            return
+        curso_unificado, _ = self._curso_unificado(curso)
+        if not self._validar_codigo_curso(curso_unificado):
+            logger.warning("Código de curso inválido ignorado: %s | email=%s", curso_unificado, email)
+            return
+        candidatos[email][papel]["cursos"].add(curso_unificado)
 
-        Exemplo:
+    def transformar_dados(self, docentes_turmas, coordenadores, membros_nde) -> List[Dict[str, str]]:
+        """Aplica a hierarquia global G > C > A > P antes de gerar os vínculos."""
+        candidatos = defaultdict(lambda: {
+            PAPEL_GERAL: {"cursos": set()},
+            PAPEL_COORDENADOR: {"cursos": set()},
+            PAPEL_AVALIADOR: {"cursos": set()},
+            PAPEL_PROFESSOR: {"cursos": set()},
+        })
 
-            curso 056 / C
-                ↓
-            curso 999 / C
-        """
-
-        self._adicionar_registro(
-            registros=registros,
-            curso=CURSO_COMPARTILHADO,
-            email=email,
-            papel=papel,
-            origem=origem,
-        )
-
-    # =========================================================================
-    # TRANSFORMAÇÃO
-    # =========================================================================
-
-    def transformar_dados(
-        self,
-        docentes_turmas,
-        coordenadores,
-        membros_nde,
-    ) -> List[
-        Dict[str, str]
-    ]:
-        """
-        Consolida todos os usuários.
-
-        Ordem de processamento:
-
-            1. professores/coordenadores das turmas;
-            2. NDE;
-            3. usuários especiais.
-
-        A ordem NÃO altera a prioridade final porque
-        _melhor_papel() utiliza explicitamente:
-
-            G > C > A > P
-        """
-
-        registros: Dict[
-            Tuple[str, str],
-            Dict[str, str],
-        ] = {}
-
-        # =========================================================================
-        # 1. DOCENTES DAS TURMAS
-        # =========================================================================
-
-        for (
-            num_func,
-            email,
-            curso_original,
-        ) in docentes_turmas:
-
+        # P/C: vínculos reais de docente/turma.
+        for num_func, email, curso in docentes_turmas:
             if num_func is None:
                 continue
+            curso_unificado, _ = self._curso_unificado(curso)
+            chave_coord = (str(num_func).strip(), curso_unificado)
+            papel = PAPEL_COORDENADOR if chave_coord in coordenadores else PAPEL_PROFESSOR
+            self._adicionar_candidato(candidatos, email, papel, curso, "LY_COORDENACAO" if papel == PAPEL_COORDENADOR else "LY_TURMA_DOCENTE")
 
-            if email is None:
+        # C: coordenadores também entram quando não possuem vínculo em LY_TURMA_DOCENTE.
+        for (num_func, curso), _ in coordenadores.items():
+            email = self._obter_email_docente(num_func)
+            if email:
+                self._adicionar_candidato(candidatos, email, PAPEL_COORDENADOR, curso, "LY_COORDENACAO")
+
+        # A: papel de escopo global; a origem fornece os cursos de referência.
+        for curso, email in membros_nde:
+            self._adicionar_candidato(candidatos, email, PAPEL_AVALIADOR, curso, "NDE")
+
+        # G: fixo em código/configuração. Como é global, quando o usuário
+        # também possui vínculos acadêmicos, todos esses cursos passam a
+        # representar o papel G; se não possuir nenhum, o 999 garante um
+        # vínculo técnico mínimo para a carga.
+        email_geral = self._normalizar_email(USUARIO_GERAL)
+        if email_geral:
+            cursos_geral = set()
+            for papel in (PAPEL_COORDENADOR, PAPEL_AVALIADOR, PAPEL_PROFESSOR):
+                cursos_geral.update(candidatos[email_geral][papel]["cursos"])
+            cursos_geral.add(CURSO_COMPARTILHADO)
+            candidatos[email_geral][PAPEL_GERAL]["cursos"].update(cursos_geral)
+
+        # C fixo já existente na integração; somente reforça C e não cria P.
+        email_coord = self._normalizar_email(USUARIO_COORDENADOR)
+        if email_coord:
+            cursos_existentes = set()
+            for papel in (PAPEL_COORDENADOR, PAPEL_AVALIADOR, PAPEL_PROFESSOR):
+                cursos_existentes.update(candidatos[email_coord][papel]["cursos"])
+            if cursos_existentes:
+                candidatos[email_coord][PAPEL_COORDENADOR]["cursos"].update(cursos_existentes)
+            else:
+                candidatos[email_coord][PAPEL_COORDENADOR]["cursos"].add(CURSO_COMPARTILHADO)
+
+        registros: List[Dict[str, str]] = []
+        estatisticas = defaultdict(int)
+
+        # A hierarquia é aplicada por usuário, não por curso.
+        for email, papeis in sorted(candidatos.items()):
+            if papeis[PAPEL_GERAL]["cursos"]:
+                papel_efetivo = PAPEL_GERAL
+            elif papeis[PAPEL_COORDENADOR]["cursos"]:
+                papel_efetivo = PAPEL_COORDENADOR
+            elif papeis[PAPEL_AVALIADOR]["cursos"]:
+                papel_efetivo = PAPEL_AVALIADOR
+            elif papeis[PAPEL_PROFESSOR]["cursos"]:
+                papel_efetivo = PAPEL_PROFESSOR
+            else:
                 continue
 
-            curso_unificado, _ = (
-                self._curso_unificado(
-                    curso_original
-                )
-            )
+            cursos = set(papeis[papel_efetivo]["cursos"])
 
-            chave_coordenador = (
-                str(
-                    num_func
-                ).strip(),
+            # P/C/G recebem 999. A não recebe 999 automaticamente.
+            if papel_efetivo in {PAPEL_GERAL, PAPEL_COORDENADOR, PAPEL_PROFESSOR} and cursos:
+                cursos.add(CURSO_COMPARTILHADO)
 
-                curso_unificado,
-            )
+            for curso in sorted(cursos):
+                registros.append({
+                    "codigoCurso": curso,
+                    "emailUsuario": email,
+                    "papelUsuario": papel_efetivo,
+                })
+                estatisticas[papel_efetivo] += 1
 
-            if (
-                chave_coordenador
-                in coordenadores
-            ):
+        registros.sort(key=lambda r: (r["codigoCurso"], r["emailUsuario"], r["papelUsuario"]))
+        logger.info("=" * 80)
+        logger.info("📊 RESULTADO DA CONSOLIDAÇÃO")
+        logger.info("   G = %d", estatisticas[PAPEL_GERAL])
+        logger.info("   C = %d", estatisticas[PAPEL_COORDENADOR])
+        logger.info("   A = %d", estatisticas[PAPEL_AVALIADOR])
+        logger.info("   P = %d", estatisticas[PAPEL_PROFESSOR])
+        logger.info("   TOTAL = %d", len(registros))
+        logger.info("=" * 80)
+        return registros
 
-                papel = (
-                    PAPEL_COORDENADOR
-                )
+    def _obter_email_docente(self, num_func: Any) -> Optional[str]:
+        try:
+            with get_db_connection(database_name="lyceum") as conn:
+                row = conn.execute(
+                    "SELECT mailbox FROM LY_DOCENTE WHERE num_func = ?",
+                    (num_func,),
+                ).fetchone()
+            return self._normalizar_email(row[0]) if row and row[0] else None
+        except Exception:
+            logger.exception("Erro obtendo mailbox do docente %s.", num_func)
+            return None
 
-                origem = (
-                    "LY_COORDENACAO"
-                )
-
-            else:
-
-                papel = (
-                    PAPEL_PROFESSOR
-                )
-
-                origem = (
-                    "LY_TURMA_DOCENTE"
-                )
-
-            # -----------------------------------------------------------------
-            # CURSO PRINCIPAL
-            # -----------------------------------------------------------------
-
-            self._adicionar_registro(
-                registros=registros,
-                curso=curso_original,
-                email=email,
-                papel=papel,
-                origem=origem,
-            )
-
-            # -----------------------------------------------------------------
-            # CURSO 999
-            # -----------------------------------------------------------------
-
-            self._adicionar_curso_compartilhado(
-                registros=registros,
-                email=email,
-                papel=papel,
-                origem=(
-                    f"{origem}:999"
-                ),
-            )
-
-        # =========================================================================
-        # 2. AVALIADORES NDE
-        # =========================================================================
-
-        for (
-            curso,
-            email,
-        ) in membros_nde:
-
-            self._adicionar_registro(
-                registros=registros,
-                curso=curso,
-                email=email,
-                papel=PAPEL_AVALIADOR,
-                origem="NDE",
-            )
-
-            # -----------------------------------------------------------------
-            # IMPORTANTE:
-            #
-            # NDE NÃO recebe automaticamente 999.
-            # -----------------------------------------------------------------
-
-        # =========================================================================
-        # 3. USUÁRIO G - CAMILA
-        # =========================================================================
-        #
-        # A usuária G deve prevalecer em qualquer curso em que já exista
-        # um vínculo para ela.
-        #
-        # Para garantir o caráter global do papel G, primeiro identificamos
-        # todos os cursos que já possuem Camila e elevamos para G.
-        #
-        # Se não houver nenhum curso para ela, ela receberá ao menos
-        # o curso 999 como acesso global.
-        # =========================================================================
-
-        email_camila = converter_minusculas(
-            USUARIO_GERAL
-        )
-
-        cursos_camila = [
-            chave[0]
-            for chave in registros
-            if chave[1]
-            == email_camila
-        ]
-
-        if cursos_camila:
-
-            for curso in cursos_camila:
-
-                self._adicionar_registro(
-                    registros=registros,
-                    curso=curso,
-                    email=email_camila,
-                    papel=PAPEL_GERAL,
-                    origem="USUARIO_ESPECIAL_G",
-                )
-
-        else:
-
-            self._adicionar_registro(
-                registros=registros,
-                curso=CURSO_COMPARTILHADO,
-                email=email_camila,
-                papel=PAPEL_GERAL,
-                origem="USUARIO_ESPECIAL_G",
-            )
-
-        # =========================================================================
-        # 4. USUÁRIO C - GILDO
-        # =========================================================================
-        #
-        # Gildo recebe C em qualquer curso onde já possua vínculo.
-        #
-        # Se não existir nenhum vínculo, recebe ao menos o curso 999.
-        # =========================================================================
-
-        email_gildo = converter_minusculas(
-            USUARIO_COORDENADOR
-        )
-
-        cursos_gildo = [
-            chave[0]
-            for chave in registros
-            if chave[1]
-            == email_gildo
-        ]
-
-        if cursos_gildo:
-
-            for curso in cursos_gildo:
-
-                self._adicionar_registro(
-                    registros=registros,
-                    curso=curso,
-                    email=email_gildo,
-                    papel=PAPEL_COORDENADOR,
-                    origem="USUARIO_ESPECIAL_C",
-                )
-
-        else:
-
-            self._adicionar_registro(
-                registros=registros,
-                curso=CURSO_COMPARTILHADO,
-                email=email_gildo,
-                papel=PAPEL_COORDENADOR,
-                origem="USUARIO_ESPECIAL_C",
-            )
-
-        # =========================================================================
-        # RESULTADO
-        # =========================================================================
-
-        resultado = list(
-            registros.values()
-        )
-
-        # ---------------------------------------------------------------------
-        # ORDENAÇÃO SOMENTE PARA SAÍDA.
-        #
-        # Não participa da regra de prioridade.
-        # ---------------------------------------------------------------------
-
-        resultado.sort(
-            key=lambda registro: (
-                registro[
-                    "codigoCurso"
-                ],
-
-                registro[
-                    "emailUsuario"
-                ],
-            )
-        )
-
-        # =========================================================================
-        # ESTATÍSTICAS
-        # =========================================================================
-
-        quantidade_g = sum(
-            1
-            for registro in resultado
-            if registro[
-                "papelUsuario"
-            ] == PAPEL_GERAL
-        )
-
-        quantidade_c = sum(
-            1
-            for registro in resultado
-            if registro[
-                "papelUsuario"
-            ] == PAPEL_COORDENADOR
-        )
-
-        quantidade_a = sum(
-            1
-            for registro in resultado
-            if registro[
-                "papelUsuario"
-            ] == PAPEL_AVALIADOR
-        )
-
-        quantidade_p = sum(
-            1
-            for registro in resultado
-            if registro[
-                "papelUsuario"
-            ] == PAPEL_PROFESSOR
-        )
-
-        logger.info(
-            "=" * 80
-        )
-
-        logger.info(
-            "📊 RESULTADO DA CONSOLIDAÇÃO"
-        )
-
-        logger.info(
-            "   G = %d",
-            quantidade_g,
-        )
-
-        logger.info(
-            "   C = %d",
-            quantidade_c,
-        )
-
-        logger.info(
-            "   A = %d",
-            quantidade_a,
-        )
-
-        logger.info(
-            "   P = %d",
-            quantidade_p,
-        )
-
-        logger.info(
-            "   TOTAL = %d",
-            len(resultado),
-        )
-
-        logger.info(
-            "=" * 80
-        )
-
-        return resultado
-
-    # =========================================================================
-    # IMPORTAÇÃO
-    # =========================================================================
-
-    def importar_para_qstione(
-        self,
-        dados_transformados,
-    ) -> Dict[str, int]:
-        """
-        Reconstrói a tabela destino.
-
-        Não utiliza UPDATE porque a tabela é uma fotografia
-        completa das regras de negócio no momento da execução.
-
-        Fluxo:
-
-            DELETE
-              ↓
-            INSERT
-        """
-
+    def importar_para_qstione(self, dados_transformados) -> Dict[str, int]:
         self._criar_tabela()
-
         inseridos = 0
         erros = 0
-
         try:
-
-            with get_db_connection(
-                database_name="qstione"
-            ) as conn:
-
-                # -------------------------------------------------------------
-                # LIMPA A TABELA
-                # -------------------------------------------------------------
-
-                logger.info(
-                    "🧹 Limpando tabela %s...",
-                    "imp_007_usuarios_cursos",
-                )
-
-                conn.execute(
-                    """
-                    DELETE
-                    FROM imp_007_usuarios_cursos
-                    """
-                )
-
+            with get_db_connection(database_name="qstione") as conn:
+                conn.execute(f"DELETE FROM {self.NOME_TABELA}")
                 cursor = conn.cursor()
-
-                # -------------------------------------------------------------
-                # INSERT
-                # -------------------------------------------------------------
-
-                for registro in (
-                    dados_transformados
-                ):
-
+                for registro in dados_transformados:
                     try:
-
                         cursor.execute(
-                            """
-                            INSERT INTO
-                                imp_007_usuarios_cursos
-                            (
-                                codigoCurso,
-                                emailUsuario,
-                                papelUsuario,
-                                data_criacao,
-                                data_atualizacao
-                            )
-                            VALUES
-                            (
-                                ?,
-                                ?,
-                                ?,
-                                GETDATE(),
-                                GETDATE()
-                            )
-                            """,
-                            (
-                                registro[
-                                    "codigoCurso"
-                                ],
-
-                                registro[
-                                    "emailUsuario"
-                                ],
-
-                                registro[
-                                    "papelUsuario"
-                                ],
-                            ),
+                            f"""INSERT INTO {self.NOME_TABELA}
+                               (codigoCurso, emailUsuario, papelUsuario, data_criacao, data_atualizacao)
+                               VALUES (?, ?, ?, GETDATE(), GETDATE())""",
+                            (registro["codigoCurso"], registro["emailUsuario"], registro["papelUsuario"]),
                         )
-
                         inseridos += 1
-
                     except Exception as exc:
-
                         erros += 1
-
-                        logger.error(
-                            "❌ Erro ao inserir: "
-                            "curso=%s | email=%s | papel=%s | erro=%s",
-                            registro[
-                                "codigoCurso"
-                            ],
-                            registro[
-                                "emailUsuario"
-                            ],
-                            registro[
-                                "papelUsuario"
-                            ],
-                            exc,
-                        )
-
-                # -------------------------------------------------------------
-                # COMMIT
-                # -------------------------------------------------------------
-
+                        logger.error("Erro ao inserir: curso=%s | email=%s | papel=%s | erro=%s", registro["codigoCurso"], registro["emailUsuario"], registro["papelUsuario"], exc)
                 conn.commit()
-
         except Exception:
+            logger.exception("Erro durante a reconstrução da tabela %s.", self.NOME_TABELA)
+            return {"total_inseridos": 0, "total_atualizados": 0, "total_erros": len(dados_transformados), "total_processados": len(dados_transformados)}
+        logger.info("Importação concluída: inseridos=%d | erros=%d", inseridos, erros)
+        return {"total_inseridos": inseridos, "total_atualizados": 0, "total_erros": erros, "total_processados": len(dados_transformados)}
 
-            logger.exception(
-                "❌ Erro durante a reconstrução "
-                "da tabela imp_007_usuarios_cursos."
-            )
-
-            return {
-
-                "total_inseridos":
-                    0,
-
-                "total_atualizados":
-                    0,
-
-                "total_erros":
-                    len(
-                        dados_transformados
-                    ),
-
-                "total_processados":
-                    len(
-                        dados_transformados
-                    ),
-            }
-
-        logger.info(
-            "✅ Importação concluída."
-        )
-
-        logger.info(
-            "   Inseridos: %d",
-            inseridos,
-        )
-
-        logger.info(
-            "   Erros: %d",
-            erros,
-        )
-
-        return {
-
-            "total_inseridos":
-                inseridos,
-
-            "total_atualizados":
-                0,
-
-            "total_erros":
-                erros,
-
-            "total_processados":
-                len(
-                    dados_transformados
-                ),
-        }
-
-    # =========================================================================
-    # EXECUÇÃO
-    # =========================================================================
-
-    def executar_importacao(
-        self
-    ) -> List[
-        Dict[str, str]
-    ]:
-        """
-        Executa o processo completo.
-        """
-
-        logger.info(
-            "=" * 100
-        )
-
-        logger.info(
-            "🚀 INÍCIO DA IMPORTAÇÃO "
-            "imp_007_usuarios_cursos"
-        )
-
-        logger.info(
-            "=" * 100
-        )
-
-        # =====================================================================
-        # 1. COORDENADORES
-        # =====================================================================
-
-        coordenadores = (
-            self.obter_coordenadores()
-        )
-
-        # =====================================================================
-        # 2. DOCENTES
-        # =====================================================================
-
-        docentes_turmas = (
-            self.obter_docentes_turmas()
-        )
-
-        # =====================================================================
-        # 3. NDE
-        # =====================================================================
-
-        membros_nde = (
-            self.obter_membros_nde()
-        )
-
-        # =====================================================================
-        # 4. TRANSFORMAÇÃO
-        # =====================================================================
-
-        dados_transformados = (
-            self.transformar_dados(
-                docentes_turmas=
-                    docentes_turmas,
-
-                coordenadores=
-                    coordenadores,
-
-                membros_nde=
-                    membros_nde,
-            )
-        )
-
-        # =====================================================================
-        # 5. IMPORTAÇÃO
-        # =====================================================================
-
-        resultado = (
-            self.importar_para_qstione(
-                dados_transformados
-            )
-        )
-
-        # =====================================================================
-        # 6. RESUMO
-        # =====================================================================
-
-        logger.info(
-            "=" * 100
-        )
-
-        logger.info(
-            "📋 RESUMO FINAL"
-        )
-
-        logger.info(
-            "   Docentes/turmas : %d",
-            len(
-                docentes_turmas
-            ),
-        )
-
-        logger.info(
-            "   Coordenadores   : %d",
-            len(
-                coordenadores
-            ),
-        )
-
-        logger.info(
-            "   NDE             : %d",
-            len(
-                membros_nde
-            ),
-        )
-
-        logger.info(
-            "   Processados     : %d",
-            resultado[
-                "total_processados"
-            ],
-        )
-
-        logger.info(
-            "   Inseridos       : %d",
-            resultado[
-                "total_inseridos"
-            ],
-        )
-
-        logger.info(
-            "   Erros           : %d",
-            resultado[
-                "total_erros"
-            ],
-        )
-
-        logger.info(
-            "=" * 100
-        )
-
+    def executar_importacao(self) -> List[Dict[str, str]]:
+        logger.info("=" * 100)
+        logger.info("🚀 INÍCIO DA IMPORTAÇÃO imp_007_usuarios_cursos")
+        logger.info("=" * 100)
+        coordenadores = self.obter_coordenadores()
+        docentes_turmas = self.obter_docentes_turmas()
+        membros_nde = self.obter_membros_nde()
+        dados_transformados = self.transformar_dados(docentes_turmas, coordenadores, membros_nde)
+        resultado = self.importar_para_qstione(dados_transformados)
+        logger.info("📋 RESUMO FINAL | docentes=%d | coordenadores=%d | NDE=%d | processados=%d | inseridos=%d | erros=%d", len(docentes_turmas), len(coordenadores), len(membros_nde), resultado["total_processados"], resultado["total_inseridos"], resultado["total_erros"])
         return dados_transformados
 
 
-# =============================================================================
-# EXECUÇÃO DIRETA
-# =============================================================================
-
 if __name__ == "__main__":
-
     try:
-
-        importador = (
-            ImportadorUsuariosCursos()
-        )
-
-        importador.executar_importacao()
-
+        ImportadorUsuariosCursos().executar_importacao()
     except Exception:
-
-        logger.exception(
-            "❌ Falha fatal na execução "
-            "do imp_007_usuarios_cursos."
-        )
-
+        logger.exception("Falha fatal na execução do imp_007_usuarios_cursos.")
         raise
