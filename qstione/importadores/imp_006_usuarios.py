@@ -2,7 +2,10 @@
 qstione/importadores/imp_006_usuarios.py
 Importador para tabela imp_006_usuarios.
 
-A população de docentes é determinada diretamente por LY_TURMA_DOCENTE.
+A população de docentes é determinada por LY_TURMA_DOCENTE e por
+LY_COORDENACAO. Um coordenador pode existir no Qstione mesmo sem possuir
+nenhuma turma/disciplina docente no período vigente.
+
 O NUM_FUNC é a origem da população; o cadastro é completado em LY_DOCENTE.
 """
 
@@ -41,7 +44,7 @@ DEBUG_NUM_FUNC = "6980"
 
 
 class ImportadorUsuarios:
-    """Importa docentes encontrados nas turmas elegíveis."""
+    """Importa docentes elegíveis e coordenadores dos cursos incluídos."""
 
     def __init__(self):
         self.periodos_placeholders = ','.join(['?'] * len(PERIODOS_VIGENTES))
@@ -159,6 +162,14 @@ class ImportadorUsuarios:
                 FROM LY_DOCENTE d
                 WHERE d.num_func = ?
             """, (nf,)),
+            "6_coordenacao": (f"""
+                SELECT DISTINCT co.num_func, co.curso, c.faculdade
+                FROM LY_COORDENACAO co
+                INNER JOIN LY_CURSO c ON c.curso = co.curso
+                WHERE co.num_func = ?
+                  AND c.faculdade IN ({self.faculdades_placeholders})
+                ORDER BY co.curso
+            """, (nf, *FACULDADES_INCLUIDAS)),
         }
 
         for nome, (sql, params) in queries.items():
@@ -174,8 +185,9 @@ class ImportadorUsuarios:
 
     def obter_dados_lyceum(self):
         """
-        A população vem exclusivamente de LY_TURMA_DOCENTE/NUM_FUNC.
-        Não há filtro por matrícula nem por ativo em LY_DOCENTE.
+        A população é a união de docentes em turmas elegíveis e coordenadores
+        dos cursos das faculdades incluídas. Assim, um coordenador sem turma
+        docente no período vigente também é criado no IMP-006.
         """
         query = f"""
             SELECT DISTINCT
@@ -201,13 +213,28 @@ class ImportadorUsuarios:
                     t.curso IS NULL
                     OR c.faculdade IN ({self.faculdades_placeholders})
                   )
-            ORDER BY td.num_func
+
+            UNION
+
+            SELECT DISTINCT
+                co.num_func,
+                d.mailbox,
+                COALESCE(d.nome_social, d.nome_compl) AS nome_completo,
+                d.cpf,
+                co.curso
+            FROM LY_COORDENACAO co
+            INNER JOIN LY_CURSO cc
+                ON cc.curso = co.curso
+            INNER JOIN LY_DOCENTE d
+                ON d.num_func = co.num_func
+            WHERE cc.faculdade IN ({self.faculdades_placeholders})
         """
 
         params = (
             ANO_VIGENTE,
             *PERIODOS_VIGENTES,
             SITUACAO_TURMA_VALIDA,
+            *FACULDADES_INCLUIDAS,
             *FACULDADES_INCLUIDAS,
         )
 
@@ -247,8 +274,6 @@ class ImportadorUsuarios:
             email_final = converter_minusculas(email)[:100]
             codigo_usuario = extrair_usuario_email(email)
 
-            # Como a matrícula deixou de participar da origem, o NUM_FUNC passa
-            # a ser a chave do usuário importado.
             if nf not in registros:
                 registros[nf] = {
                     'matriculaUsuario': nf[:20],
@@ -311,7 +336,7 @@ class ImportadorUsuarios:
         print("IMPORTAÇÃO: imp_006_usuarios")
         print("=" * 70)
         print(
-            f"🎓 Docentes por LY_TURMA_DOCENTE: ano={ANO_VIGENTE}, "
+            f"🎓 Docentes + coordenadores: ano={ANO_VIGENTE}, "
             f"períodos={PERIODOS_VIGENTES}, faculdades={FACULDADES_INCLUIDAS}"
         )
         print(f"🔎 Log detalhado: {LOG_FILE}")
