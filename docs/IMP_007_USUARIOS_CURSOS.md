@@ -2,9 +2,7 @@
 
 ## 1. Objetivo
 
-O `IMP-007` gera os vínculos entre usuários e cursos exigidos pelo Qstione.
-
-O contrato da etapa possui somente estes campos de negócio:
+O `IMP-007` gera os vínculos entre usuários e cursos exigidos pelo Qstione:
 
 ```text
 codigoCurso
@@ -12,152 +10,78 @@ emailUsuario
 papelUsuario
 ```
 
-O ponto central da implementação é que **`codigoCurso` e `papelUsuario` têm comportamentos diferentes**:
+`codigoCurso` representa o vínculo necessário com cada curso. `papelUsuario` é global por usuário e não deve variar entre os cursos do mesmo usuário.
 
-- `codigoCurso` é um vínculo necessário para cada curso em que o usuário está inserido;
-- `papelUsuario` é um **papel único por usuário**, e não um papel independente por curso.
+## 2. Hierarquia de papéis
 
-Essa diferença é uma limitação/comportamento do Qstione que a integração precisa respeitar.
-
----
-
-## 2. Regra definitiva de negócio
-
-Para cada usuário, o processo deve:
-
-1. reunir todos os cursos aos quais ele possui vínculo válido;
-2. identificar o maior papel que ele possui;
-3. aplicar esse papel máximo a **todos os cursos reunidos no passo 1**.
-
-A hierarquia docente é:
+A hierarquia definitiva é:
 
 ```text
 C > A > P
 ```
 
-Onde:
-
 - `C` = Coordenador de curso;
-- `A` = Avaliador de Questões;
-- `P` = Professor.
+- `A` = Avaliador de Questões, proveniente de vínculo NDE;
+- `P` = Professor;
+- `G` = Gestor da Plataforma, administrativo/global e fora da hierarquia docente;
+- `O` não é produzido por este importador.
 
-O papel `G` (Gestor da Plataforma) é administrativo, fixo/global e não participa da hierarquia docente `C > A > P`.
+## 3. Regra global
 
-O papel `O` (Operador de Documentos) não é produzido pela lógica docente deste importador.
+O processo deve:
 
----
+1. reunir todos os cursos aos quais o usuário possui vínculo válido;
+2. determinar o maior papel do usuário;
+3. aplicar esse papel a todos os cursos reunidos.
 
-## 3. Por que a hierarquia é global por usuário
-
-O Qstione exige o vínculo do usuário com cada curso em que ele está inserido, mas não permite representar corretamente um papel diferente para o mesmo usuário em cursos diferentes.
-
-Portanto, esta lógica é **incorreta**:
+Exemplo:
 
 ```text
-Usuário X
 056 → C
 065 → P
 079 → P
 ```
 
-Se o usuário for coordenador no curso 056, o resultado correto é:
+Resultado:
 
 ```text
-Usuário X
 056 → C
 065 → C
 079 → C
 ```
 
-O mesmo vale para avaliadores.
+## 4. Regra específica do NDE — A prevalece sobre P
 
-Se o usuário for avaliador em qualquer vínculo NDE e também professor em outros cursos:
+Membro ativo do NDE possui papel `A`.
+
+Essa regra é **global** e não fica restrita ao curso registrado no NDE.
+
+Exemplo do problema corrigido:
 
 ```text
-Usuário Y
+NDE:
 006 → A
+
+Docência:
 017 → P
 044 → P
 059 → P
 ```
 
-o resultado correto é:
+Resultado obrigatório:
 
 ```text
-Usuário Y
 006 → A
 017 → A
 044 → A
 059 → A
 ```
 
-Portanto, **o papel máximo encontrado em qualquer vínculo do usuário é propagado para todos os cursos aos quais ele possui vínculo**.
+Portanto, um membro do NDE **nunca pode terminar como `P`** no resultado do IMP-007 quando o vínculo NDE ativo foi identificado.
 
----
+### 4.1 Ordem de processamento
 
-## 4. Fontes utilizadas
-
-### 4.1 Professor — `P`
-
-A origem é `LY_TURMA_DOCENTE`, considerando as turmas válidas do período vigente.
-
-O curso é obtido de `LY_TURMA.curso`.
-
-Quando a turma é compartilhada e `LY_TURMA.curso` é `NULL` ou vazio, a integração utiliza `999`.
-
-### 4.2 Coordenador — `C`
-
-A origem é `LY_COORDENACAO`.
-
-O vínculo de coordenador com um curso determina que o usuário possui o papel `C`.
-
-Esse papel não fica restrito ao curso em que a coordenação foi identificada: depois da consolidação global, `C` é propagado para todos os cursos aos quais o usuário possui vínculo válido.
-
-Isso é necessário porque o Qstione trata o papel do usuário como único, embora exija `codigoCurso` em cada relacionamento.
-
-### 4.3 Avaliador — `A`
-
-A origem é `imp_nde_membros`.
-
-O vínculo no NDE determina que o usuário possui o papel `A`.
-
-Depois da consolidação global, `A` é propagado para todos os cursos aos quais o usuário possui vínculo válido, inclusive cursos provenientes de vínculos docentes.
-
-O papel `A` não deve ser reduzido para `P` em nenhum curso quando `A` for o maior papel do usuário.
-
-### 4.4 Gestor — `G`
-
-O usuário administrativo fixo definido pela integração recebe `G` conforme a configuração existente.
-
-Por ser um papel administrativo/global, ele não é submetido à hierarquia docente `C > A > P`.
-
----
-
-## 5. Algoritmo de consolidação
-
-A implementação deve pensar no usuário antes de pensar no registro final.
-
-### Etapa 1 — reunir candidatos
-
-Para cada e-mail:
-
-```text
-P → conjunto de cursos de docência
-C → conjunto de cursos de coordenação
-A → conjunto de cursos do NDE
-```
-
-### Etapa 2 — formar a união dos cursos
-
-```text
-cursos_do_usuario = cursos_P ∪ cursos_C ∪ cursos_A
-```
-
-Essa união é fundamental.
-
-Não se deve utilizar somente os cursos associados ao papel máximo.
-
-### Etapa 3 — determinar o papel máximo
+O importador registra os vínculos NDE como candidatos `A` antes da consolidação final. Depois calcula o papel efetivo global:
 
 ```text
 se possui C → C
@@ -165,201 +89,124 @@ senão se possui A → A
 senão se possui P → P
 ```
 
-### Etapa 4 — propagar
+Assim, `A` sempre substitui `P` para o usuário inteiro.
 
-Para cada curso em `cursos_do_usuario`:
+### 4.2 Normalização do NDE
 
-```text
-codigoCurso = curso
-emailUsuario = usuário
-papelUsuario = papel_máximo
+A consulta de `imp_nde_membros` considera o status ativo de forma normalizada:
+
+```sql
+UPPER(LTRIM(RTRIM(CAST(status AS NVARCHAR(10))))) = 'S'
 ```
 
-Exemplo:
+Também são normalizados `codigoCurso` e `emailMembro` antes da consolidação.
+
+E-mails NDE inválidos ou cursos inválidos são registrados no log e não entram no resultado.
+
+### 4.3 Validação de integridade
+
+Após a consolidação, o importador verifica que:
+
+- nenhum usuário identificado como NDE ativo terminou com `P`;
+- nenhum usuário NDE ativo ficou sem registro final;
+- usuários NDE + Professor são contabilizados como promoção `P -> A` no log.
+
+Se uma dessas condições for violada, a execução gera erro de integridade em vez de produzir uma carga incorreta silenciosamente.
+
+## 5. Fontes
+
+### Professor — `P`
+
+Origem: `LY_TURMA_DOCENTE`, considerando as turmas válidas do período vigente.
+
+### Coordenador — `C`
+
+Origem: `LY_COORDENACAO`.
+
+### Avaliador — `A`
+
+Origem: `imp_nde_membros`, somente membros com status ativo `S` após normalização.
+
+### Gestor — `G`
+
+Usuário administrativo fixo definido pela configuração existente.
+
+## 6. União dos cursos
+
+Para um usuário com vínculos em diferentes fontes:
 
 ```text
-P: 065, 079
-A: 056
-
-União:
-056, 065, 079
-
-Papel máximo:
-A
-
-Saída:
-056 / usuário / A
-065 / usuário / A
-079 / usuário / A
+cursos = cursos_P ∪ cursos_A ∪ cursos_C
 ```
 
----
+O papel máximo é então aplicado à união.
 
-## 6. Regra do curso 999
+Isso evita que os cursos de docência sejam perdidos quando o usuário também é NDE ou coordenador.
 
-O `999` é um código sintético da integração para representar **turma compartilhada**.
+## 7. Curso 999
 
-Ele não representa um curso acadêmico real do Lyceum.
+`999` é um código técnico para representar turma compartilhada quando `LY_TURMA.curso` é `NULL` ou vazio.
 
-A origem é:
+O `IMP-007` somente inclui `999` quando existe vínculo real com turma compartilhada. Não é permitido adicionar `999` artificialmente a todos os usuários.
 
-```text
-LY_TURMA.curso = NULL
-ou
-LY_TURMA.curso = ''
-```
+## 8. Exemplos de aceite
 
-Nessa situação:
-
-```text
-curso da origem → 999
-```
-
-O `IMP-007` deve incluir `999` somente quando o usuário possuir efetivamente vínculo com uma turma/curso que tenha sido normalizado para `999`.
-
-**Não é permitido acrescentar `999` artificialmente a todos os coordenadores, avaliadores ou professores.**
-
-Exemplo correto:
-
-```text
-Professor X
-056 → P
-999 → P   ← somente se houver turma compartilhada real
-```
-
-Exemplo incorreto:
-
-```text
-Professor X
-056 → P
-999 → P   ← sem qualquer vínculo com turma compartilhada
-```
-
----
-
-## 7. Consequências da regra
-
-### Coordenador em um curso e professor em outro
-
-```text
-Origem:
-056 → C
-065 → P
-079 → P
-
-IMP-007:
-056 → C
-065 → C
-079 → C
-```
-
-### Avaliador em um curso e professor em outros
+### NDE + Professor
 
 ```text
 Origem:
 006 → A
 017 → P
 044 → P
-059 → P
 
-IMP-007:
+Resultado:
 006 → A
 017 → A
 044 → A
-059 → A
 ```
 
-### Coordenador + avaliador + professor
+### NDE + Coordenador + Professor
 
 ```text
 Origem:
+006 → A
 056 → C
-065 → A
-079 → P
+065 → P
 
-IMP-007:
+Resultado:
+006 → C
 056 → C
 065 → C
-079 → C
 ```
 
-### Somente professor
+### Somente Professor
 
 ```text
-Origem:
-056 → P
-065 → P
-
-IMP-007:
 056 → P
 065 → P
 ```
 
-### Nenhum papel conflitante
-
-O usuário permanece com `P` nos cursos em que possui vínculo docente.
-
----
-
-## 8. O que NÃO deve ser feito
-
-Não aplicar papel independentemente por curso:
+permanece:
 
 ```text
-056 → C
+056 → P
 065 → P
 ```
 
-Não descartar cursos de professor quando o usuário é avaliador:
+## 9. Critérios de aceite
 
-```text
-A → somente cursos do NDE  ❌
-```
-
-O correto é:
-
-```text
-A → todos os cursos do usuário  ✓
-```
-
-Não criar `999` por padrão para cada usuário.
-
-Não alterar o significado de `codigoCurso`: ele continua representando o curso do vínculo, inclusive `999` quando o vínculo veio de turma compartilhada.
-
----
-
-## 9. Estrutura da tabela
-
-A tabela intermediária `imp_007_usuarios_cursos` deve permitir a combinação:
-
-```text
-(codigoCurso, emailUsuario, papelUsuario)
-```
-
-A chave primária utilizada pelo importador é composta por esses três campos.
-
-Isso garante que a estrutura da tabela seja compatível com a multiplicidade de cursos por usuário e com a representação explícita do papel no registro enviado ao Qstione.
-
----
-
-## 10. Critérios de aceite
-
-O `IMP-007` só deve ser considerado correto quando todos os critérios abaixo forem satisfeitos:
+O IMP-007 está correto quando:
 
 - cada usuário possui somente um papel efetivo;
-- `C` sempre prevalece sobre `A` e `P`;
-- `A` sempre prevalece sobre `P`;
-- um coordenador em qualquer curso é `C` em todos os seus cursos vinculados;
-- um avaliador em qualquer vínculo NDE é `A` em todos os seus cursos vinculados, salvo se possuir `C`;
-- cursos de professor não são descartados quando o papel máximo é `A` ou `C`;
-- `999` somente aparece quando houver vínculo real com turma compartilhada ou regra administrativa explícita;
-- não existe usuário com `C`, `A` e/ou `P` simultaneamente no resultado final;
-- o payload contém somente os campos definidos para o IMP-007.
+- `C` prevalece sobre `A` e `P`;
+- `A` prevalece sobre `P`;
+- membro NDE ativo nunca termina como `P`;
+- `A` é propagado para todos os cursos do usuário;
+- cursos de professor não são descartados quando o usuário é NDE ou coordenador;
+- `999` somente aparece mediante vínculo real com turma compartilhada;
+- o resultado final não contém simultaneamente `C`, `A` e/ou `P` para o mesmo usuário;
+- o payload contém os campos definidos pelo IMP-007.
 
----
+## 10. Regra resumida
 
-## 11. Resumo da regra
-
-A regra pode ser resumida em uma frase:
-
-> **O Qstione exige um vínculo por usuário e curso, mas o papel é único por usuário; portanto, determina-se o maior papel do usuário pela hierarquia `C > A > P` e esse papel é propagado para todos os cursos aos quais o usuário possui vínculo válido.**
+> **O papel do usuário é global. A hierarquia é `C > A > P`. Portanto, qualquer vínculo NDE ativo torna o usuário `A` em todos os seus cursos, salvo quando ele também possui `C`, situação em que `C` prevalece.**
