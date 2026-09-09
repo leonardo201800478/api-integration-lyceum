@@ -8,65 +8,36 @@ REGRAS PRINCIPAIS
 
 1. A fonte da matrícula é LY_MATRICULA.
 
-2. A oferta é identificada por:
+2. A oferta é identificada por disciplina, turma, ano e semestre.
 
-       disciplina
-       turma
-       ano
-       semestre
+3. O codigoOferta é gerado pela mesma função utilizada pelo IMP-005.
 
-3. O codigoOferta é gerado EXATAMENTE pela mesma função utilizada
-   pelo imp_005_ofertas.py:
+4. O curso da oferta é obtido de LY_TURMA.curso.
 
-       gerar_codigo_oferta(
-           disciplina,
-           turma,
-           ano,
-           semestre
-       )
+5. Se LY_TURMA.curso for NULL, vazio ou 999, codigoCurso = 999.
 
-4. O curso da oferta NÃO vem de LY_ALUNO.curso.
+6. Cursos definidos são normalizados pelo mesmo MAPEAMENTO_CURSOS usado
+   pelo IMP-002 e IMP-010.
 
-   O curso é obtido de:
+7. Somente matrículas de alunos com sit_aluno = 'Ativo' são importadas.
+   Essa regra é deliberadamente igual à do IMP-010, pois o Qstione exige
+   que o aluno esteja previamente cadastrado no curso para aceitar o
+   vínculo aluno x oferta do IMP-011.
 
-       LY_TURMA.curso
-
-   porque a matrícula está vinculada à turma/disciplina.
-
-5. Se LY_TURMA.curso for NULL ou vazio:
-
-       codigoCurso = 999
-
-   representando:
-
-       COMPARTILHADA
-
-6. Quando houver curso definido, ele é normalizado utilizando
-   exatamente o MAPEAMENTO_CURSOS do imp_002_disciplina.py.
-
-7. A turma deve pertencer ao ano, período e faculdade configurados.
-
-8. Turmas sem curso definido são aceitas independentemente da
-   faculdade, pois são tratadas como compartilhadas.
+8. A turma deve atender aos filtros de ano, período, situação e faculdade.
+   Turmas compartilhadas sem curso definido são aceitas quando a faculdade
+   001 está entre as faculdades configuradas, pois utilizam o curso 999.
 
 9. A existência da matrícula não depende de docente.
 
-10. A existência da matrícula não depende de outra tabela de alunos
-    para determinar o curso da oferta.
+10. A tabela destino é totalmente reconstruída em cada execução.
 
-11. A tabela destino é totalmente reconstruída em cada execução.
-
-12. O arquivo pode ser executado diretamente pelo botão Play
-    do VS Code.
+11. O arquivo pode ser executado diretamente pelo botão Play do VS Code.
 """
 
 import os
 import sys
 
-
-# =============================================================================
-# PATH
-# =============================================================================
 
 ROOT = os.path.dirname(
     os.path.dirname(
@@ -79,10 +50,6 @@ ROOT = os.path.dirname(
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-
-# =============================================================================
-# IMPORTS
-# =============================================================================
 
 from core.database import get_db_connection
 
@@ -108,102 +75,27 @@ from qstione.importadores.imp_002_disciplina import (
 )
 
 
-# =============================================================================
-# IMPORTADOR
-# =============================================================================
-
 class ImportadorAlunosOfertas:
-    """
-    Importa os alunos matriculados nas turmas/ofertas vigentes.
-
-    A relação aluno → oferta é determinada por LY_MATRICULA.
-
-    O curso da oferta é determinado pela LY_TURMA.
-    """
-
-    # =========================================================================
-    # CURSO
-    # =========================================================================
+    """Importa os alunos ativos matriculados nas ofertas vigentes."""
 
     @staticmethod
-    def _curso_unificado(
-        curso,
-    ) -> str:
-        """
-        Normaliza o código de curso utilizando o mesmo
-        MAPEAMENTO_CURSOS do imp_002_disciplina.py.
-
-        Regras:
-
-        NULL
-            -> 999
-
-        vazio
-            -> 999
-
-        curso mapeado
-            -> código unificado
-
-        curso não mapeado
-            -> mantém código original
-        """
-
-        # ---------------------------------------------------------------------
-        # NULL
-        # ---------------------------------------------------------------------
-
+    def _curso_unificado(curso) -> str:
         if curso is None:
             return "999"
 
-        # ---------------------------------------------------------------------
-        # NORMALIZA TEXTO
-        # ---------------------------------------------------------------------
+        curso = str(curso).strip()
 
-        curso = str(
-            curso
-        ).strip()
-
-        # ---------------------------------------------------------------------
-        # VAZIO
-        # ---------------------------------------------------------------------
-
-        if not curso:
+        if not curso or curso == "999":
             return "999"
 
-        # ---------------------------------------------------------------------
-        # MAPEAMENTO OFICIAL
-        # ---------------------------------------------------------------------
-
         if curso in MAPEAMENTO_CURSOS:
-
-            return str(
-                MAPEAMENTO_CURSOS[curso][0]
-            ).strip()
-
-        # ---------------------------------------------------------------------
-        # NÃO MAPEADO
-        # ---------------------------------------------------------------------
+            return str(MAPEAMENTO_CURSOS[curso][0]).strip()
 
         return curso
 
-    # =========================================================================
-    # TABELA
-    # =========================================================================
-
-    def _tabela_existe(
-        self,
-        nome_tabela,
-    ):
-        """
-        Verifica se a tabela destino existe.
-        """
-
+    def _tabela_existe(self, nome_tabela):
         try:
-
-            with get_db_connection(
-                database_name="qstione"
-            ) as conn:
-
+            with get_db_connection(database_name="qstione") as conn:
                 return (
                     conn.execute(
                         """
@@ -216,33 +108,13 @@ class ImportadorAlunosOfertas:
                     ).fetchone()
                     is not None
                 )
-
         except Exception as e:
-
-            print(
-                f"⚠️ Erro ao verificar tabela: {e}"
-            )
-
+            print(f"⚠️ Erro ao verificar tabela: {e}")
             return False
 
-    # =========================================================================
-    # ÍNDICE
-    # =========================================================================
-
-    def _indice_existe(
-        self,
-        nome_indice,
-    ):
-        """
-        Verifica se um índice existe.
-        """
-
+    def _indice_existe(self, nome_indice):
         try:
-
-            with get_db_connection(
-                database_name="qstione"
-            ) as conn:
-
+            with get_db_connection(database_name="qstione") as conn:
                 return (
                     conn.execute(
                         """
@@ -254,91 +126,42 @@ class ImportadorAlunosOfertas:
                     ).fetchone()
                     is not None
                 )
-
         except Exception:
-
             return False
 
-    # =========================================================================
-    # CRIAÇÃO DA TABELA
-    # =========================================================================
-
     def _criar_tabela(self):
-        """
-        Cria a tabela imp_011_alunos_ofertas caso não exista.
-        """
-
-        if self._tabela_existe(
-            "imp_011_alunos_ofertas"
-        ):
-
+        if self._tabela_existe("imp_011_alunos_ofertas"):
             self._criar_indices()
-
             return True
 
-        print(
-            "🆕 Criando tabela imp_011_alunos_ofertas..."
-        )
+        print("🆕 Criando tabela imp_011_alunos_ofertas...")
 
         try:
-
-            with get_db_connection(
-                database_name="qstione"
-            ) as conn:
-
+            with get_db_connection(database_name="qstione") as conn:
                 conn.execute(
                     """
                     CREATE TABLE imp_011_alunos_ofertas (
-
                         codigoOferta NVARCHAR(30) NOT NULL,
-
                         matriculaAluno NVARCHAR(20) NOT NULL,
-
                         codigoCurso NVARCHAR(30) NOT NULL,
-
-                        data_criacao DATETIME2
-                            DEFAULT GETDATE(),
-
-                        data_atualizacao DATETIME2
-                            DEFAULT GETDATE(),
-
-                        PRIMARY KEY (
-                            codigoOferta,
-                            matriculaAluno
-                        )
+                        data_criacao DATETIME2 DEFAULT GETDATE(),
+                        data_atualizacao DATETIME2 DEFAULT GETDATE(),
+                        PRIMARY KEY (codigoOferta, matriculaAluno)
                     )
                     """
                 )
-
                 conn.commit()
 
-            print(
-                "✅ Tabela criada."
-            )
-
+            print("✅ Tabela criada.")
             self._criar_indices()
-
             return True
 
         except Exception as e:
-
-            print(
-                f"❌ Erro ao criar tabela: {e}"
-            )
-
+            print(f"❌ Erro ao criar tabela: {e}")
             return False
 
-    # =========================================================================
-    # ÍNDICES
-    # =========================================================================
-
     def _criar_indices(self):
-        """
-        Cria os índices auxiliares da tabela.
-        """
-
         indices = [
-
             (
                 "idx_alunos_ofertas_matricula",
                 """
@@ -346,7 +169,6 @@ class ImportadorAlunosOfertas:
                 ON imp_011_alunos_ofertas(matriculaAluno)
                 """,
             ),
-
             (
                 "idx_alunos_ofertas_curso",
                 """
@@ -354,7 +176,6 @@ class ImportadorAlunosOfertas:
                 ON imp_011_alunos_ofertas(codigoCurso)
                 """,
             ),
-
             (
                 "idx_alunos_ofertas_oferta",
                 """
@@ -362,75 +183,42 @@ class ImportadorAlunosOfertas:
                 ON imp_011_alunos_ofertas(codigoOferta)
                 """,
             ),
-
         ]
 
         for nome_indice, sql in indices:
-
-            if self._indice_existe(
-                nome_indice
-            ):
-
+            if self._indice_existe(nome_indice):
                 continue
 
             try:
-
-                with get_db_connection(
-                    database_name="qstione"
-                ) as conn:
-
+                with get_db_connection(database_name="qstione") as conn:
                     conn.execute(sql)
                     conn.commit()
-
             except Exception as e:
-
                 print(
-                    f"⚠️ Índice {nome_indice} "
-                    f"não pôde ser criado: {e}"
+                    f"⚠️ Índice {nome_indice} não pôde ser criado: {e}"
                 )
-
-    # =========================================================================
-    # CONSULTA LYCEUM
-    # =========================================================================
 
     def obter_dados_lyceum(self):
         """
-        Obtém os alunos efetivamente matriculados nas turmas válidas.
+        Obtém somente matrículas de alunos ativos.
 
-        IMPORTANTE
-        ----------
-
-        O curso é obtido de LY_TURMA.curso.
-
-        Não é utilizado LY_ALUNO.curso para determinar o curso
-        da oferta.
-
-        Isso é fundamental para turmas compartilhadas.
+        A inclusão de LY_ALUNO nesta consulta é importante: IMP-010 e
+        IMP-011 precisam operar sobre exatamente o mesmo universo de alunos.
+        Caso contrário, o IMP-011 pode enviar ao Qstione um vínculo de um
+        aluno que foi excluído do IMP-010 por estar inativo, produzindo a
+        exceção "Aluno não está cadastrado na plataforma no curso".
         """
 
-        periodos = ",".join(
-            "?"
-            for _ in PERIODOS_VIGENTES
-        )
-
-        faculdades = ",".join(
-            "?"
-            for _ in FACULDADES_INCLUIDAS
-        )
+        periodos = ",".join("?" for _ in PERIODOS_VIGENTES)
+        faculdades = ",".join("?" for _ in FACULDADES_INCLUIDAS)
 
         query = f"""
             SELECT DISTINCT
-
                 m.aluno,
-
                 m.ano,
-
                 m.semestre,
-
                 m.turma,
-
                 m.disciplina,
-
                 t.curso
 
             FROM LY_MATRICULA m
@@ -441,27 +229,28 @@ class ImportadorAlunosOfertas:
                AND t.turma = m.turma
                AND t.disciplina = m.disciplina
 
+            INNER JOIN LY_ALUNO a
+                ON a.aluno = m.aluno
+
             LEFT JOIN LY_CURSO c
                 ON c.curso = t.curso
 
-            WHERE m.ano = ?
+            WHERE a.sit_aluno = 'Ativo'
 
-              AND m.semestre IN (
-                  {periodos}
-              )
+              AND m.ano = ?
+
+              AND m.semestre IN ({periodos})
 
               AND t.sit_turma = ?
 
               AND (
                     t.curso IS NULL
-
-                    OR c.faculdade IN (
-                        {faculdades}
-                    )
+                    OR LTRIM(RTRIM(t.curso)) = ''
+                    OR LTRIM(RTRIM(t.curso)) = '999'
+                    OR c.faculdade IN ({faculdades})
                   )
 
             ORDER BY
-
                 m.aluno,
                 m.ano,
                 m.semestre,
@@ -477,41 +266,13 @@ class ImportadorAlunosOfertas:
         ]
 
         with get_db_connection() as conn:
+            return conn.execute(query, params).fetchall()
 
-            return conn.execute(
-                query,
-                params,
-            ).fetchall()
-
-    # =========================================================================
-    # TRANSFORMAÇÃO
-    # =========================================================================
-
-    def transformar_dados(
-        self,
-        dados_lyceum,
-    ):
-        """
-        Converte os registros do Lyceum para o formato da tabela destino.
-
-        O codigoOferta é baseado exclusivamente em:
-
-            disciplina
-            turma
-            ano
-            semestre
-
-        O codigoCurso é baseado em:
-
-            LY_TURMA.curso
-                ↓
-            MAPEAMENTO_CURSOS
-        """
-
+    def transformar_dados(self, dados_lyceum):
         unicos = {}
-
         total_999 = 0
         total_mapeados = 0
+        total_invalidos = 0
 
         for (
             aluno,
@@ -522,76 +283,32 @@ class ImportadorAlunosOfertas:
             curso_turma,
         ) in dados_lyceum:
 
-            # -----------------------------------------------------------------
-            # MATRÍCULA
-            # -----------------------------------------------------------------
-
-            if not validar_matricula(
-                aluno
-            ):
-
-                print(
-                    f"⚠️ Matrícula inválida: "
-                    f"{aluno}"
-                )
-
+            if not validar_matricula(aluno):
+                total_invalidos += 1
+                print(f"⚠️ Matrícula inválida: {aluno}")
                 continue
 
-            # -----------------------------------------------------------------
-            # CURSO DA TURMA
-            # -----------------------------------------------------------------
-
-            curso_unificado = (
-                self._curso_unificado(
-                    curso_turma
-                )
+            curso_original = (
+                str(curso_turma).strip()
+                if curso_turma is not None
+                else ""
             )
 
-            # -----------------------------------------------------------------
-            # ESTATÍSTICAS
-            # -----------------------------------------------------------------
+            curso_unificado = self._curso_unificado(curso_turma)
 
             if curso_unificado == "999":
-
                 total_999 += 1
+            elif curso_original in MAPEAMENTO_CURSOS:
+                total_mapeados += 1
 
-            else:
-
-                curso_original = (
-                    str(curso_turma).strip()
-                    if curso_turma is not None
-                    else ""
-                )
-
-                if (
-                    curso_original in
-                    MAPEAMENTO_CURSOS
-                ):
-
-                    total_mapeados += 1
-
-            # -----------------------------------------------------------------
-            # VALIDAÇÃO DO CURSO
-            # -----------------------------------------------------------------
-
-            if not validar_codigo_curso(
-                curso_unificado
-            ):
-
+            if not validar_codigo_curso(curso_unificado):
+                total_invalidos += 1
                 print(
                     f"⚠️ Código de curso inválido: "
-                    f"{curso_turma} → "
-                    f"{curso_unificado} | "
-                    f"aluno={aluno} | "
-                    f"turma={turma} | "
-                    f"disciplina={disciplina}"
+                    f"{curso_original} → {curso_unificado} | "
+                    f"aluno={aluno} | turma={turma} | disciplina={disciplina}"
                 )
-
                 continue
-
-            # -----------------------------------------------------------------
-            # CÓDIGO DA OFERTA
-            # -----------------------------------------------------------------
 
             codigo_oferta = truncar_texto(
                 gerar_codigo_oferta(
@@ -603,108 +320,44 @@ class ImportadorAlunosOfertas:
                 30,
             )
 
-            # -----------------------------------------------------------------
-            # MATRÍCULA
-            # -----------------------------------------------------------------
-
-            matricula = truncar_texto(
-                str(aluno),
-                20,
-            )
-
-            # -----------------------------------------------------------------
-            # CHAVE ÚNICA
-            # -----------------------------------------------------------------
-
-            chave = (
-                codigo_oferta,
-                matricula,
-            )
+            matricula = truncar_texto(str(aluno), 20)
+            chave = (codigo_oferta, matricula)
 
             unicos[chave] = {
-
-                "codigoOferta":
-                    codigo_oferta,
-
-                "matriculaAluno":
-                    matricula,
-
-                "codigoCurso":
-                    truncar_texto(
-                        curso_unificado,
-                        30,
-                    ),
+                "codigoOferta": codigo_oferta,
+                "matriculaAluno": matricula,
+                "codigoCurso": truncar_texto(curso_unificado, 30),
             }
 
+        print(f"🔗 Turmas compartilhadas / curso 999: {total_999}")
         print(
-            f"🔗 Turmas compartilhadas / curso 999: "
-            f"{total_999}"
-        )
-
-        print(
-            f"🔄 Cursos normalizados pelo "
-            f"MAPEAMENTO_CURSOS: "
+            "🔄 Cursos normalizados pelo MAPEAMENTO_CURSOS: "
             f"{total_mapeados}"
         )
+        if total_invalidos:
+            print(f"⚠️ Registros inválidos ignorados: {total_invalidos}")
 
-        return list(
-            unicos.values()
-        )
+        return list(unicos.values())
 
-    # =========================================================================
-    # IMPORTAÇÃO
-    # =========================================================================
-
-    def importar_para_qstione(
-        self,
-        dados_transformados,
-    ):
-        """
-        Limpa e reconstrói integralmente a tabela.
-        """
-
+    def importar_para_qstione(self, dados_transformados):
         if not self._criar_tabela():
-
             return {
                 "total_inseridos": 0,
                 "total_atualizados": 0,
-                "total_erros": len(
-                    dados_transformados
-                ),
-                "total_processados": len(
-                    dados_transformados
-                ),
+                "total_erros": len(dados_transformados),
+                "total_processados": len(dados_transformados),
             }
 
         inseridos = 0
         erros = 0
 
         try:
-
-            with get_db_connection(
-                database_name="qstione"
-            ) as conn:
-
-                # -------------------------------------------------------------
-                # LIMPEZA TOTAL
-                # -------------------------------------------------------------
-
-                conn.execute(
-                    """
-                    DELETE FROM imp_011_alunos_ofertas
-                    """
-                )
-
+            with get_db_connection(database_name="qstione") as conn:
+                conn.execute("DELETE FROM imp_011_alunos_ofertas")
                 cursor = conn.cursor()
 
-                # -------------------------------------------------------------
-                # INSERT
-                # -------------------------------------------------------------
-
                 for reg in dados_transformados:
-
                     try:
-
                         cursor.execute(
                             """
                             INSERT INTO imp_011_alunos_ofertas
@@ -715,175 +368,66 @@ class ImportadorAlunosOfertas:
                                 data_criacao,
                                 data_atualizacao
                             )
-                            VALUES
-                            (
-                                ?,
-                                ?,
-                                ?,
-                                GETDATE(),
-                                GETDATE()
-                            )
+                            VALUES (?, ?, ?, GETDATE(), GETDATE())
                             """,
                             (
-                                reg[
-                                    "codigoOferta"
-                                ],
-
-                                reg[
-                                    "matriculaAluno"
-                                ],
-
-                                reg[
-                                    "codigoCurso"
-                                ],
+                                reg["codigoOferta"],
+                                reg["matriculaAluno"],
+                                reg["codigoCurso"],
                             ),
                         )
-
                         inseridos += 1
-
                     except Exception as e:
-
                         erros += 1
-
                         print(
-                            f"✗ "
-                            f"{reg['codigoOferta']} - "
-                            f"{reg['matriculaAluno']}: "
-                            f"{e}"
+                            f"❌ Erro ao inserir aluno/oferta "
+                            f"{reg}: {e}"
                         )
 
                 conn.commit()
 
         except Exception as e:
-
-            print(
-                f"❌ Erro durante reconstrução: "
-                f"{e}"
-            )
-
+            print(f"❌ Erro na importação: {e}")
             return {
-                "total_inseridos": 0,
+                "total_inseridos": inseridos,
                 "total_atualizados": 0,
-                "total_erros": len(
-                    dados_transformados
-                ),
-                "total_processados": len(
-                    dados_transformados
-                ),
+                "total_erros": erros + 1,
+                "total_processados": len(dados_transformados),
             }
+
+        print(f"📈 Inseridos: {inseridos} | Erros: {erros}")
 
         return {
             "total_inseridos": inseridos,
             "total_atualizados": 0,
             "total_erros": erros,
-            "total_processados": len(
-                dados_transformados
-            ),
+            "total_processados": len(dados_transformados),
         }
 
-    # =========================================================================
-    # EXECUÇÃO
-    # =========================================================================
+    def executar(self):
+        print("=" * 70)
+        print("IMPORTAÇÃO: imp_011_alunos_ofertas")
+        print("=" * 70)
+        print(f"📅 Ano: {ANO_VIGENTE}")
+        print(f"📅 Períodos: {PERIODOS_VIGENTES}")
+        print(f"🏫 Faculdades: {FACULDADES_INCLUIDAS}")
+        print(f"📚 Situação: {SITUACAO_TURMA_VALIDA}")
+        print("👤 Alunos elegíveis: LY_ALUNO.sit_aluno = 'Ativo'")
+        print("🔗 Curso da oferta: LY_TURMA.curso")
 
-    def executar_importacao(self):
-        """
-        Executa a importação completa.
-        """
+        dados = self.obter_dados_lyceum()
+        print(f"📊 Registros encontrados: {len(dados)}")
 
-        print(
-            "=" * 70
-        )
+        transformados = self.transformar_dados(dados)
+        print(f"✅ Registros únicos: {len(transformados)}")
 
-        print(
-            "IMPORTAÇÃO: imp_011_alunos_ofertas"
-        )
+        return self.importar_para_qstione(transformados)
 
-        print(
-            "=" * 70
-        )
-
-        print(
-            f"📅 Ano: {ANO_VIGENTE}"
-        )
-
-        print(
-            f"📅 Períodos: {PERIODOS_VIGENTES}"
-        )
-
-        print(
-            f"🏫 Faculdades: {FACULDADES_INCLUIDAS}"
-        )
-
-        print(
-            f"📚 Situação turma: "
-            f"{SITUACAO_TURMA_VALIDA}"
-        )
-
-        print(
-            "🔗 Curso da oferta: LY_TURMA.curso"
-        )
-
-        print(
-            "🔄 Cursos: "
-            "MAPEAMENTO_CURSOS do imp_002"
-        )
-
-        print(
-            "🎓 Alunos: LY_MATRICULA"
-        )
-
-        # ---------------------------------------------------------------------
-        # CONSULTA
-        # ---------------------------------------------------------------------
-
-        dados = (
-            self.obter_dados_lyceum()
-        )
-
-        print(
-            f"📊 Registros encontrados: "
-            f"{len(dados)}"
-        )
-
-        # ---------------------------------------------------------------------
-        # TRANSFORMAÇÃO
-        # ---------------------------------------------------------------------
-
-        transformados = (
-            self.transformar_dados(
-                dados
-            )
-        )
-
-        print(
-            f"✅ Registros únicos: "
-            f"{len(transformados)}"
-        )
-
-        # ---------------------------------------------------------------------
-        # IMPORTAÇÃO
-        # ---------------------------------------------------------------------
-
-        resultado = (
-            self.importar_para_qstione(
-                transformados
-            )
-        )
-
-        print(
-            f"📈 Inseridos: "
-            f"{resultado['total_inseridos']} "
-            f"| Erros: "
-            f"{resultado['total_erros']}"
-        )
-
-        return transformados
-
-
-# =============================================================================
-# EXECUÇÃO DIRETA
-# =============================================================================
 
 if __name__ == "__main__":
-
-    ImportadorAlunosOfertas().executar_importacao()
+    resultado = ImportadorAlunosOfertas().executar()
+    print("=" * 70)
+    print("RESULTADO FINAL")
+    print("=" * 70)
+    for chave, valor in resultado.items():
+        print(f"{chave}: {valor}")
