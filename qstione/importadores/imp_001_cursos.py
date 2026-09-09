@@ -9,9 +9,9 @@ REGRAS PRINCIPAIS
 2. O mapeamento de códigos é aplicado antes da consolidação.
 3. O curso 999 NÃO é um curso acadêmico existente no Lyceum.
 4. O código 999 é uma representação técnica da integração para turmas
-   compartilhadas, cuja LY_TURMA.curso é NULL ou vazio.
+   compartilhadas, cuja LY_TURMA.curso é NULL, vazio ou 999.
 5. O registro 999 somente é criado quando existir pelo menos uma turma
-   válida do período vigente com curso NULL/vazio.
+   válida do período vigente em contexto compartilhado.
 6. O nome oficial do curso sintético é "Turma Compartilhada".
 7. Para atender ao contrato do IMP-001, quantPeriodos=1 é utilizado no
    registro sintético; esse valor é técnico e não representa a duração
@@ -189,23 +189,29 @@ class ImportadorCursos:
 
     def _existem_turmas_compartilhadas_vigentes(self) -> bool:
         """
-        Verifica se o período atualmente configurado possui turma válida
-        sem curso em LY_TURMA.
+        Replica a regra de seleção de turmas compartilhadas utilizada pelo
+        IMP-002, mas somente para responder se o curso sintético 999 é
+        necessário.
 
-        Essa verificação é propositalmente separada da consulta de cursos
-        reais: o 999 é sintético e não deve depender da existência de uma
-        linha correspondente em LY_CURSO.
+        O teste considera ano, semestre, situação e disciplina válidos.
+        Para turma compartilhada não existe curso real para validar em
+        LY_CURSO; por isso NULL, vazio e 999 são aceitos diretamente.
         """
         query = f"""
             SELECT TOP 1 1
             FROM LY_TURMA t
+            LEFT JOIN LY_CURSO c
+                ON c.curso = t.curso
             WHERE t.ano = ?
               AND t.semestre IN ({self.periodos_placeholders})
-              AND t.situacao = ?
-              AND t.faculdade IN ({self.faculdades_placeholders})
+              AND t.sit_turma = ?
+              AND t.disciplina IS NOT NULL
+              AND LTRIM(RTRIM(CAST(t.disciplina AS NVARCHAR(100)))) <> ''
               AND (
                     t.curso IS NULL
                     OR LTRIM(RTRIM(CAST(t.curso AS NVARCHAR(30)))) = ''
+                    OR LTRIM(RTRIM(CAST(t.curso AS NVARCHAR(30)))) = '999'
+                    OR c.faculdade IN ({self.faculdades_placeholders})
                   )
         """
         parametros = [
