@@ -1,295 +1,176 @@
-# 📘 aluno-sync
+# aluno-sync
 
-Projeto de sincronização e consolidação de dados acadêmicos do **Lyceum**, com persistência local em SQLite, execução controlada e uso exclusivo do método HTTP GET.  
-O projeto integra dados de diferentes fontes (Lyceum, Qstione e LXP) para fornecer uma base local confiável para análises e relatórios.
+Integração e sincronização de dados acadêmicos do **Lyceum** com os ambientes **Qstione** e **LXP**.
 
-## 🎯 Objetivos
-- Sincronizar dados do Lyceum de forma segura e auditável.
-- Manter um espelho local confiável para análises e relatórios.
-- Padronizar a execução de múltiplos endpoints.
-- Integrar dados acadêmicos + dados de questionários (Qstione) + dados LXP.
+O projeto mantém uma arquitetura por domínios, com regras de filtro e transformação centralizadas, tabelas intermediárias para as cargas Qstione e execução modular ou completa.
 
-## 🔐 Garantias de Segurança
-✔️ Apenas GET na API Lyceum  
-✔️ Nenhuma escrita remota  
-✔️ Banco exclusivamente local (SQLite)  
-✔️ Execução isolada por módulo  
-✔️ Logs completos por execução  
+> **Status atual:** a carga ativa Lyceum → Qstione via HTTP POST está concluída e validada para o período `2026.2`. A etapa de inativação de usuários e alunos permanece planejada para uma fase posterior.
 
-## 📁 Estrutura do Projeto (Atualizada)
+## Domínios
 
-Abaixo está a organização completa dos diretórios e arquivos, conforme a versão mais recente do projeto.
+- `core/` — infraestrutura compartilhada: configuração, banco, cliente HTTP e logging.
+- `sync/` — sincronização das entidades do Lyceum.
+- `qstione/` — preparação, transformação e envio das cargas para o Qstione.
+- `lxp/` — integração/exportação para o LXP.
+- `reports/` — relatórios e exportações.
+- `docs/` — documentação funcional e técnica.
 
+## Estrutura principal
+
+```text
 aluno-sync/
 ├── core/
-│   ├── __init__.py
-│   ├── api_client.py
-│   ├── config.py
-│   ├── database.py
-│   └── logger.py
 ├── models/
-│   ├── __init__.py
-│   ├── ly_aluno.py
-│   ├── ly_coordenacao.py
-│   ├── ly_curriculo.py
-│   ├── ly_curso.py
-│   ├── ly_disciplina.py
-│   ├── ly_docente.py
-│   ├── ly_grade.py
-│   ├── ly_matricula.py
-│   ├── ly_pessoa.py
-│   ├── ly_prova.py
-│   ├── ly_prova_discip.py
-│   ├── ly_turma.py
-│   └── ly_turma_docente.py
 ├── sync/
-│   ├── __init__.py
-│   ├── sync_ly_alunos.py
-│   ├── sync_ly_coordenacoes.py
-│   ├── sync_ly_curriculos.py
-│   ├── sync_ly_cursos.py
-│   ├── sync_ly_disciplinas.py
-│   ├── sync_ly_docentes.py
-│   ├── sync_ly_grades.py
-│   ├── sync_ly_matriculas.py
-│   ├── sync_ly_pessoa_by_id.py
-│   ├── sync_ly_pessoas.py
-│   ├── sync_ly_provas.py
-│   ├── sync_ly_provas_disciplinas.py
-│   ├── sync_ly_turma_docentes.py
-│   └── sync_ly_turmas.py
-├── lxp/
-│   ├── config/
-│   │   ├── __init__.py
-│   │   ├── filtros.py
-│   │   └── mapeamentos.py
-│   ├── core/
-│   │   ├── __init__.py
-│   │   ├── crud_course.py
-│   │   └── exportador.py
-│   ├── exportadores/
-│   │   ├── __init__.py
-│   │   ├── exp_001_cursos.py
-│   │   ├── exp_002_curriculum.py
-│   │   ├── exp_003_enrollment.py
-│   │   ├── exp_004_desenturmar_alunos.py
-│   │   ├── exp_005_matriculas.py
-│   │   └── exp_006_pessoas.py
-│   ├── __init__.py
-│   ├── main.py
-│   └── README.md
 ├── qstione/
 │   ├── config/
-│   │   ├── criar_tabelas_qstone.sql
-│   │   ├── filtros.py
-│   │   └── tabelas.py
 │   ├── core/
-│   │   ├── transformacoes.py
-│   │   ├── utils_db.py
-│   │   └── validacoes.py
 │   ├── desativadores/
-│   │   ├── des_001_cursos.py
-│   │   └── desativador_base.py
 │   ├── exportadores/
-│   │   ├── ExportadorSQL/
-│   │   ├── excel.py
-│   │   └── sql.py
 │   ├── importadores/
-│   │   ├── imp_001_cursos.py
-│   │   ├── imp_002_disciplina.py
-│   │   ├── imp_003_objetivos.py
-│   │   ├── imp_004_referencias.py
-│   │   ├── imp_005_ofertas.py
-│   │   ├── imp_006_usuario.py
-│   │   ├── imp_007_usuarios_cursos.py
-│   │   └── imp_008_usuarios_disciplinas.py
-│   └── main.py
+│   └── nde/
+├── lxp/
 ├── reports/
-│   ├── exporters/
-│   │   ├── __init__.py
-│   │   ├── base.py
-│   │   ├── excel_exporter.py
-│   │   ├── pdf_exporter.py
-│   │   └── xml_exporter.py
-│   ├── generators/
-│   │   ├── __init__.py
-│   │   ├── gerar_relatorio_alunos.py
-│   │   └── gerar_relatorio_contatos_completo.py
-│   ├── queries/
-│   │   ├── __init__.py
-│   │   ├── relatorio_alunos.py
-│   │   └── relatorio_contatos_filtros.py
-│   └── sync_pessoas.py
+├── docs/
+├── logs/
 ├── backups/
 ├── exportacoes/
-├── logs/
-│   └── execucoes/
-├── .env
-├── .env.example
-├── .gitignore
-├── ARQUITETURA.md
-├── README.md
-├── requirements.txt
-├── run_all.py
 ├── executar_qstione.py
+├── run_all.py
 ├── run_reports.py
-├── test_conexao.py
-├── teste.py
-├── lyceum.db
-├── qstione.db
-└── esquema de montagem da view VW_aluno.txt
+├── requirements.txt
+└── .env.example
+```
 
-## 🚀 Começando
+Arquivos de banco local, logs, exportações e credenciais são artefatos de ambiente e não devem ser tratados como código-fonte ou documentação normativa.
 
-### Pré-requisitos
-- Python 3.8 ou superior
-- Acesso à API Lyceum (credenciais)
-- Acesso à API Qstione (token)
-- Banco SQLite (criado automaticamente)
+## Qstione — carga ativa
 
-### Instalação
-1. Clone o repositório:
-   ```bash
-   git clone https://github.com/leonardo201800478/aluno-sync.git
-   cd aluno-sync
-Crie e ative um ambiente virtual:
+A carga completa segue as dependências funcionais dos importadores:
 
+```text
+IMP-001  Cursos
+   ↓
+IMP-002  Disciplinas
+   ↓
+IMP-005  Ofertas
+   ↓
+IMP-006  Usuários
+   ↓
+IMP-007  Usuários × Cursos
+   ↓
+IMP-008  Usuários × Disciplinas
+   ↓
+IMP-009  Professores × Ofertas
+   ↓
+IMP-010  Alunos
+   ↓
+IMP-011  Alunos × Ofertas
+   ↓
+IMP-013  Unidades de avaliação
+```
 
+O `IMP-016` de unidades organizacionais pode fazer parte da preparação conforme a configuração do processo. O `IMP-012` não participa da carga atual.
+
+### Filtros vigentes
+
+Configurados em `qstione/config/filtros.py`:
+
+```python
+ANO_VIGENTE = 2026
+PERIODOS_VIGENTES = ['2']
+SEMESTRE_OFERTA_FIXO = '2026.2'
+FACULDADES_INCLUIDAS = ['001', '007']
+SITUACAO_TURMA_VALIDA = 'aberta'
+```
+
+### Regras críticas
+
+**Turma compartilhada:** quando `LY_TURMA.curso` é `NULL` ou vazio, a integração utiliza o curso técnico `999` (`Turma Compartilhada`). O `999` só deve ser criado/utilizado quando houver turma compartilhada válida no período.
+
+**IMP-006:** a população de usuários é a união de docentes com turmas elegíveis, coordenadores dos cursos/faculdades incluídos e membros ativos do NDE. Coordenadores e NDE não dependem de uma turma vigente para existir no cadastro de usuários.
+
+**IMP-007:** o papel é global por usuário, com hierarquia `C > A > P`. `G` é administrativo/global e `O` não é produzido por esse importador. Um membro NDE ativo recebe `A`; se também for coordenador, `C` prevalece. O papel efetivo é propagado aos cursos aos quais o usuário possui vínculo válido.
+
+## Execução
+
+### Ambiente
+
+```powershell
 python -m venv venv
-source venv/bin/activate  # Linux/macOS
-venv\Scripts\activate     # Windows
-Instale as dependências:
-
-
+venv\Scripts\activate
 pip install -r requirements.txt
-Configure as variáveis de ambiente:
+```
 
+Configure o `.env` a partir de `.env.example` e mantenha tokens, senhas e URLs privadas fora do controle de versão.
 
-cp .env.example .env
-# Edite o .env com suas credenciais
-⚙️ Configuração (.env)
-ini
-# Lyceum
-LYCEUM_BASE_URL=https://api.lyceum.exemplo
-LYCEUM_USERNAME=usuario
-LYCEUM_PASSWORD=senha
+### Carga completa Qstione
 
-# Qstione
-QSTIONE_BASE_URL=https://api.qstione.exemplo
-QSTIONE_TOKEN=seu_token
-
-# Paginação da API
-API_PAGE_START=0
-API_PAGE_SIZE=500
-API_TIMEOUT=30
-API_DELAY_BETWEEN_REQUESTS=0.1
-▶️ Execução dos Principais Scripts
-Todos os comandos devem ser executados na raiz do projeto com o ambiente virtual ativado.
-
-🔄 Sincronização de Pessoas (Lyceum)
-
-# Sincronizar todas as pessoas (endpoint /v2/tabela/pessoas)
-python sync/sync_ly_pessoas.py
-
-# Sincronizar uma pessoa específica pelo ID (inclui alunos vinculados)
-python sync/sync_ly_pessoa_by_id.py 12345
-
-# Verificar pessoas em LY_ALUNO que não estão em LY_PESSOA e sincronizá-las
-python reports/sync_pessoas.py
-📋 Sincronização de Outras Entidades Lyceum
-
-python sync/sync_ly_alunos.py
-python sync/sync_ly_coordenacoes.py
-python sync/sync_ly_curriculos.py
-python sync/sync_ly_cursos.py
-python sync/sync_ly_disciplinas.py
-python sync/sync_ly_docentes.py
-python sync/sync_ly_grades.py
-python sync/sync_ly_matriculas.py
-python sync/sync_ly_provas.py
-python sync/sync_ly_provas_disciplinas.py
-python sync/sync_ly_turma_docentes.py
-python sync/sync_ly_turmas.py
-🚀 Runner Unificado (Lyceum)
-
-# Executa todos os sincronizadores Lyceum que implementam a função run()
-python run_all.py
-🧩 Módulo LXP
-
-# Executa o fluxo principal do LXP
-python lxp/main.py
-📊 Módulo Qstione (Questionários)
-
-# Executa o fluxo completo do Qstione (via entry-point simplificado)
+```powershell
 python executar_qstione.py
+```
 
-# Ou, de forma modular:
-python qstione/main.py
-📑 Relatórios e Exportações
+### Importadores individuais
 
-# Gera relatório de alunos (XML e PDF)
-python reports/generators/gerar_relatorio_alunos.py
+Cada etapa pode ser executada isoladamente para diagnóstico. Exemplos:
 
-# Gera relatório completo de contatos (HTML, Excel, PDF)
-python run_relatorio_contatos.py
+```powershell
+python qstione/importadores/imp_006_usuarios.py
+python qstione/importadores/imp_007_usuarios_cursos.py
+python qstione/importadores/imp_010_alunos.py
+python qstione/importadores/imp_011_alunos_ofertas.py
+```
 
-# Executa todos os relatórios disponíveis
-python run_reports.py
-📐 Contrato Obrigatório dos Syncs Lyceum
-Todos os arquivos sync_ly_*.py devem expor a função:
+### Sincronização Lyceum
 
-python
-def run() -> bool:
-    """Executa a sincronização e retorna True em caso de sucesso."""
-Isso garante que o runner run_all.py possa executá‑los de forma padronizada.
+```powershell
+python run_all.py
+```
 
-📊 Logs e Auditoria
-Cada execução gera logs estruturados na pasta logs/execucoes/YYYYMMDD_HHMMSS/, com um arquivo JSON por sincronizador e um relatório final.
+Os sincronizadores `sync/sync_ly_*.py` devem expor `run() -> bool` para integração com o runner.
 
-🧪 Boas Práticas Aplicadas
-Separação clara de domínios (Lyceum × Qstione × LXP)
+## Validação da carga 2026.2
 
-Execução determinística e isolada
+A execução validada mais recente concluiu todas as etapas sem erros. Os principais números registrados foram:
 
-Zero side‑effects em produção
+| Etapa | Resultado |
+|---|---:|
+| IMP-007 | 535 registros, 0 erros |
+| IMP-010 | 4.893 relações aluno/curso, 0 erros |
+| IMP-011 | 19.290 registros, 0 erros |
+| IMP-013 | 11 registros, 0 erros |
+| Carga completa | concluída com sucesso |
 
-Logs estruturados e código auditável
+No IMP-007, a consolidação registrada foi `G=3`, `C=38`, `A=151`, `P=343`, totalizando 535 registros. O NDE teve 93 registros ativos, 63 usuários consolidados e nenhuma ocorrência terminando indevidamente como `P`.
 
-Fácil extensão para novos endpoints
+## Documentação
 
-🚀 Roadmap (Próximos Passos)
-Runner unificado para Qstione
+A documentação normativa está em [`docs/`](docs/README.md):
 
-Detecção de mudanças (hash) para sincronização incremental
+- `docs/QSTIONE_CARGA_COMPLETA.md` — arquitetura, contrato, filtros, etapas e regras da carga.
+- `docs/IMP_007_USUARIOS_CURSOS.md` — regra detalhada de papéis e vínculos.
+- `docs/README.md` — índice documental e política de manutenção.
 
-UPSERT em lote para melhor performance
+## Próxima fase
 
-Exportação para BI (CSV/Parquet)
+A carga ativa está encerrada para o escopo atual. A próxima evolução funcional será tratada separadamente:
 
-Dashboard de monitoramento das execuções
+1. identificação de usuários que deixaram de ser elegíveis;
+2. identificação de alunos que deixaram de ser ativos;
+3. definição do mecanismo de inativação aceito pelo Qstione;
+4. tratamento de vínculos que também precisem ser inativados;
+5. testes controlados antes de qualquer alteração destrutiva.
 
-👤 Autor
-Leonardo da Silva Paiva
+Até essa fase ser implementada, os importadores ativos não devem ser considerados responsáveis por inativação automática.
+
+## Segurança
+
+- Não versionar `.env`, tokens, senhas ou credenciais.
+- Não executar scripts de inativação contra produção sem validação prévia.
+- Preservar logs de execução para auditoria.
+- Tratar `999` como código técnico da integração, nunca como alteração do cadastro acadêmico de origem.
+
+## Autor
+
+Leonardo da Silva Paiva  
 Analista de Sistemas / Desenvolvedor
-
-
-
-Usando O ENDPOINT TURMA_DOCENTE:
-
-Como usar
-Sem argumentos: lê todas as páginas a partir do último checkpoint até o final da API.
-
-bash
-python sync/sync_ly_turma_docentes.py
-Com --pages N: lê apenas N páginas (a partir do checkpoint) e para.
-
-bash
-python sync/sync_ly_turma_docentes.py --pages 5
-Com --reset: reseta o checkpoint para página 0 e reinicia a sincronização do início.
-
-bash
-python sync/sync_ly_turma_docentes.py --reset
-Combinado: --reset --pages 10 (reseta e lê 10 páginas).
-
-bash
-python sync/sync_ly_turma_docentes.py --reset --pages 10
