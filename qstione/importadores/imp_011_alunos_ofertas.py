@@ -7,72 +7,44 @@ REGRAS PRINCIPAIS
 -----------------
 
 1. A fonte da matrícula é LY_MATRICULA.
-
 2. A oferta é identificada por disciplina, turma, ano e semestre.
-
 3. O codigoOferta é gerado pela mesma função utilizada pelo IMP-005.
-
 4. O curso da oferta é obtido de LY_TURMA.curso.
-
 5. Se LY_TURMA.curso for NULL, vazio ou 999, codigoCurso = 999.
-
 6. Cursos definidos são normalizados pelo mesmo MAPEAMENTO_CURSOS usado
    pelo IMP-002 e IMP-010.
-
 7. Somente matrículas de alunos com sit_aluno = 'Ativo' são importadas.
-   Essa regra é deliberadamente igual à do IMP-010, pois o Qstione exige
-   que o aluno esteja previamente cadastrado no curso para aceitar o
-   vínculo aluno x oferta do IMP-011.
-
 8. A turma deve atender aos filtros de ano, período, situação e faculdade.
-   Turmas compartilhadas sem curso definido são aceitas quando a faculdade
-   001 está entre as faculdades configuradas, pois utilizam o curso 999.
-
 9. A existência da matrícula não depende de docente.
-
 10. A tabela destino é totalmente reconstruída em cada execução.
-
 11. O arquivo pode ser executado diretamente pelo botão Play do VS Code.
+12. executar_importacao() é mantido como ponto de entrada compatível com
+    qstione.processos.carga_completa.
 """
 
 import os
 import sys
 
-
 ROOT = os.path.dirname(
     os.path.dirname(
-        os.path.dirname(
-            os.path.abspath(__file__)
-        )
+        os.path.dirname(os.path.abspath(__file__))
     )
 )
 
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-
 from core.database import get_db_connection
 
-from qstione.core.transformacoes import (
-    gerar_codigo_oferta,
-    truncar_texto,
-)
-
-from qstione.core.validacoes import (
-    validar_matricula,
-    validar_codigo_curso,
-)
-
+from qstione.core.transformacoes import gerar_codigo_oferta, truncar_texto
+from qstione.core.validacoes import validar_matricula, validar_codigo_curso
 from qstione.config.filtros import (
     ANO_VIGENTE,
     PERIODOS_VIGENTES,
     FACULDADES_INCLUIDAS,
     SITUACAO_TURMA_VALIDA,
 )
-
-from qstione.importadores.imp_002_disciplina import (
-    MAPEAMENTO_CURSOS,
-)
+from qstione.importadores.imp_002_disciplina import MAPEAMENTO_CURSOS
 
 
 class ImportadorAlunosOfertas:
@@ -194,20 +166,10 @@ class ImportadorAlunosOfertas:
                     conn.execute(sql)
                     conn.commit()
             except Exception as e:
-                print(
-                    f"⚠️ Índice {nome_indice} não pôde ser criado: {e}"
-                )
+                print(f"⚠️ Índice {nome_indice} não pôde ser criado: {e}")
 
     def obter_dados_lyceum(self):
-        """
-        Obtém somente matrículas de alunos ativos.
-
-        A inclusão de LY_ALUNO nesta consulta é importante: IMP-010 e
-        IMP-011 precisam operar sobre exatamente o mesmo universo de alunos.
-        Caso contrário, o IMP-011 pode enviar ao Qstione um vínculo de um
-        aluno que foi excluído do IMP-010 por estar inativo, produzindo a
-        exceção "Aluno não está cadastrado na plataforma no curso".
-        """
+        """Obtém somente matrículas de alunos com sit_aluno = 'Ativo'."""
 
         periodos = ",".join("?" for _ in PERIODOS_VIGENTES)
         faculdades = ",".join("?" for _ in FACULDADES_INCLUIDAS)
@@ -236,13 +198,9 @@ class ImportadorAlunosOfertas:
                 ON c.curso = t.curso
 
             WHERE a.sit_aluno = 'Ativo'
-
               AND m.ano = ?
-
               AND m.semestre IN ({periodos})
-
               AND t.sit_turma = ?
-
               AND (
                     t.curso IS NULL
                     OR LTRIM(RTRIM(t.curso)) = ''
@@ -304,9 +262,9 @@ class ImportadorAlunosOfertas:
             if not validar_codigo_curso(curso_unificado):
                 total_invalidos += 1
                 print(
-                    f"⚠️ Código de curso inválido: "
-                    f"{curso_original} → {curso_unificado} | "
-                    f"aluno={aluno} | turma={turma} | disciplina={disciplina}"
+                    f"⚠️ Código de curso inválido: {curso_original} → "
+                    f"{curso_unificado} | aluno={aluno} | turma={turma} | "
+                    f"disciplina={disciplina}"
                 )
                 continue
 
@@ -330,10 +288,7 @@ class ImportadorAlunosOfertas:
             }
 
         print(f"🔗 Turmas compartilhadas / curso 999: {total_999}")
-        print(
-            "🔄 Cursos normalizados pelo MAPEAMENTO_CURSOS: "
-            f"{total_mapeados}"
-        )
+        print(f"🔄 Cursos normalizados pelo MAPEAMENTO_CURSOS: {total_mapeados}")
         if total_invalidos:
             print(f"⚠️ Registros inválidos ignorados: {total_invalidos}")
 
@@ -379,10 +334,7 @@ class ImportadorAlunosOfertas:
                         inseridos += 1
                     except Exception as e:
                         erros += 1
-                        print(
-                            f"❌ Erro ao inserir aluno/oferta "
-                            f"{reg}: {e}"
-                        )
+                        print(f"❌ Erro ao inserir aluno/oferta {reg}: {e}")
 
                 conn.commit()
 
@@ -423,9 +375,18 @@ class ImportadorAlunosOfertas:
 
         return self.importar_para_qstione(transformados)
 
+    def executar_importacao(self):
+        """
+        Ponto de entrada utilizado pela carga completa.
+
+        Mantém compatibilidade com qstione.processos.carga_completa,
+        que executa os importadores através deste método.
+        """
+        return self.executar()
+
 
 if __name__ == "__main__":
-    resultado = ImportadorAlunosOfertas().executar()
+    resultado = ImportadorAlunosOfertas().executar_importacao()
     print("=" * 70)
     print("RESULTADO FINAL")
     print("=" * 70)
