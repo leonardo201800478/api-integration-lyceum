@@ -1,113 +1,32 @@
 # Integração Lyceum → Qstione
 
-## 1. Objetivo
+## 1. Status
 
-Este documento descreve o objetivo, a organização, as regras de negócio e o fluxo de processamento do módulo `qstione` do projeto `aluno-sync`.
+**Carga ativa via HTTP POST: FINALIZADA e validada para 2026.2.**
 
-A finalidade da integração é transformar dados acadêmicos obtidos do ambiente Lyceum em registros compatíveis com os importadores do Qstione, persistindo primeiro os dados em uma base intermediária local e, posteriormente, enviando-os à API do Qstione.
+A carga completa foi executada com sucesso, sem erros nas etapas registradas. A inativação de usuários e alunos não faz parte deste escopo e será tratada em fase posterior.
 
-A arquitetura separa claramente três responsabilidades:
-
-1. **Lyceum** — fonte acadêmica de origem.
-2. **Base Qstione local** — camada intermediária de consolidação, transformação e auditoria.
-3. **API Qstione** — destino da carga externa.
-
-O princípio fundamental é: **não inventar dados acadêmicos reais para preencher lacunas da origem**. Quando o Qstione exige uma chave obrigatória que não existe no Lyceum para uma situação específica, utiliza-se uma representação técnica explicitamente documentada.
-
----
-
-## 2. Princípios de arquitetura
-
-### 2.1 Fonte de verdade
-
-Os dados acadêmicos devem ser derivados da estrutura do Lyceum sincronizada para o ambiente local. A integração não deve utilizar o Qstione como fonte de verdade para reconstruir dados acadêmicos.
-
-### 2.2 Camada intermediária
-
-Os registros de cada IMP são gravados em tabelas `imp_XXX_*` no banco destinado ao Qstione. Essa camada permite:
-
-- inspecionar os dados antes do envio;
-- repetir uma etapa sem consultar novamente toda a origem;
-- auditar transformações;
-- detectar erros de validação;
-- manter cada importador independente.
-
-### 2.3 Importadores independentes
-
-Cada `imp_XXX_*.py` deve poder ser executado diretamente pelo VS Code/terminal, sem depender da execução prévia de outro script Python.
-
-A dependência entre etapas é **de dados e ordem de carga**, não de chamada entre módulos.
-
-### 2.4 Ordem da carga
-
-A ordem respeita as dependências funcionais do Qstione:
+## 2. Arquitetura
 
 ```text
-IMP-016  Unidades organizacionais
-    ↓
-IMP-001  Cursos
-    ↓
-IMP-002  Disciplinas
-    ↓
-IMP-005  Ofertas
-    ↓
-IMP-006  Usuários
-    ↓
-IMP-007  Usuários × Cursos
-    ↓
-IMP-008  Usuários × Disciplinas
-    ↓
-IMP-009  Professores × Ofertas
-    ↓
-IMP-010  Alunos
-    ↓
-IMP-011  Alunos × Ofertas
-    ↓
-IMP-013  Unidades de avaliação
+Lyceum
+  │
+  │ dados acadêmicos
+  ▼
+Base intermediária Qstione
+  │
+  │ transformação/validação
+  ▼
+API Qstione — HTTP POST
 ```
 
-O `IMP-012` não participa da carga atual, pois foi descontinuado na especificação utilizada pelo projeto.
+O Lyceum é a fonte de verdade acadêmica. As tabelas `imp_XXX_*` funcionam como camada intermediária de consolidação, transformação e auditoria.
 
----
+Cada importador pode ser executado individualmente. A dependência entre etapas é de dados e ordem de carga, não de chamada entre scripts.
 
-## 3. Contrato da API Qstione
+## 3. Configuração vigente
 
-A comunicação com o Qstione utiliza HTTP POST.
-
-A requisição deve possuir os cabeçalhos definidos pelo protocolo, incluindo:
-
-- `versaoProtocolo`;
-- `tokenIdInstituicao`;
-- `codigoTransacao`;
-- `formatoOperacao`;
-- `quantidadeRegistros`.
-
-O corpo da requisição é diretamente um **array JSON** dos registros da etapa. Não deve existir um objeto externo envolvendo a lista.
-
-O protocolo utiliza `application/json` com charset ISO-8859-1. O cliente da integração normaliza caracteres Unicode incompatíveis antes da codificação, evitando falhas de transmissão causadas por pontuação tipográfica ou outros caracteres fora do conjunto ISO-8859-1.
-
-Os códigos de status do processamento devem ser tratados conforme o protocolo:
-
-| Código | Significado |
-|---|---|
-| `0` | Processamento bem-sucedido |
-| `1` | Falha antes do processamento |
-| `2` | Falha de validação |
-| `3` | Falha de execução |
-
-Em processamento assíncrono, a conclusão pode exigir o tratamento do retorno final conforme o protocolo.
-
----
-
-## 4. Configuração central
-
-Os filtros letivos ficam centralizados em:
-
-```text
-qstione/config/filtros.py
-```
-
-Atualmente a configuração registrada no projeto contempla:
+Arquivo: `qstione/config/filtros.py`
 
 ```python
 ANO_VIGENTE = 2026
@@ -117,256 +36,125 @@ FACULDADES_INCLUIDAS = ['001', '007']
 SITUACAO_TURMA_VALIDA = 'aberta'
 ```
 
-Ao mudar o período letivo, a configuração central deve ser revisada antes da execução da carga.
+Ao mudar o período, revisar a configuração central antes de executar a carga.
 
----
+## 4. Contrato da API
 
-# 5. Regra especial: turmas compartilhadas
+As cargas externas utilizam HTTP POST para o endpoint configurado do Qstione.
 
-## 5.1 Problema de origem
+O corpo é um array JSON diretamente, sem objeto externo envolvendo a lista. Os cabeçalhos e campos de protocolo são montados pelo cliente da integração conforme a configuração/protocolo utilizado pelo projeto.
 
-Uma turma compartilhada pode atender alunos de mais de um curso. Nessa situação, a origem Lyceum pode não informar `LY_TURMA.curso`, mantendo o campo `NULL` ou vazio.
+O processamento é considerado bem-sucedido quando a API retorna `HTTP 200` com `status=0` e `erros=0` para a carga enviada.
 
-O Qstione, entretanto, exige `codigoCurso` em entidades que dependem do contexto de curso.
+Os importadores trabalham em lotes para controlar tamanho de requisição e permitir identificação precisa de falhas.
 
-Não é correto escolher arbitrariamente um dos cursos atendidos pela turma, pois isso perderia a característica compartilhada da turma e poderia vincular disciplinas, alunos ou professores ao curso errado.
+## 5. Ordem funcional da carga
 
-## 5.2 Representação técnica
+```text
+IMP-001  Cursos
+   ↓
+IMP-002  Disciplinas
+   ↓
+IMP-005  Ofertas
+   ↓
+IMP-006  Usuários
+   ↓
+IMP-007  Usuários × Cursos
+   ↓
+IMP-008  Usuários × Disciplinas
+   ↓
+IMP-009  Professores × Ofertas
+   ↓
+IMP-010  Alunos
+   ↓
+IMP-011  Alunos × Ofertas
+   ↓
+IMP-013  Unidades de avaliação
+```
 
-Foi estabelecido o seguinte contrato de integração:
+O `IMP-012` não participa da carga atual. O `IMP-016` é tratado conforme a configuração do processo e não deve ser confundido com as etapas ativas acima.
+
+## 6. Regra de turma compartilhada
+
+Quando `LY_TURMA.curso` é `NULL` ou vazio, a turma é considerada compartilhada.
+
+A representação técnica é:
 
 ```text
 codigoCurso = 999
 nomeCurso   = Turma Compartilhada
 ```
 
-O código `999` é **sintético e exclusivo da camada de integração**. Ele não representa um curso acadêmico real cadastrado no Lyceum.
+O `999` é sintético e pertence à camada de integração. Não é um curso acadêmico real do Lyceum.
 
-## 5.3 Quando o 999 deve existir
+O código `999` somente deve existir/utilizado quando houver turma compartilhada válida no período. Não se deve escolher arbitrariamente um curso real para representar uma turma compartilhada.
 
-O `999` não deve ser criado incondicionalmente.
+Também não se deve consultar tabelas acadêmicas de origem usando `999` como se fosse um curso real.
 
-Ele é criado no `IMP-001` somente quando existir pelo menos uma turma válida do período vigente com:
+## 7. IMP-001 — Cursos
 
-```sql
-LY_TURMA.curso IS NULL
-```
+Origem principal: `LY_CURSO` e estruturas curriculares relacionadas.
 
-ou curso vazio após normalização.
+Responsabilidades:
 
-A turma deve obedecer aos mesmos filtros de período, situação e faculdade utilizados pelo processo de disciplinas.
+- selecionar cursos elegíveis;
+- aplicar o mapeamento de cursos;
+- validar dados necessários ao Qstione;
+- criar o curso técnico `999` quando houver turma compartilhada vigente.
 
-Assim:
+## 8. IMP-002 — Disciplinas
 
-```text
-Existe turma compartilhada vigente?
-        │
-   ┌────┴────┐
-   │         │
-  SIM       NÃO
-   │         │
-   ▼         ▼
-criar 999  não criar 999
-```
+Responsável pela carga de disciplinas no contexto correto de curso.
 
-Isso evita poluir o Qstione com um curso sintético quando ele não possui uso no período.
+O código original da origem deve ser utilizado nas consultas ao Lyceum antes da aplicação do de-para. O código unificado é aplicado na etapa de transformação.
 
-## 5.4 Quantidade de períodos
+Para turma compartilhada, o contexto final utiliza `999`, sem tentar tratar esse código como curso acadêmico na origem.
 
-O contrato do `IMP-001` exige `quantPeriodos`.
+## 9. IMP-005 — Ofertas
 
-Como o curso `999` não é um curso acadêmico real e, portanto, não possui duração curricular no Lyceum, o valor técnico utilizado é:
+Transforma turmas/ofertas válidas em registros de oferta do Qstione, preservando o vínculo com disciplina, curso e período.
+
+## 10. IMP-006 — Usuários
+
+O `IMP-006` garante a existência dos usuários necessários às etapas seguintes.
+
+A população final é a união de:
 
 ```text
-quantPeriodos = 1
+docentes com turma elegível
+        UNION
+coordenadores dos cursos elegíveis
+        UNION
+membros ativos do NDE
 ```
 
-Esse valor existe exclusivamente para satisfazer o contrato do importador e **não deve ser interpretado como a duração acadêmica de uma graduação ou curso técnico**.
+### 10.1 Docentes
 
----
+São derivados de `LY_TURMA_DOCENTE` associado a `LY_TURMA`, considerando ano, período, situação de turma e faculdades configuradas.
 
-# 6. IMP-001 — Cursos
+### 10.2 Coordenadores
 
-Arquivo:
+São derivados de `LY_COORDENACAO` associado a `LY_CURSO` e `LY_DOCENTE`.
 
-```text
-qstione/importadores/imp_001_cursos.py
-```
+**Não é necessário que o coordenador tenha turma docente vigente.**
 
-## Objetivo
+### 10.3 NDE
 
-Produzir o catálogo de cursos que será utilizado pelas demais etapas do Qstione.
+São derivados de `imp_nde_membros`, considerando somente membros ativos (`status = S` após normalização). O e-mail do NDE é utilizado para localizar o cadastro em `LY_DOCENTE.mailbox`.
 
-## Origem
+**Não é necessário que o membro NDE tenha turma vigente.**
 
-Cursos reais:
+### 10.4 Deduplicação
 
-```text
-LY_CURSO
-   +
-LY_CURRICULO
-```
+O `NUM_FUNC` identifica o usuário. Um usuário presente em mais de uma origem deve produzir um único cadastro no `IMP-006`.
 
-A consulta considera cursos ativos e os filtros institucionais definidos pelo projeto.
+### 10.5 Responsabilidade
 
-## Transformações
+O `IMP-006` cadastra o usuário. Não deve inventar curso, turma ou papel para satisfazer etapas posteriores.
 
-O importador:
-
-1. consulta os cursos ativos;
-2. obtém o currículo mais recente;
-3. utiliza `prazo_ideal` para `quantPeriodos`;
-4. aplica o de-para de cursos;
-5. consolida códigos equivalentes;
-6. valida código, nome e quantidade de períodos;
-7. grava o resultado em `imp_001_cursos`;
-8. acrescenta o curso sintético `999` quando houver turma compartilhada vigente.
-
-## Exemplo
-
-```text
-Lyceum:
-curso = 141
-
-Integração:
-141 → 056
-
-Qstione:
-056 / DESIGN
-```
-
-Para uma turma sem curso:
-
-```text
-Lyceum:
-LY_TURMA.curso = NULL
-
-Integração:
-NULL → 999
-
-Qstione:
-999 / Turma Compartilhada
-```
-
----
-
-# 7. IMP-002 — Disciplinas
-
-Arquivo:
-
-```text
-qstione/importadores/imp_002_disciplina.py
-```
-
-## Fonte de verdade
-
-A existência da turma válida em `LY_TURMA` determina quais disciplinas devem ser consideradas para a carga.
-
-São utilizados os filtros:
-
-- ano vigente;
-- período vigente;
-- situação de turma válida;
-- faculdades incluídas.
-
-## Regra de curso
-
-O curso original da turma deve ser preservado durante as consultas à grade.
-
-Exemplo:
-
-```text
-LY_TURMA.curso = 141
-       ↓
-consulta LY_GRADE com curso = 141
-       ↓
-unificação 141 → 056
-```
-
-A unificação antes da consulta da grade poderia eliminar a correspondência correta com a origem.
-
-## Turma compartilhada
-
-Para:
-
-```text
-NULL
-''
-999
-```
-
-o contexto é normalizado para:
-
-```text
-999 / Turma Compartilhada
-```
-
-Não se deve tentar consultar `LY_GRADE` com o curso `999`, pois esse código é sintético e não pertence à origem acadêmica.
-
----
-
-# 8. Contexto de curso das disciplinas
-
-Uma mesma disciplina pode existir em contextos de curso distintos.
-
-A lógica de geração do código de disciplina considera o curso unificado, de forma que o contexto seja preservado.
-
-Conceitualmente:
-
-```text
-DISC001 + 056
-DISC001 + 999
-```
-
-representam contextos distintos.
-
-Isso é especialmente importante para disciplinas presentes simultaneamente em cursos reais e em turmas compartilhadas.
-
----
-
-# 9. IMP-005 — Ofertas
-
-Responsável por transformar as ofertas/turmas em registros compatíveis com o Qstione.
+## 11. IMP-007 — Usuários × Cursos
 
 Campos principais:
-
-```text
-codigoOferta
-nomeOferta
-codigoDisciplina
-semestreOferta
-codigoTipoOferta
-codigoOfertaOrigem
-turno
-codigoIdentificacaoAVA
-```
-
-A etapa depende do catálogo de cursos e disciplinas já consolidado.
-
----
-
-# 10. IMP-006 — Usuários
-
-Responsável pela carga de usuários.
-
-Campos principais:
-
-```text
-matriculaUsuario
-codigoUsuario
-emailUsuario
-nomeUsuario
-```
-
-A regra de origem e filtros de docentes/alunos deve permanecer alinhada às etapas posteriores de relacionamento.
-
----
-
-# 11. IMP-007 — Usuários × Cursos
-
-Relaciona usuários aos cursos.
-
-Campos:
 
 ```text
 codigoCurso
@@ -374,194 +162,181 @@ emailUsuario
 papelUsuario
 ```
 
-Quando o usuário estiver associado a uma turma compartilhada, o relacionamento deve utilizar o código técnico `999`, nunca um curso escolhido arbitrariamente.
+O papel é global por usuário.
 
----
-
-# 12. IMP-008 — Usuários × Disciplinas
-
-Relaciona usuários às disciplinas:
+Hierarquia:
 
 ```text
-codigoDisciplina
-emailUsuario
+C > A > P
 ```
 
-A disciplina já deve carregar o contexto correto de curso produzido no `IMP-002`.
+- `C` — Coordenador;
+- `A` — Avaliador de Questões, derivado de NDE;
+- `P` — Professor;
+- `G` — Gestor administrativo/global;
+- `O` — não produzido pelo importador.
 
----
+Para o usuário, o maior papel identificado é aplicado aos cursos aos quais ele possui vínculo válido.
 
-# 13. IMP-009 — Professores × Ofertas
-
-Relaciona professor e oferta:
+Exemplo:
 
 ```text
-codigoOferta
-emailProfessor
+056 → C
+065 → P
+079 → P
 ```
 
-O relacionamento deve preservar a oferta produzida para a turma correta, inclusive quando a origem representa uma turma compartilhada.
-
----
-
-# 14. IMP-010 — Alunos
-
-Campos principais:
+resultado:
 
 ```text
-matriculaAluno
-nomeAluno
-emailAluno
-codigoCurso
-turno
-codigoIdentificacaoAVA
+056 → C
+065 → C
+079 → C
 ```
 
-A regra de domínio de e-mail e demais transformações específicas devem permanecer nos importadores correspondentes e não ser duplicadas no orquestrador.
+### 11.1 NDE
 
----
+Membro NDE ativo recebe `A` globalmente.
 
-# 15. IMP-011 — Alunos × Ofertas
-
-Relaciona aluno e oferta:
+Se também possuir `P`, ocorre promoção:
 
 ```text
-codigoOferta
-matriculaAluno
-codigoCurso
+P → A
 ```
 
-A regra de curso compartilhado é especialmente relevante aqui: quando a origem indicar uma turma sem curso, o relacionamento deve utilizar `999` para satisfazer o contrato do Qstione sem atribuir falsamente o aluno a um curso real.
-
----
-
-# 16. IMP-013 — Unidades de avaliação
-
-Campos:
+Se também possuir `C`:
 
 ```text
-codigoUnidade
-nomeUnidade
-codigoCurso
-codigoDisciplina
-ordemExibicao
-codigoAgrupamento
+C > A > P
 ```
 
-A etapa utiliza o contexto de curso/disciplinas já consolidado.
+e o resultado é `C` para todos os cursos consolidados.
 
----
+Um NDE ativo não pode terminar como `P`.
 
-# 17. O que não deve ser feito
+### 11.2 Coordenador sem turma
 
-### Não criar 999 sempre
+Um coordenador pode existir somente em `LY_COORDENACAO`, sem `LY_TURMA_DOCENTE` vigente. Nesse caso:
 
-O registro só deve existir quando houver uso no período vigente.
+```text
+IMP-006 → cadastra usuário
+IMP-007 → cria vínculo com curso + papel C
+```
 
-### Não alterar LY_CURSO para criar 999
+Esse comportamento é obrigatório.
 
-O código `999` pertence à camada de integração. Não se deve inserir um curso artificial no cadastro acadêmico de origem.
+### 11.3 Curso 999
 
-### Não escolher um curso real para turma compartilhada
+O `999` só aparece no relacionamento de usuário quando o usuário possui vínculo real originado de turma compartilhada. Não deve ser adicionado universalmente.
 
-Isso distorce a relação acadêmica e pode gerar inconsistências nas etapas de alunos, professores, disciplinas e ofertas.
+## 12. IMP-008 — Usuários × Disciplinas
 
-### Não consultar LY_GRADE usando 999
+Relaciona usuários às disciplinas já consolidadas pelo `IMP-002`.
 
-`999` não é um curso de origem.
+## 13. IMP-009 — Professores × Ofertas
 
-### Não substituir o código original antes das consultas de origem
+Relaciona professores às ofertas correspondentes às turmas processadas.
 
-Códigos alternativos devem ser pesquisados na origem antes da unificação.
+## 14. IMP-010 — Alunos
 
----
+Considera alunos elegíveis conforme as regras do importador, incluindo a regra de situação ativa e as transformações específicas de e-mail e curso.
 
-# 18. Execução
+A relação aluno/curso deve preservar o contexto `999` quando a origem for turma compartilhada.
 
-A carga completa é executada pelo processo:
+## 15. IMP-011 — Alunos × Ofertas
 
-```bash
+Relaciona alunos às ofertas das turmas elegíveis. Para turmas compartilhadas, utiliza o curso técnico `999` quando exigido pelo contrato.
+
+## 16. IMP-013 — Unidades de avaliação
+
+Carga das unidades de avaliação vinculadas ao contexto de curso/disciplina já consolidado.
+
+## 17. Resultado de validação 2026.2
+
+A execução final validada apresentou:
+
+```text
+IMP-007
+  coordenadores encontrados = 23
+  vínculos docente/turma    = 487
+  NDE ativos                = 93
+  NDE consolidados          = 63
+  NDE promovidos P → A      = 60
+  NDE terminando como P     = 0
+  G                         = 3
+  C                         = 38
+  A                         = 151
+  P                         = 343
+  TOTAL                     = 535
+  INSERIDOS                 = 535
+  ERROS                     = 0
+
+IMP-010
+  relações aluno/curso = 4.893
+  inseridos             = 4.893
+  erros                 = 0
+
+IMP-011
+  registros = 19.290
+  erros     = 0
+
+IMP-013
+  registros = 11
+  erros     = 0
+```
+
+A carga completa foi concluída com sucesso.
+
+## 18. Critérios de aceite da carga ativa
+
+A carga ativa é considerada finalizada quando:
+
+- os filtros vigentes são aplicados de forma centralizada;
+- cursos e disciplinas respeitam os mapeamentos definidos;
+- `999` somente é usado para turma compartilhada real;
+- usuários necessários ao `IMP-007` existem no `IMP-006`;
+- coordenadores não dependem de turma vigente;
+- NDE ativo não depende de turma vigente;
+- `C > A > P` é respeitado;
+- NDE ativo não termina como `P`;
+- o papel efetivo é global por usuário;
+- a API aceita os lotes sem erros;
+- a execução completa termina sem erro.
+
+## 19. Logs e auditoria
+
+Os importadores registram informações de execução em `logs/`. Os logs são úteis para conferir filtros, quantidades, promoções NDE, erros de API e resultados das etapas.
+
+Credenciais, tokens e dados de ambiente não devem ser registrados em documentação ou versionados.
+
+## 20. Execução
+
+Carga completa:
+
+```powershell
 python executar_qstione.py
 ```
 
-Ou pelo processo específico da carga completa, quando disponível no ambiente.
+Diagnóstico individual:
 
-Um importador individual pode ser executado diretamente, por exemplo:
-
-```bash
-python qstione/importadores/imp_001_cursos.py
-python qstione/importadores/imp_002_disciplina.py
+```powershell
+python qstione/importadores/imp_006_usuarios.py
+python qstione/importadores/imp_007_usuarios_cursos.py
 ```
 
-A execução individual é útil para diagnóstico e validação de uma etapa sem repetir toda a carga.
+Os importadores individuais devem continuar executáveis independentemente para diagnóstico.
 
----
+## 21. Próxima fase — Inativação
 
-# 19. Diagnóstico do curso 999
+A carga ativa está encerrada. A inativação será tratada separadamente.
 
-Antes da carga completa, o `IMP-001` deve apresentar uma indicação semelhante a:
+Escopo planejado:
 
-```text
-🔗 Curso sintético 999 criado: Turma Compartilhada
-```
+1. identificar usuários que deixaram de ser elegíveis;
+2. identificar alunos que deixaram de ser ativos;
+3. identificar vínculos que precisam ser inativados;
+4. confirmar no contrato Qstione o mecanismo correto de inativação;
+5. implementar e testar sem exclusão física indevida;
+6. adicionar auditoria e somente depois integrar ao fluxo automático.
 
-Quando não houver turma compartilhada válida:
-
-```text
-ℹ️ Nenhuma turma compartilhada vigente encontrada; curso 999 não será criado.
-```
-
-Após a execução, a tabela intermediária pode ser conferida com:
-
-```sql
-SELECT
-    codigoCurso,
-    nomeCurso,
-    quantPeriodos,
-    codigoUnidadeOrganizacional
-FROM imp_001_cursos
-WHERE codigoCurso = '999';
-```
-
-Resultado esperado quando houver turma compartilhada:
-
-```text
-999 | Turma Compartilhada | 1 | 4000000001
-```
-
----
-
-# 20. Critérios de aceite
-
-Uma carga é considerada corretamente organizada quando:
-
-- cursos reais vêm da origem Lyceum;
-- códigos equivalentes são consolidados pelo de-para definido;
-- `999` aparece somente quando há turma compartilhada vigente;
-- `999` possui o nome `Turma Compartilhada`;
-- disciplinas de turmas compartilhadas utilizam `codigoCurso=999`;
-- não existe tentativa de localizar `999` em `LY_GRADE`;
-- relacionamentos posteriores preservam `999` quando o contexto é compartilhado;
-- a carga respeita a ordem das dependências;
-- erros da API interrompem a carga quando impedem a consistência da etapa;
-- os dados intermediários podem ser auditados antes do envio;
-- cada importador continua executável de forma independente.
-
----
-
-# 21. Manutenção futura
-
-Ao alterar a integração, seguir esta ordem:
-
-1. verificar a especificação vigente do Qstione;
-2. verificar a estrutura real das tabelas Lyceum utilizadas;
-3. confirmar a regra de negócio;
-4. alterar o filtro central quando a mudança for comum às etapas;
-5. alterar o importador específico quando a regra for exclusiva;
-6. atualizar a documentação;
-7. executar o importador isoladamente;
-8. conferir a tabela intermediária;
-9. executar a etapa contra o Sandbox;
-10. somente então executar a carga completa.
-
-Toda nova regra sintética ou de-para deve ser documentada com sua origem, motivo, impacto e condição de aplicação.
+**Até essa fase ser implementada, a carga ativa não deve ser interpretada como rotina de inativação.**
