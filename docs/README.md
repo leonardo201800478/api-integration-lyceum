@@ -20,6 +20,23 @@ Documento principal da integração. Contém:
 - execução, validação e critérios de aceite;
 - status da carga ativa e escopo reservado para inativação.
 
+### [SYNC_LYCEUM_V2.md](SYNC_LYCEUM_V2.md)
+
+Documento da nova arquitetura de sincronização Lyceum. Contém:
+
+- separação entre coleta Lyceum e carga Qstione;
+- estrutura `sync_v2/`;
+- catálogo de endpoints cobertos;
+- adaptador de compatibilidade;
+- runner controlado;
+- estratégia de migração endpoint por endpoint;
+- objetivos de paginação, checkpoint, incrementalidade, retry e métricas;
+- critérios de segurança para não interferir na carga Qstione.
+
+### [IMP_006_USUARIOS.md](IMP_006_USUARIOS.md)
+
+Documenta a população de usuários do IMP-006, incluindo docentes, coordenadores e NDE.
+
 ### [IMP_007_USUARIOS_CURSOS.md](IMP_007_USUARIOS_CURSOS.md)
 
 Documento específico do IMP-007, detalhando:
@@ -35,41 +52,23 @@ Documento específico do IMP-007, detalhando:
 
 ## Estado atual da implementação
 
-### Carga ativa — FINALIZADA
+### Carga Qstione — FINALIZADA
 
 A carga ativa via POST para a API Qstione foi validada para `2026.2`, com execução completa sem erros nas etapas testadas.
 
-Resultado de referência:
+### Sincronização Lyceum V2 — EM CONSTRUÇÃO
 
-| Etapa | Resultado |
-|---|---:|
-| IMP-007 | 535 registros / 0 erros |
-| IMP-010 | 4.893 relações aluno/curso / 0 erros |
-| IMP-011 | 19.290 registros / 0 erros |
-| IMP-013 | 11 registros / 0 erros |
-| Carga completa | concluída com sucesso |
+A V2 foi criada em paralelo à implementação existente. Nesta primeira fase, os endpoints V2 usam adaptadores para a implementação atual. Isso permite testar uma nova superfície sem alterar o comportamento já validado.
 
-### Inativação — PENDENTE / PRÓXIMA FASE
-
-A inativação de usuários, docentes, NDE e alunos não faz parte da carga ativa finalizada. Será especificada e implementada posteriormente, após definição do comportamento da API Qstione para inativação e realização de testes controlados.
+A V2 **ainda não deve ser considerada substituta da sincronização legada**.
 
 ## Regras de manutenção
 
-Toda alteração funcional relevante deve atualizar a documentação correspondente. Em especial:
+Toda alteração funcional relevante deve atualizar a documentação correspondente.
 
-- filtros de ano/período;
-- faculdades incluídas;
-- situação de turma;
-- mapeamento/de-para de cursos;
-- regras de turma compartilhada;
-- população de usuários;
-- hierarquia de papéis;
-- NDE;
-- relacionamentos aluno/curso;
-- relacionamentos usuário/curso/papel;
-- professor/oferta;
-- contrato da API;
-- ordem das etapas.
+A sincronização Lyceum V2 deve ser migrada **endpoint por endpoint**, sempre comparando os resultados com a implementação atual antes de qualquer substituição.
+
+Não devem ser introduzidas simultaneamente mudanças na sincronização Lyceum e nos importadores Qstione. Isso mantém o diagnóstico isolado e reduz o risco operacional.
 
 ## Separação das regras
 
@@ -80,15 +79,6 @@ A documentação deve distinguir:
 3. **Integração** — transformações necessárias para compatibilizar origem e destino.
 4. **Decisão técnica** — implementação adotada pelo projeto.
 
-Essa separação evita transformar uma decisão de implementação em uma regra acadêmica.
+## Inativação
 
-## Princípios para a próxima fase
-
-A futura inativação deverá ser tratada separadamente da carga ativa e deverá:
-
-- identificar primeiro os registros que perderam elegibilidade;
-- evitar exclusão física quando a API oferecer mecanismo de inativação;
-- validar o contrato da API antes de alterar o código;
-- executar testes controlados;
-- registrar auditoria da alteração;
-- somente então integrar a rotina ao processo automático.
+A inativação de usuários, docentes, NDE e alunos permanece fora do escopo da carga ativa. Será especificada posteriormente, após definição e testes do mecanismo apropriado da API Qstione.
