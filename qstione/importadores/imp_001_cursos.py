@@ -22,7 +22,14 @@ import sys
 import os
 
 # Adiciona o diretório raiz do projeto (aluno-sync) ao sys.path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) )
+sys.path.insert(
+    0,
+    os.path.dirname(
+        os.path.dirname(
+            os.path.dirname(os.path.abspath(__file__))
+        )
+    )
+)
 
 from core.database import get_db_connection
 from qstione.core.transformacoes import (
