@@ -1,9 +1,28 @@
-# qstione/importadores/imp_001_cursos.py
+"""
+qstione/importadores/imp_001_cursos.py
+
+Importador independente de cursos do Lyceum para o Qstione.
+
+REGRAS PRINCIPAIS
+-----------------
+1. Cursos reais são obtidos de LY_CURSO/LY_CURRICULO.
+2. O mapeamento de códigos é aplicado antes da consolidação.
+3. O curso 999 NÃO é um curso acadêmico existente no Lyceum.
+4. O código 999 é uma representação técnica da integração para turmas
+   compartilhadas, cuja LY_TURMA.curso é NULL ou vazio.
+5. O registro 999 somente é criado quando existir pelo menos uma turma
+   válida do período vigente com curso NULL/vazio.
+6. O nome oficial do curso sintético é "Turma Compartilhada".
+7. Para atender ao contrato do IMP-001, quantPeriodos=1 é utilizado no
+   registro sintético; esse valor é técnico e não representa a duração
+   de um curso acadêmico real.
+"""
+
 import sys
 import os
 
 # Adiciona o diretório raiz do projeto (aluno-sync) ao sys.path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) )
 
 from core.database import get_db_connection
 from qstione.core.transformacoes import (
@@ -15,9 +34,15 @@ from qstione.core.validacoes import (
     validar_nome_curso,
     validar_quant_periodos
 )
+from qstione.config.filtros import (
+    ANO_VIGENTE,
+    PERIODOS_VIGENTES,
+    FACULDADES_INCLUIDAS,
+    SITUACAO_TURMA_VALIDA,
+)
 
 # =============================================================================
-# MAPEAMENTO DE CURSOS – UNIFICAÇÃO DE CÓDIGOS (mesmo do importador de disciplinas)
+# MAPEAMENTO DE CURSOS – UNIFICAÇÃO DE CÓDIGOS
 # =============================================================================
 MAPEAMENTO_CURSOS = {
     '034': ('034', 'ADMINISTRAÇÃO'),
@@ -57,14 +82,19 @@ MAPEAMENTO_CURSOS = {
     '019': ('019', 'SISTEMAS DE INFORMAÇÃO'),
     '113': ('113', 'TÉCNICO EM ENFERMAGEM'),
     '080': ('113', 'TÉCNICO EM ENFERMAGEM'),
-    '999': ('999', 'COMPARTILHADA'),  # (não usado aqui, mas mantido por consistência)
+    '999': ('999', 'Turma Compartilhada'),
 }
+
+CURSO_COMPARTILHADO = '999'
+NOME_CURSO_COMPARTILHADO = 'Turma Compartilhada'
+QUANT_PERIODOS_COMPARTILHADA = 1
 
 
 class ImportadorCursos:
 
     def __init__(self):
-        pass
+        self.periodos_placeholders = ','.join('?' for _ in PERIODOS_VIGENTES)
+        self.faculdades_placeholders = ','.join('?' for _ in FACULDADES_INCLUIDAS)
 
     def _tabela_existe(self, nome_tabela: str) -> bool:
         try:
@@ -150,21 +180,55 @@ class ImportadorCursos:
             cursor.execute(query)
             return cursor.fetchall()
 
+    def _existem_turmas_compartilhadas_vigentes(self) -> bool:
+        """
+        Verifica se o período atualmente configurado possui turma válida
+        sem curso em LY_TURMA.
+
+        Essa verificação é propositalmente separada da consulta de cursos
+        reais: o 999 é sintético e não deve depender da existência de uma
+        linha correspondente em LY_CURSO.
+        """
+        query = f"""
+            SELECT TOP 1 1
+            FROM LY_TURMA t
+            WHERE t.ano = ?
+              AND t.semestre IN ({self.periodos_placeholders})
+              AND t.situacao = ?
+              AND t.faculdade IN ({self.faculdades_placeholders})
+              AND (
+                    t.curso IS NULL
+                    OR LTRIM(RTRIM(CAST(t.curso AS NVARCHAR(30)))) = ''
+                  )
+        """
+        parametros = [
+            ANO_VIGENTE,
+            *PERIODOS_VIGENTES,
+            SITUACAO_TURMA_VALIDA,
+            *FACULDADES_INCLUIDAS,
+        ]
+
+        try:
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(query, parametros)
+                return cursor.fetchone() is not None
+        except Exception as e:
+            print(f"  ⚠️  Não foi possível verificar turmas compartilhadas: {e}")
+            raise
+
     def transformar_dados(self, dados_lyceum):
-        # Dicionário para agrupar por código unificado
         cursos_agrupados = {}
 
         for registro in dados_lyceum:
             curso_original, nome_original, prazo_ideal = registro
 
-            # Aplica mapeamento (de-para)
             if curso_original in MAPEAMENTO_CURSOS:
                 curso_unificado, nome_unificado = MAPEAMENTO_CURSOS[curso_original]
             else:
                 curso_unificado = curso_original
-                nome_unificado = nome_original  # fallback (será truncado depois)
+                nome_unificado = nome_original
 
-            # Agrupa pelo código unificado
             if curso_unificado not in cursos_agrupados:
                 cursos_agrupados[curso_unificado] = {
                     'nome': nome_unificado,
@@ -172,24 +236,19 @@ class ImportadorCursos:
                     'quantidade': 0
                 }
             else:
-                # Atualiza o nome para o nome do mapeamento (se houver)
-                # Caso o mapeamento forneça nome, ele tem prioridade
                 if curso_original in MAPEAMENTO_CURSOS:
                     cursos_agrupados[curso_unificado]['nome'] = nome_unificado
-                # Atualiza o maior prazo (se o novo for maior)
                 if prazo_ideal is not None:
                     if (cursos_agrupados[curso_unificado]['prazo_maximo'] is None or
                         prazo_ideal > cursos_agrupados[curso_unificado]['prazo_maximo']):
                         cursos_agrupados[curso_unificado]['prazo_maximo'] = prazo_ideal
             cursos_agrupados[curso_unificado]['quantidade'] += 1
 
-        # Agora transforma cada grupo em um registro final
         dados_transformados = []
+
         for codigo, info in cursos_agrupados.items():
             nome_curso = info['nome']
             prazo = info['prazo_maximo']
-
-            # Trunca nome para 64 caracteres
             nome_curso_truncado = truncar_texto(nome_curso, 64)
 
             if not validar_codigo_curso(codigo):
@@ -205,14 +264,44 @@ class ImportadorCursos:
                 print(f"  ⚠️  Quantidade de períodos inválida: {prazo} para o curso {codigo}")
                 continue
 
-            codigo_unidade = valor_fixo_4000000001(None)
-
             dados_transformados.append({
                 'codigoCurso': str(codigo)[:30],
                 'nomeCurso': nome_curso_truncado,
                 'quantPeriodos': quant_periodos,
-                'codigoUnidadeOrganizacional': codigo_unidade
+                'codigoUnidadeOrganizacional': valor_fixo_4000000001(None)
             })
+
+        # ---------------------------------------------------------------------
+        # CURSO SINTÉTICO 999 – TURMA COMPARTILHADA
+        # ---------------------------------------------------------------------
+        if self._existem_turmas_compartilhadas_vigentes():
+            ja_existe = any(
+                registro['codigoCurso'] == CURSO_COMPARTILHADO
+                for registro in dados_transformados
+            )
+
+            if not ja_existe:
+                nome = truncar_texto(NOME_CURSO_COMPARTILHADO, 64)
+                quant_periodos = validar_quant_periodos(QUANT_PERIODOS_COMPARTILHADA)
+
+                if not validar_codigo_curso(CURSO_COMPARTILHADO):
+                    raise ValueError('Código técnico 999 inválido segundo as validações do IMP-001.')
+                if not validar_nome_curso(nome):
+                    raise ValueError('Nome técnico "Turma Compartilhada" inválido segundo as validações do IMP-001.')
+                if quant_periodos is None:
+                    raise ValueError('quantPeriodos técnico do curso 999 inválido.')
+
+                dados_transformados.append({
+                    'codigoCurso': CURSO_COMPARTILHADO,
+                    'nomeCurso': nome,
+                    'quantPeriodos': quant_periodos,
+                    'codigoUnidadeOrganizacional': valor_fixo_4000000001(None)
+                })
+                print("  🔗 Curso sintético 999 criado: Turma Compartilhada")
+            else:
+                print("  🔗 Curso sintético 999 já presente no conjunto consolidado.")
+        else:
+            print("  ℹ️  Nenhuma turma compartilhada vigente encontrada; curso 999 não será criado.")
 
         return dados_transformados
 
@@ -279,7 +368,7 @@ class ImportadorCursos:
         print("💾 Importando para Qstione...")
         resultado = self.importar_para_qstione(dados_transformados)
 
-        print(f"\n📈 RESULTADO DA IMPORTAÇÃO:")
+        print("\n📈 RESULTADO DA IMPORTAÇÃO:")
         print(f"  ✓ Inseridos: {resultado['total_inseridos']}")
         print(f"  ↻ Atualizados: {resultado['total_atualizados']}")
         print(f"  ✗ Erros: {resultado['total_erros']}")
