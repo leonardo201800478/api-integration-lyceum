@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import logging
 import os
 import sys
@@ -35,6 +36,7 @@ class Etapa:
 
 
 # IMP-016 utiliza exclusivamente o registro fixo já existente na tabela.
+# IMP-012 permanece fora da carga: a transação foi descontinuada na especificação.
 ETAPAS = (
     Etapa(1, "IMP-016", "imp_016_unidades_organizacionais", registro_fixo=True),
     Etapa(2, "IMP-001", "imp_001_cursos", "qstione.importadores.imp_001_cursos"),
@@ -53,17 +55,27 @@ ETAPAS = (
 class CargaCompletaQstione:
     """Executa as cargas em ordem e interrompe no primeiro erro."""
 
-    def __init__(self, url: str = QSTIONE_BASE_URL, token: str = QSTIONE_TOKEN or "", tamanho_lote: int = TAMANHO_LOTE) -> None:
+    def __init__(
+        self,
+        url: str = QSTIONE_BASE_URL,
+        token: str = QSTIONE_TOKEN or "",
+        tamanho_lote: int = TAMANHO_LOTE,
+    ) -> None:
         if tamanho_lote < 1:
             raise ValueError("QSTIONE_TAMANHO_LOTE deve ser maior que zero.")
-        self.cliente = ClienteQstione(url=url, token=token, timeout=QSTIONE_TIMEOUT, ssl_verify=QSTIONE_SSL_VERIFY)
+        self.cliente = ClienteQstione(
+            url=url,
+            token=token,
+            timeout=QSTIONE_TIMEOUT,
+            ssl_verify=QSTIONE_SSL_VERIFY,
+        )
         self.tamanho_lote = tamanho_lote
 
     @staticmethod
     def executar_importador(etapa: Etapa) -> None:
         if etapa.registro_fixo or not etapa.importador:
             return
-        modulo = __import__(etapa.importador, fromlist=["*"])
+        modulo = importlib.import_module(etapa.importador)
         classes = [
             valor for valor in vars(modulo).values()
             if isinstance(valor, type)
@@ -72,6 +84,11 @@ class CargaCompletaQstione:
         ]
         if not classes:
             raise RuntimeError(f"Nenhuma classe Importador encontrada em {etapa.importador}")
+        if len(classes) > 1:
+            raise RuntimeError(
+                f"Mais de uma classe Importador encontrada em {etapa.importador}: "
+                f"{', '.join(cls.__name__ for cls in classes)}"
+            )
         classes[0]().executar_importacao()
 
     @staticmethod
@@ -84,6 +101,137 @@ class CargaCompletaQstione:
         with get_db_connection(database_name="qstione") as conn:
             rows = conn.execute(sql).fetchall()
         return [dict(zip(campos, row)) for row in rows]
+
+    @staticmethod
+    def _validar_tabela_e_colunas(tabela: str, campos: tuple[str, ...]) -> int:
+        """Valida a estrutura sem alterar dados e retorna a quantidade de registros."""
+        with get_db_connection(database_name="qstione") as conn:
+            tabela_existe = conn.execute(
+                """
+                SELECT 1
+                FROM INFORMATION_SCHEMA.TABLES
+                WHERE TABLE_SCHEMA = 'dbo'
+                  AND TABLE_NAME = ?
+                  AND TABLE_TYPE = 'BASE TABLE'
+                """,
+                (tabela,),
+            ).fetchone()
+            if tabela_existe is None:
+                raise RuntimeError(f"Tabela dbo.{tabela} não existe.")
+
+            placeholders = ",".join("?" for _ in campos)
+            rows = conn.execute(
+                f"""
+                SELECT COLUMN_NAME
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_SCHEMA = 'dbo'
+                  AND TABLE_NAME = ?
+                  AND COLUMN_NAME IN ({placeholders})
+                """,
+                (tabela, *campos),
+            ).fetchall()
+            existentes = {row[0] for row in rows}
+            ausentes = [campo for campo in campos if campo not in existentes]
+            if ausentes:
+                raise RuntimeError(
+                    f"Tabela dbo.{tabela}: campos ausentes: {', '.join(ausentes)}"
+                )
+
+            return conn.execute(f"SELECT COUNT(*) FROM dbo.[{tabela]}").fetchone()[0]
+
+    @staticmethod
+    def _validar_importador_importavel(etapa: Etapa) -> None:
+        if etapa.registro_fixo or not etapa.importador:
+            return
+        modulo = importlib.import_module(etapa.importador)
+        classes = [
+            valor for valor in vars(modulo).values()
+            if isinstance(valor, type)
+            and valor.__module__ == modulo.__name__
+            and valor.__name__.startswith("Importador")
+        ]
+        if len(classes) != 1:
+            raise RuntimeError(
+                f"{etapa.transacao}: esperado exatamente 1 classe Importador em "
+                f"{etapa.importador}; encontradas {len(classes)}."
+            )
+        if not hasattr(classes[0], "executar_importacao"):
+            raise RuntimeError(
+                f"{etapa.transacao}: {classes[0].__name__} não possui executar_importacao()."
+            )
+
+    def preflight(self) -> bool:
+        """Valida configuração, módulos e tabelas sem executar nenhum importador."""
+        print("\n" + "=" * 78)
+        print(" PREFLIGHT — CARGA COMPLETA QSTIONE")
+        print(" Nenhum importador será executado e nenhum dado será alterado.")
+        print("=" * 78)
+
+        falhas = []
+        try:
+            validar_configuracao_qstione()
+            print("✓ Configuração Qstione válida")
+        except Exception as exc:
+            falhas.append(f"Configuração Qstione: {exc}")
+
+        print(f"Endpoint: {QSTIONE_BASE_URL}")
+        print(f"SSL verify: {QSTIONE_SSL_VERIFY}")
+        print(f"Timeout: {QSTIONE_TIMEOUT}s")
+        print(f"Tamanho do lote: {self.tamanho_lote}")
+
+        try:
+            with get_db_connection(database_name="lyceum") as conn:
+                conn.execute("SELECT 1").fetchone()
+            print("✓ Conectividade com banco Lyceum")
+        except Exception as exc:
+            falhas.append(f"Banco Lyceum: {exc}")
+
+        try:
+            with get_db_connection(database_name="qstione") as conn:
+                conn.execute("SELECT 1").fetchone()
+            print("✓ Conectividade com banco Qstione")
+        except Exception as exc:
+            falhas.append(f"Banco Qstione: {exc}")
+
+        for etapa in ETAPAS:
+            try:
+                self._validar_importador_importavel(etapa)
+                quantidade = self._validar_tabela_e_colunas(
+                    etapa.tabela,
+                    CAMPOS_API[etapa.transacao],
+                )
+                if etapa.registro_fixo and quantidade != 1:
+                    raise RuntimeError(
+                        f"IMP-016 deve conter exatamente 1 registro fixo; encontrados {quantidade}."
+                    )
+                if not etapa.registro_fixo and quantidade == 0:
+                    raise RuntimeError("Tabela sem registros para a carga.")
+                print(f"✓ {etapa.transacao}: tabela/colunas OK | registros atuais={quantidade}")
+            except Exception as exc:
+                falhas.append(f"{etapa.transacao}: {exc}")
+                print(f"✗ {etapa.transacao}: {exc}")
+
+        try:
+            self.cliente.session.get(self.cliente.url, timeout=self.cliente.timeout, verify=self.cliente.ssl_verify)
+            print("✓ Endpoint Qstione acessível")
+        except Exception as exc:
+            # GET pode ser recusado pelo endpoint sem significar indisponibilidade do POST.
+            print(f"⚠ Endpoint GET não validado: {exc}")
+            print("  A conectividade final será validada pelo POST da carga.")
+
+        if falhas:
+            print("\n" + "!" * 78)
+            print(" PREFLIGHT REPROVADO")
+            for falha in falhas:
+                print(f" - {falha}")
+            print("!" * 78)
+            return False
+
+        print("\n" + "=" * 78)
+        print(" PREFLIGHT APROVADO")
+        print(" Nenhum importador foi executado e nenhum dado foi alterado.")
+        print("=" * 78)
+        return True
 
     def enviar_etapa(self, etapa: Etapa, registros: list[dict]) -> bool:
         total = len(registros)
@@ -102,8 +250,6 @@ class CargaCompletaQstione:
             print(f"   → Lote {numero_lote}: {len(lote)} registros")
             resultado = self.cliente.enviar(etapa.transacao, lote)
 
-            # Uma resposta A significa apenas aceitação. Como a próxima etapa
-            # pode depender desta, não avançamos sem confirmação de conclusão.
             if resultado.assincrono:
                 print(
                     "   ❌ Operação assíncrona aceita pela API "
@@ -127,7 +273,7 @@ class CargaCompletaQstione:
 
     def executar_etapa(self, etapa: Etapa) -> bool:
         print("\n" + "=" * 78)
-        print(f"[{etapa.numero:02d}/11] {etapa.transacao} - {etapa.tabela}")
+        print(f"[{etapa.numero:02d}/{len(ETAPAS):02d}] {etapa.transacao} - {etapa.tabela}")
         print("=" * 78)
 
         if etapa.registro_fixo:
@@ -164,4 +310,10 @@ class CargaCompletaQstione:
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
     validar_configuracao_qstione()
+    if "--preflight" in sys.argv:
+        carga = CargaCompletaQstione()
+        try:
+            sys.exit(0 if carga.preflight() else 1)
+        finally:
+            carga.cliente.close()
     sys.exit(0 if CargaCompletaQstione().executar() else 1)
