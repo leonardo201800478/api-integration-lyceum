@@ -1,27 +1,45 @@
 """
 qstione/importadores/imp_007_usuarios_cursos.py
 
-Importador de usuários por curso para o Qstione.
+Importador IMP-007 - Usuários x Cursos para o Qstione.
 
-REGRAS DE NEGÓCIO
------------------
-P = Professor: origem nos vínculos docente/turma válidos.
-A = Avaliador de Questões: origem na tabela imp_nde_membros.
-C = Coordenador de curso: origem em LY_COORDENACAO.
-G = Gestor da Plataforma: usuário fixo/configurado no código.
-O = Operador de Documentos: não é produzido pela lógica docente deste importador.
+REGRA FUNDAMENTAL DO QSTIONE
+----------------------------
+O Qstione exige que cada vínculo de usuário seja informado com um
+codigoCurso, porém o papelUsuario NÃO é independente por curso. O papel é
+único por usuário dentro da integração.
 
-Hierarquia global de papéis:
-    G > C > A > P
+Portanto, a consolidação ocorre em duas etapas:
 
-A hierarquia é aplicada POR USUÁRIO, antes da geração dos vínculos finais.
-Assim, um coordenador não permanece como professor em outro curso, e um
-avaliador não decai para professor em cursos onde também possua vínculo docente.
+1. Reunir TODOS os cursos aos quais o usuário possui vínculo válido;
+2. Determinar o MAIOR papel do usuário pela hierarquia e propagar esse papel
+   para TODOS esses cursos.
 
-Curso 999:
-    P/C/G podem receber o vínculo 999 conforme as regras de compartilhamento.
-    A não recebe 999 automaticamente, pois seu papel é global e não representa
-    um vínculo acadêmico com o curso compartilhado.
+Hierarquia funcional:
+    C > A > P
+
+G é um papel administrativo fixo/global e não participa da hierarquia docente.
+O = Operador de Documentos não é produzido por este importador.
+
+Exemplo obrigatório:
+    usuário é C no curso 056 e P nos cursos 065 e 079
+    -> IMP-007 deve gerar C em 056, 065 e 079.
+
+Outro exemplo:
+    usuário é A no NDE de 006 e P nos cursos 017, 044 e 059
+    -> IMP-007 deve gerar A em 006, 017, 044 e 059.
+
+Assim, NÃO existe papel por curso. O curso define o vínculo exigido pelo
+Qstione; o papel é o maior papel efetivo do usuário e é propagado para todos
+os cursos aos quais ele está vinculado.
+
+CURSO 999
+---------
+O código 999 representa exclusivamente uma turma compartilhada da origem
+Lyceum (LY_TURMA.curso NULL/vazio). Ele só deve aparecer para um usuário se
+esse usuário possuir efetivamente vínculo com uma turma compartilhada ou
+outra regra explícita que produza 999. O importador NÃO deve acrescentar 999
+artificialmente a todos os usuários C, A ou P.
 """
 
 from __future__ import annotations
@@ -30,7 +48,7 @@ import logging
 import os
 import sys
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if ROOT not in sys.path:
@@ -59,21 +77,20 @@ PAPEL_COORDENADOR = "C"
 PAPEL_AVALIADOR = "A"
 PAPEL_PROFESSOR = "P"
 PAPEIS_VALIDOS = {PAPEL_GERAL, PAPEL_COORDENADOR, PAPEL_AVALIADOR, PAPEL_PROFESSOR}
+
+# Menor número = maior prioridade.
 PRIORIDADE_PAPEIS = {
-    PAPEL_GERAL: 1,
-    PAPEL_COORDENADOR: 2,
-    PAPEL_AVALIADOR: 3,
-    PAPEL_PROFESSOR: 4,
+    PAPEL_COORDENADOR: 1,
+    PAPEL_AVALIADOR: 2,
+    PAPEL_PROFESSOR: 3,
 }
 
-# Usuário administrativo fixo definido para esta integração.
 USUARIO_GERAL = "camila.felicio@foa.org.br"
-# Mantido como usuário especial de coordenação já existente na integração.
 USUARIO_COORDENADOR = "gildo.bernardo@foa.org.br"
 
 
 class ImportadorUsuariosCursos:
-    """Importa e consolida os usuários dos cursos para o IMP-007."""
+    """Importa e consolida usuários x cursos conforme a regra global de papel."""
 
     NOME_TABELA = "imp_007_usuarios_cursos"
 
@@ -90,7 +107,8 @@ class ImportadorUsuariosCursos:
         logger.info("PERIODOS_VIGENTES=%s", PERIODOS_VIGENTES)
         logger.info("FACULDADES_INCLUIDAS=%s", FACULDADES_INCLUIDAS)
         logger.info("SITUACAO_TURMA_VALIDA=%s", SITUACAO_TURMA_VALIDA)
-        logger.info("Hierarquia efetiva: G > C > A > P")
+        logger.info("Regra de papel: C > A > P | papel efetivo global por usuário")
+        logger.info("G = administrativo fixo/global")
         logger.info("=")
 
     @staticmethod
@@ -117,10 +135,10 @@ class ImportadorUsuariosCursos:
     @staticmethod
     def _curso_unificado(curso: Any) -> Tuple[str, str]:
         if curso is None:
-            return CURSO_COMPARTILHADO, "COMPARTILHADA"
+            return CURSO_COMPARTILHADO, "Turma Compartilhada"
         curso = str(curso).strip()
         if not curso or curso == CURSO_COMPARTILHADO:
-            return CURSO_COMPARTILHADO, "COMPARTILHADA"
+            return CURSO_COMPARTILHADO, "Turma Compartilhada"
         mapeamento = MAPEAMENTO_CURSOS.get(curso)
         if not mapeamento:
             return curso, curso
@@ -130,17 +148,13 @@ class ImportadorUsuariosCursos:
         return (codigo or curso), (nome or codigo or curso)
 
     def _tabela_existe(self, nome_tabela: str) -> bool:
-        try:
-            with get_db_connection(database_name="qstione") as conn:
-                row = conn.execute(
-                    """SELECT 1 FROM INFORMATION_SCHEMA.TABLES
-                       WHERE TABLE_NAME = ? AND TABLE_TYPE = 'BASE TABLE'""",
-                    (nome_tabela,),
-                ).fetchone()
-            return row is not None
-        except Exception:
-            logger.exception("Erro ao verificar tabela %s.", nome_tabela)
-            return False
+        with get_db_connection(database_name="qstione") as conn:
+            row = conn.execute(
+                """SELECT 1 FROM INFORMATION_SCHEMA.TABLES
+                   WHERE TABLE_NAME = ? AND TABLE_TYPE = 'BASE TABLE'""",
+                (nome_tabela,),
+            ).fetchone()
+        return row is not None
 
     def _indice_existe(self, nome_indice: str) -> bool:
         try:
@@ -179,7 +193,6 @@ class ImportadorUsuariosCursos:
             ).fetchone()
             if row:
                 return
-
             old = conn.execute(
                 """SELECT kc.name FROM sys.key_constraints kc
                    WHERE kc.parent_object_id = OBJECT_ID(?) AND kc.type = 'PK'""",
@@ -264,12 +277,12 @@ class ImportadorUsuariosCursos:
                AND t.semestre = td.periodo
                AND t.turma = td.turma
                AND t.disciplina = td.disciplina
-            INNER JOIN LY_CURSO c ON c.curso = t.curso
+            LEFT JOIN LY_CURSO c ON c.curso = t.curso
             INNER JOIN LY_DOCENTE d ON d.num_func = td.num_func
             WHERE td.ano = ?
               AND td.periodo IN ({self.periodos_placeholders})
               AND t.sit_turma = ?
-              AND c.faculdade IN ({self.faculdades_placeholders})
+              AND (t.curso IS NULL OR LTRIM(RTRIM(t.curso)) = '' OR c.faculdade IN ({self.faculdades_placeholders}))
               AND (d.ativo = 'S' OR d.ativo IS NULL)
               AND d.mailbox IS NOT NULL
               AND LTRIM(RTRIM(d.mailbox)) <> ''
@@ -304,15 +317,17 @@ class ImportadorUsuariosCursos:
         logger.info("👥 Avaliadores NDE encontrados: %d", len(rows))
         return rows
 
-    @staticmethod
-    def _melhor_papel(papel_atual: Optional[str], novo_papel: Optional[str]) -> Optional[str]:
-        if not papel_atual:
-            return novo_papel
-        if not novo_papel:
-            return papel_atual
-        atual = str(papel_atual).strip().upper()
-        novo = str(novo_papel).strip().upper()
-        return novo if PRIORIDADE_PAPEIS.get(novo, 999) < PRIORIDADE_PAPEIS.get(atual, 999) else atual
+    def _obter_email_docente(self, num_func: Any) -> Optional[str]:
+        try:
+            with get_db_connection(database_name="lyceum") as conn:
+                row = conn.execute(
+                    "SELECT mailbox FROM LY_DOCENTE WHERE num_func = ?",
+                    (num_func,),
+                ).fetchone()
+            return self._normalizar_email(row[0]) if row and row[0] else None
+        except Exception:
+            logger.exception("Erro obtendo mailbox do docente %s.", num_func)
+            return None
 
     def _normalizar_email(self, email: Any) -> Optional[str]:
         if email is None:
@@ -322,33 +337,47 @@ class ImportadorUsuariosCursos:
 
     def _adicionar_candidato(
         self,
-        candidatos: Dict[str, Dict[str, Dict[str, set]]],
+        candidatos: Dict[str, Dict[str, Set[str]]],
         email: Any,
         papel: str,
         curso: Any,
         origem: str,
     ) -> None:
         email = self._normalizar_email(email)
+        papel = str(papel).strip().upper() if papel is not None else ""
         if not email or not self._validar_papel(papel):
-            if email and not self._validar_papel(papel):
+            if email and papel not in PAPEIS_VALIDOS:
                 logger.warning("Papel inválido ignorado: %s | email=%s | origem=%s", papel, email, origem)
             return
         curso_unificado, _ = self._curso_unificado(curso)
         if not self._validar_codigo_curso(curso_unificado):
             logger.warning("Código de curso inválido ignorado: %s | email=%s", curso_unificado, email)
             return
-        candidatos[email][papel]["cursos"].add(curso_unificado)
+        candidatos[email][papel].add(curso_unificado)
 
-    def transformar_dados(self, docentes_turmas, coordenadores, membros_nde) -> List[Dict[str, str]]:
-        """Aplica a hierarquia global G > C > A > P antes de gerar os vínculos."""
-        candidatos = defaultdict(lambda: {
-            PAPEL_GERAL: {"cursos": set()},
-            PAPEL_COORDENADOR: {"cursos": set()},
-            PAPEL_AVALIADOR: {"cursos": set()},
-            PAPEL_PROFESSOR: {"cursos": set()},
-        })
+    def transformar_dados(
+        self,
+        docentes_turmas: List[Tuple[Any, Any, Any]],
+        coordenadores: Dict[Tuple[str, str], bool],
+        membros_nde: List[Tuple[Any, Any]],
+    ) -> List[Dict[str, str]]:
+        """
+        Consolida por usuário e só depois gera os vínculos.
 
-        # P/C: vínculos reais de docente/turma.
+        Regra: o maior papel encontrado para o usuário é propagado para a
+        UNIÃO de todos os cursos aos quais esse usuário possui vínculo.
+        """
+        candidatos: Dict[str, Dict[str, Set[str]]] = defaultdict(
+            lambda: {
+                PAPEL_COORDENADOR: set(),
+                PAPEL_AVALIADOR: set(),
+                PAPEL_PROFESSOR: set(),
+            }
+        )
+
+        # P/C: cada vínculo docente/turma gera o curso real ao qual o usuário
+        # está ligado. Se ele também for coordenador daquele curso, o vínculo
+        # recebe C como candidato; caso contrário, recebe P.
         for num_func, email, curso in docentes_turmas:
             if num_func is None:
                 continue
@@ -357,60 +386,62 @@ class ImportadorUsuariosCursos:
             papel = PAPEL_COORDENADOR if chave_coord in coordenadores else PAPEL_PROFESSOR
             self._adicionar_candidato(candidatos, email, papel, curso, "LY_COORDENACAO" if papel == PAPEL_COORDENADOR else "LY_TURMA_DOCENTE")
 
-        # C: coordenadores também entram quando não possuem vínculo em LY_TURMA_DOCENTE.
+        # Coordenadores também entram mesmo que não possuam turma docente no
+        # período, pois LY_COORDENACAO é fonte própria do papel C.
         for (num_func, curso), _ in coordenadores.items():
             email = self._obter_email_docente(num_func)
             if email:
                 self._adicionar_candidato(candidatos, email, PAPEL_COORDENADOR, curso, "LY_COORDENACAO")
 
-        # A: papel de escopo global; a origem fornece os cursos de referência.
+        # A: os cursos registrados no NDE também são vínculos de curso que
+        # precisam ser preservados. Se o usuário também possuir cursos como P,
+        # a consolidação abaixo unirá todos eles e propagará A para todos.
         for curso, email in membros_nde:
             self._adicionar_candidato(candidatos, email, PAPEL_AVALIADOR, curso, "NDE")
 
-        # G: fixo em código/configuração. Como é global, quando o usuário
-        # também possui vínculos acadêmicos, todos esses cursos passam a
-        # representar o papel G; se não possuir nenhum, o 999 garante um
-        # vínculo técnico mínimo para a carga.
+        # G: usuário administrativo fixo. Mantemos seus cursos efetivamente
+        # encontrados nas fontes e, quando não houver nenhum, 999 como vínculo
+        # técnico mínimo para a carga administrativa existente.
         email_geral = self._normalizar_email(USUARIO_GERAL)
         if email_geral:
             cursos_geral = set()
-            for papel in (PAPEL_COORDENADOR, PAPEL_AVALIADOR, PAPEL_PROFESSOR):
-                cursos_geral.update(candidatos[email_geral][papel]["cursos"])
-            cursos_geral.add(CURSO_COMPARTILHADO)
-            candidatos[email_geral][PAPEL_GERAL]["cursos"].update(cursos_geral)
+            for cursos in candidatos[email_geral].values():
+                cursos_geral.update(cursos)
+            if not cursos_geral:
+                cursos_geral.add(CURSO_COMPARTILHADO)
+            candidatos[email_geral][PAPEL_GERAL] = cursos_geral
 
-        # C fixo já existente na integração; somente reforça C e não cria P.
-        email_coord = self._normalizar_email(USUARIO_COORDENADOR)
-        if email_coord:
-            cursos_existentes = set()
+        # Usuário especial já existente na integração. A regra global continua
+        # valendo: seus cursos efetivos são todos consolidados como C.
+        email_coord_especial = self._normalizar_email(USUARIO_COORDENADOR)
+        if email_coord_especial:
+            cursos_coord = set()
             for papel in (PAPEL_COORDENADOR, PAPEL_AVALIADOR, PAPEL_PROFESSOR):
-                cursos_existentes.update(candidatos[email_coord][papel]["cursos"])
-            if cursos_existentes:
-                candidatos[email_coord][PAPEL_COORDENADOR]["cursos"].update(cursos_existentes)
-            else:
-                candidatos[email_coord][PAPEL_COORDENADOR]["cursos"].add(CURSO_COMPARTILHADO)
+                cursos_coord.update(candidatos[email_coord_especial].get(papel, set()))
+            if cursos_coord:
+                candidatos[email_coord_especial][PAPEL_COORDENADOR].update(cursos_coord)
 
         registros: List[Dict[str, str]] = []
         estatisticas = defaultdict(int)
 
-        # A hierarquia é aplicada por usuário, não por curso.
+        # AQUI está a regra crítica: o papel efetivo é definido uma única vez
+        # por usuário. Depois, o mesmo papel é aplicado a TODOS os cursos que
+        # compõem a união dos vínculos desse usuário.
         for email, papeis in sorted(candidatos.items()):
-            if papeis[PAPEL_GERAL]["cursos"]:
+            if email == email_geral and "G" in papeis:
                 papel_efetivo = PAPEL_GERAL
-            elif papeis[PAPEL_COORDENADOR]["cursos"]:
+                cursos = set(papeis[PAPEL_GERAL])
+            elif papeis[PAPEL_COORDENADOR]:
                 papel_efetivo = PAPEL_COORDENADOR
-            elif papeis[PAPEL_AVALIADOR]["cursos"]:
+                cursos = set().union(*[v for k, v in papeis.items() if k in {PAPEL_COORDENADOR, PAPEL_AVALIADOR, PAPEL_PROFESSOR}])
+            elif papeis[PAPEL_AVALIADOR]:
                 papel_efetivo = PAPEL_AVALIADOR
-            elif papeis[PAPEL_PROFESSOR]["cursos"]:
+                cursos = set().union(*[v for k, v in papeis.items() if k in {PAPEL_COORDENADOR, PAPEL_AVALIADOR, PAPEL_PROFESSOR}])
+            elif papeis[PAPEL_PROFESSOR]:
                 papel_efetivo = PAPEL_PROFESSOR
+                cursos = set(papeis[PAPEL_PROFESSOR])
             else:
                 continue
-
-            cursos = set(papeis[papel_efetivo]["cursos"])
-
-            # P/C/G recebem 999. A não recebe 999 automaticamente.
-            if papel_efetivo in {PAPEL_GERAL, PAPEL_COORDENADOR, PAPEL_PROFESSOR} and cursos:
-                cursos.add(CURSO_COMPARTILHADO)
 
             for curso in sorted(cursos):
                 registros.append({
@@ -428,22 +459,11 @@ class ImportadorUsuariosCursos:
         logger.info("   A = %d", estatisticas[PAPEL_AVALIADOR])
         logger.info("   P = %d", estatisticas[PAPEL_PROFESSOR])
         logger.info("   TOTAL = %d", len(registros))
+        logger.info("   Regra: papel máximo global propagado para todos os cursos do usuário")
         logger.info("=" * 80)
         return registros
 
-    def _obter_email_docente(self, num_func: Any) -> Optional[str]:
-        try:
-            with get_db_connection(database_name="lyceum") as conn:
-                row = conn.execute(
-                    "SELECT mailbox FROM LY_DOCENTE WHERE num_func = ?",
-                    (num_func,),
-                ).fetchone()
-            return self._normalizar_email(row[0]) if row and row[0] else None
-        except Exception:
-            logger.exception("Erro obtendo mailbox do docente %s.", num_func)
-            return None
-
-    def importar_para_qstione(self, dados_transformados) -> Dict[str, int]:
+    def importar_para_qstione(self, dados_transformados: List[Dict[str, str]]) -> Dict[str, int]:
         self._criar_tabela()
         inseridos = 0
         erros = 0
@@ -462,13 +482,26 @@ class ImportadorUsuariosCursos:
                         inseridos += 1
                     except Exception as exc:
                         erros += 1
-                        logger.error("Erro ao inserir: curso=%s | email=%s | papel=%s | erro=%s", registro["codigoCurso"], registro["emailUsuario"], registro["papelUsuario"], exc)
+                        logger.error(
+                            "Erro ao inserir: curso=%s | email=%s | papel=%s | erro=%s",
+                            registro["codigoCurso"], registro["emailUsuario"], registro["papelUsuario"], exc,
+                        )
                 conn.commit()
         except Exception:
             logger.exception("Erro durante a reconstrução da tabela %s.", self.NOME_TABELA)
-            return {"total_inseridos": 0, "total_atualizados": 0, "total_erros": len(dados_transformados), "total_processados": len(dados_transformados)}
+            return {
+                "total_inseridos": 0,
+                "total_atualizados": 0,
+                "total_erros": len(dados_transformados),
+                "total_processados": len(dados_transformados),
+            }
         logger.info("Importação concluída: inseridos=%d | erros=%d", inseridos, erros)
-        return {"total_inseridos": inseridos, "total_atualizados": 0, "total_erros": erros, "total_processados": len(dados_transformados)}
+        return {
+            "total_inseridos": inseridos,
+            "total_atualizados": 0,
+            "total_erros": erros,
+            "total_processados": len(dados_transformados),
+        }
 
     def executar_importacao(self) -> List[Dict[str, str]]:
         logger.info("=" * 100)
@@ -479,7 +512,11 @@ class ImportadorUsuariosCursos:
         membros_nde = self.obter_membros_nde()
         dados_transformados = self.transformar_dados(docentes_turmas, coordenadores, membros_nde)
         resultado = self.importar_para_qstione(dados_transformados)
-        logger.info("📋 RESUMO FINAL | docentes=%d | coordenadores=%d | NDE=%d | processados=%d | inseridos=%d | erros=%d", len(docentes_turmas), len(coordenadores), len(membros_nde), resultado["total_processados"], resultado["total_inseridos"], resultado["total_erros"])
+        logger.info(
+            "📋 RESUMO FINAL | docentes=%d | coordenadores=%d | NDE=%d | processados=%d | inseridos=%d | erros=%d",
+            len(docentes_turmas), len(coordenadores), len(membros_nde),
+            resultado["total_processados"], resultado["total_inseridos"], resultado["total_erros"],
+        )
         return dados_transformados
 
 
