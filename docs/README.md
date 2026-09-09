@@ -1,65 +1,94 @@
-# Documentação do projeto
+# Documentação — aluno-sync
 
-Esta pasta concentra a documentação funcional e técnica das integrações do `aluno-sync`.
+Esta pasta concentra a documentação funcional e técnica do projeto `aluno-sync`, com foco na integração **Lyceum → Qstione** e nas regras necessárias para manutenção segura da carga.
 
-## Documentos
+## Documentos normativos
 
 ### [QSTIONE_CARGA_COMPLETA.md](QSTIONE_CARGA_COMPLETA.md)
 
-Documento principal da integração Lyceum → Qstione. Registra:
+Documento principal da integração. Contém:
 
-- objetivo da integração;
 - arquitetura e responsabilidades;
-- ordem das etapas IMP;
-- contrato de comunicação com a API Qstione;
-- filtros letivos;
-- regras de transformação;
-- regra oficial de turma compartilhada (`999` / `Turma Compartilhada`);
-- responsabilidades dos importadores;
-- execução e diagnóstico;
-- critérios de aceite;
-- orientações para manutenção futura.
+- princípio de fonte de verdade;
+- camada intermediária `imp_XXX_*`;
+- contrato HTTP POST da API Qstione;
+- filtros letivos vigentes;
+- ordem das etapas;
+- regra de turma compartilhada e código técnico `999`;
+- responsabilidades dos principais importadores;
+- regras de usuários, NDE e papéis;
+- execução, validação e critérios de aceite;
+- status da carga ativa e escopo reservado para inativação.
 
 ### [IMP_007_USUARIOS_CURSOS.md](IMP_007_USUARIOS_CURSOS.md)
 
-Documento específico da regra de usuários x cursos do IMP-007. Registra explicitamente:
+Documento específico do IMP-007, detalhando:
 
-- diferença entre vínculo de curso e papel do usuário;
-- hierarquia global `C > A > P`;
-- papel máximo único por usuário;
-- propagação do papel máximo para todos os cursos do usuário;
-- comportamento de coordenadores que também lecionam em outros cursos;
-- comportamento de avaliadores NDE que também possuem vínculos docentes;
-- regra do código técnico `999` para turmas compartilhadas;
-- critérios de aceite do IMP-007.
+- vínculo usuário × curso;
+- papel global por usuário;
+- hierarquia `C > A > P`;
+- papel administrativo `G`;
+- tratamento de membros NDE;
+- propagação do papel efetivo;
+- tratamento do curso técnico `999`;
+- critérios de aceite.
 
-## Regra de documentação
+## Estado atual da implementação
 
-Toda alteração funcional relevante deve atualizar a documentação correspondente.
+### Carga ativa — FINALIZADA
 
-Em especial, qualquer mudança em:
+A carga ativa via POST para a API Qstione foi validada para `2026.2`, com execução completa sem erros nas etapas testadas.
 
-- código de curso;
-- mapeamento/de-para;
-- filtro de período;
+Resultado de referência:
+
+| Etapa | Resultado |
+|---|---:|
+| IMP-007 | 535 registros / 0 erros |
+| IMP-010 | 4.893 relações aluno/curso / 0 erros |
+| IMP-011 | 19.290 registros / 0 erros |
+| IMP-013 | 11 registros / 0 erros |
+| Carga completa | concluída com sucesso |
+
+### Inativação — PENDENTE / PRÓXIMA FASE
+
+A inativação de usuários, docentes, NDE e alunos não faz parte da carga ativa finalizada. Será especificada e implementada posteriormente, após definição do comportamento da API Qstione para inativação e realização de testes controlados.
+
+## Regras de manutenção
+
+Toda alteração funcional relevante deve atualizar a documentação correspondente. Em especial:
+
+- filtros de ano/período;
+- faculdades incluídas;
 - situação de turma;
-- regra de turma compartilhada;
-- relacionamento aluno/curso;
-- relacionamento usuário/curso/papel;
+- mapeamento/de-para de cursos;
+- regras de turma compartilhada;
+- população de usuários;
 - hierarquia de papéis;
-- relacionamento professor/oferta;
+- NDE;
+- relacionamentos aluno/curso;
+- relacionamentos usuário/curso/papel;
+- professor/oferta;
 - contrato da API;
-- ordem de carga;
+- ordem das etapas.
 
-deve ser registrada neste conjunto documental.
+## Separação das regras
 
-## Fonte da regra
+A documentação deve distinguir:
 
-A documentação deve distinguir claramente:
+1. **Especificação Qstione** — exigências do contrato externo.
+2. **Lyceum** — comportamento e dados da origem acadêmica.
+3. **Integração** — transformações necessárias para compatibilizar origem e destino.
+4. **Decisão técnica** — implementação adotada pelo projeto.
 
-1. **regra da especificação Qstione** — exigência do contrato externo;
-2. **regra do Lyceum** — comportamento da origem acadêmica;
-3. **regra de integração** — transformação necessária para compatibilizar origem e destino;
-4. **decisão técnica** — implementação utilizada pelo projeto.
+Essa separação evita transformar uma decisão de implementação em uma regra acadêmica.
 
-Essa separação evita que uma solução técnica seja confundida com uma regra acadêmica de origem.
+## Princípios para a próxima fase
+
+A futura inativação deverá ser tratada separadamente da carga ativa e deverá:
+
+- identificar primeiro os registros que perderam elegibilidade;
+- evitar exclusão física quando a API oferecer mecanismo de inativação;
+- validar o contrato da API antes de alterar o código;
+- executar testes controlados;
+- registrar auditoria da alteração;
+- somente então integrar a rotina ao processo automático.
