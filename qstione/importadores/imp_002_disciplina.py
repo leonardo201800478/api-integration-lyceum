@@ -755,7 +755,7 @@ class ImportadorDisciplina:
 
                 t.curso,
 
-                d.nome AS nome_disciplina,
+                d.nome_disciplina AS nome_disciplina,
 
                 c.faculdade
 
