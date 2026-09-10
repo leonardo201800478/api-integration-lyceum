@@ -48,7 +48,7 @@ ETAPAS = (
     Etapa(8, "IMP-009", "imp_009_professores_ofertas", "qstione.importadores.imp_009_professores_ofertas"),
     Etapa(9, "IMP-010", "imp_010_alunos", "qstione.importadores.imp_010_alunos"),
     Etapa(10, "IMP-011", "imp_011_alunos_ofertas", "qstione.importadores.imp_011_alunos_ofertas"),
-    Etapa(11, "IMP-013", "imp_013_unidades_avaliacao_regras", "qstione.importadores.imp_013_unidades_avaliacao_regras"),
+    Etapa(11, "IMP-013", "imp_013_unidades_avaliacao", "qstione.importadores.imp_013_unidades_avaliacao_regras"),
 )
 
 
