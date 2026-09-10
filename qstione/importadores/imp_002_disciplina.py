@@ -22,8 +22,8 @@ REGRAS PRINCIPAIS
 
 5. Para cursos reais, a faculdade é validada através de LY_CURSO.
 
-6. LY_GRADE é utilizada para obter o nome da disciplina e o período/série
-   vigente aplicável à disciplina.
+6. LY_GRADE é utilizada somente para descobrir o menor período/série
+   aplicável à disciplina.
 
 7. A consulta de LY_GRADE utiliza SEMPRE o código ORIGINAL do curso.
 
@@ -41,8 +41,7 @@ REGRAS PRINCIPAIS
    através do MAPEAMENTO_CURSOS.
 
 8. Caso existam vários registros de LY_GRADE para a mesma combinação
-   curso original + disciplina, será utilizado SEMPRE o registro de MAIOR
-   curriculo. O periodo será o serie_ideal desse currículo vigente.
+   curso original + disciplina, será utilizada a menor série.
 
 9. A disciplina é identificada juntamente com o CONTEXTO DE CURSO.
 
@@ -372,10 +371,6 @@ class ImportadorDisciplina:
             "?" for _ in FACULDADES_INCLUIDAS
         )
 
-        # Cache da grade vigente: evita repetir a mesma consulta para várias
-        # turmas da mesma combinação curso original + disciplina.
-        self._grade_cache = {}
-
         logger.info(
             "=" * 90
         )
@@ -626,47 +621,49 @@ class ImportadorDisciplina:
     # CONSULTA DA GRADE
     # =========================================================================
 
-    def _obter_grade_vigente(
+    def _obter_menor_serie_grade(
         self,
         curso_original,
         disciplina
     ):
         """
-        Obtém os dados da grade VIGENTE para a combinação
-        curso original + disciplina.
+        Obtém a menor serie_ideal da LY_GRADE usando o código ORIGINAL
+        do curso.
 
-        Regra:
-            - a consulta usa SEMPRE o curso ORIGINAL;
-            - o registro vigente é o de MAIOR curriculo;
-            - nomeDisciplina vem de LY_GRADE.nome_exibicao;
-            - periodo vem de LY_GRADE.serie_ideal;
-            - não são retornadas múltiplas linhas por currículo.
+        IMPORTANTE:
+
+        Não é feita nenhuma unificação do curso antes da consulta.
+
+        Exemplo:
+
+            curso_original = 141
+
+        consulta:
+
+            WHERE g.curso = 141
+
+        Somente depois disso o 141 será convertido para 056.
 
         Retorna:
-            (nome_exibicao, serie_ideal)
-            ou (None, None).
+            menor serie_ideal encontrada
+            ou None.
         """
 
         if curso_original is None:
-            return (None, None)
+            return None
 
-        curso_original = str(curso_original).strip()
-        disciplina = str(disciplina or '').strip()
+        curso_original = str(
+            curso_original
+        ).strip()
 
-        if not curso_original or not disciplina:
-            return (None, None)
+        if not curso_original:
+            return None
 
         if curso_original == CURSO_COMPARTILHADO:
-            return (None, None)
-
-        chave_cache = (curso_original, disciplina)
-
-        if chave_cache in self._grade_cache:
-            return self._grade_cache[chave_cache]
+            return None
 
         sql = """
-            SELECT TOP 1
-                g.nome_exibicao,
+            SELECT MIN(
                 TRY_CONVERT(
                     INT,
                     NULLIF(
@@ -675,52 +672,54 @@ class ImportadorDisciplina:
                         )),
                         ''
                     )
-                ) AS serie_ideal
+                )
+            )
             FROM LY_GRADE g
+
             WHERE g.curso = ?
               AND g.disciplina = ?
-            ORDER BY
-                TRY_CONVERT(
-                    INT,
-                    NULLIF(
-                        LTRIM(RTRIM(
-                            CAST(g.curriculo AS NVARCHAR(30))
-                        )),
-                        ''
-                    )
-                ) DESC,
-                g.curriculo DESC,
-                g.id DESC
         """
 
         try:
+
             with get_db_connection(
                 database_name="lyceum"
             ) as conn:
+
                 row = conn.execute(
                     sql,
-                    (curso_original, disciplina)
+                    (
+                        curso_original,
+                        disciplina,
+                    )
                 ).fetchone()
 
             if not row:
-                resultado = (None, None)
-                self._grade_cache[chave_cache] = resultado
-                return resultado
+                return None
 
-            nome = str(row[0] or '').strip() or None
-            serie = converter_inteiro(row[1])
+            valor = row[0]
 
-            resultado = (nome, serie)
-            self._grade_cache[chave_cache] = resultado
-            return resultado
+            if valor is None:
+                return None
+
+            valor = converter_inteiro(
+                valor
+            )
+
+            if valor is None:
+                return None
+
+            return valor
 
         except Exception:
+
             logger.exception(
-                "Erro consultando LY_GRADE vigente | curso=%s | disciplina=%s",
+                "Erro consultando LY_GRADE | curso=%s | disciplina=%s",
                 curso_original,
                 disciplina
             )
-            return (None, None)
+
+            return None
 
     # =========================================================================
     # CONSULTA DAS TURMAS
@@ -756,12 +755,17 @@ class ImportadorDisciplina:
 
                 t.curso,
 
+                d.nome AS nome_disciplina,
+
                 c.faculdade
 
             FROM LY_TURMA t
 
             LEFT JOIN LY_CURSO c
                 ON c.curso = t.curso
+
+            LEFT JOIN LY_DISCIPLINA d
+                ON d.disciplina = t.disciplina
 
             WHERE t.ano = ?
 
@@ -846,6 +850,7 @@ class ImportadorDisciplina:
             "turma",
             "disciplina",
             "curso",
+            "nome_disciplina",
             "faculdade",
         ]
 
@@ -918,10 +923,7 @@ class ImportadorDisciplina:
         Depois da consulta da grade, o curso é unificado.
 
         Quando houver várias grades para o mesmo curso original e
-        disciplina, será utilizado o registro de MAIOR curriculo.
-
-        A consulta da grade retorna no máximo uma linha por contexto.
-        A deduplicação das turmas continua sendo preservada.
+        disciplina, a menor série será utilizada.
         """
 
         registros = {}
@@ -936,6 +938,12 @@ class ImportadorDisciplina:
 
             if not disciplina:
                 continue
+
+            nome_disciplina = str(
+                item.get(
+                    "nome_disciplina"
+                ) or disciplina
+            ).strip()
 
             curso_original = item.get(
                 "curso"
@@ -963,26 +971,16 @@ class ImportadorDisciplina:
             # GRADE
             # ================================================================
 
-            nome_grade = None
             serie_grade = None
 
             if not curso_eh_compartilhado:
 
-                (
-                    nome_grade,
-                    serie_grade
-                ) = self._obter_grade_vigente(
-                    curso_original_str,
-                    disciplina
+                serie_grade = (
+                    self._obter_menor_serie_grade(
+                        curso_original_str,
+                        disciplina
+                    )
                 )
-
-            # LY_GRADE é a fonte do nome para as disciplinas de cursos reais.
-            # Se não houver registro de grade, preservamos o fallback original
-            # para evitar criar nome nulo no destino.
-            nome_disciplina = (
-                nome_grade
-                or disciplina
-            ).strip()
 
             # ================================================================
             # CURSO UNIFICADO
@@ -1114,11 +1112,31 @@ class ImportadorDisciplina:
                     chave
                 ]
 
-                # A grade já foi resolvida pelo MAIOR curriculo, portanto
-                # não fazemos mais seleção de menor período na deduplicação.
-                # As demais ocorrências da mesma disciplina/contexto apenas
-                # confirmam que a disciplina já foi encontrada.
-                continue
+                periodo_existente = (
+                    existente.get(
+                        "periodo"
+                    )
+                    or 1
+                )
+
+                periodo_novo = (
+                    registro.get(
+                        "periodo"
+                    )
+                    or 1
+                )
+
+                if periodo_novo < periodo_existente:
+
+                    existente[
+                        "periodo"
+                    ] = periodo_novo
+
+                    existente[
+                        "serie_ideal"
+                    ] = registro[
+                        "serie_ideal"
+                    ]
 
         dados = list(
             registros.values()
