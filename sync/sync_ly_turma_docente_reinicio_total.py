@@ -27,6 +27,9 @@ Regras
 - O intervalo de retentativa cresce até 5 minutos e permanece nesse limite.
 - A retentativa é indefinida até a conexão voltar ou o operador interromper.
 - Falha durante a leitura da API NÃO altera o checkpoint.
+- Esta variante SEMPRE zera o checkpoint ao iniciar.
+- A tabela LY_TURMA_DOCENTE NÃO é apagada.
+- A sincronização percorre novamente a API desde a primeira página.
 """
 
 import argparse
@@ -100,6 +103,11 @@ DEFAULT_DELAY = (
 )
 
 DEFAULT_CHECKPOINT_PAGES = 100
+
+# Nesta variante o checkpoint é sempre zerado no início.
+# A tabela LY_TURMA_DOCENTE NÃO é limpa: os registros existentes
+# serão reconhecidos como duplicados ou atualizados normalmente.
+RESET_CHECKPOINT_ALWAYS = True
 
 # Retentativa de conexão/API.
 # A sincronização NÃO encerra por falha transitória: continua tentando
@@ -337,6 +345,9 @@ def run(
         "Tabela será limpa? NÃO"
     )
     logger.info(
+        "Checkpoint inicial: ZERO (modo reconstrução completa)"
+    )
+    logger.info(
         "Retentativa API: INDEFINIDA | intervalo máximo: %d segundos",
         RETRY_MAX_DELAY,
     )
@@ -372,17 +383,25 @@ def run(
         # RESET
         # ====================================================================
 
-        if reset_checkpoint:
+        # ====================================================================
+        # RESET OBRIGATÓRIO DO CHECKPOINT
+        # ====================================================================
+
+        if RESET_CHECKPOINT_ALWAYS or reset_checkpoint:
 
             logger.warning(
-                "RESET solicitado."
+                "RESET INICIAL: checkpoint será zerado."
             )
 
             logger.warning(
-                "Somente o checkpoint será resetado."
+                "A tabela LY_TURMA_DOCENTE NÃO será limpa."
             )
 
             if not LyTurmaDocenteModel.reset_checkpoint():
+
+                logger.error(
+                    "Falha ao zerar o checkpoint."
+                )
 
                 return False
 
@@ -832,7 +851,8 @@ def main() -> int:
         "--reset",
         action="store_true",
         help=(
-            "Reseta somente o checkpoint. "
+            "Compatibilidade: o checkpoint já é zerado "
+            "automaticamente nesta variante. "
             "NÃO limpa a tabela."
         ),
     )
