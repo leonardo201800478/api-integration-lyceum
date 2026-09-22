@@ -8,11 +8,10 @@ Execução:
 
 from __future__ import annotations
 
+import logging
 import sys
 import time
-import logging
 from pathlib import Path
-from typing import Dict, Set
 
 # ----------------------------------------------------------------------
 # PATH
@@ -47,7 +46,7 @@ logging.getLogger("models.ly_aluno").setLevel(logging.WARNING)
 # ----------------------------------------------------------------------
 # Função principal otimizada
 # ----------------------------------------------------------------------
-def run(modo: str = "completo") -> Dict[str, int | float]:
+def run(modo: str = "completo") -> dict[str, int | float]:
     """Executa sincronização sem logs individuais e com máximo desempenho."""
     if modo not in ("completo", "incremental"):
         raise ValueError("Modo inválido. Use 'completo' ou 'incremental'.")
@@ -117,8 +116,8 @@ def run(modo: str = "completo") -> Dict[str, int | float]:
     # Pré‑carrega stamps (modo incremental) e matrículas existentes (modo completo)
     # Tudo em uma única consulta por modo, evitando SELECT a cada registro
     # ------------------------------------------------------------------
-    stamps_banco: Dict[str, str] = {}
-    matriculas_existentes: Set[str] = set()
+    stamps_banco: dict[str, str] = {}
+    matriculas_existentes: set[str] = set()
 
     with get_db_connection(database_name="lyceum") as conn:
         if modo == "incremental":
@@ -135,7 +134,7 @@ def run(modo: str = "completo") -> Dict[str, int | float]:
     # Processamento em lote – sem logs individuais
     # ------------------------------------------------------------------
     stats = {"inseridos": 0, "atualizados": 0, "ignorados": 0, "erros": 0}
-    matriculas_processadas: Set[str] = set()
+    matriculas_processadas: set[str] = set()
 
     for idx, aluno in enumerate(alunos_ativos, start=1):
         try:
@@ -201,7 +200,8 @@ def run(modo: str = "completo") -> Dict[str, int | float]:
     tempo_total = time.time() - start_time
 
     with get_db_connection(database_name="lyceum") as conn:
-        total_banco = conn.execute("SELECT COUNT(*) FROM [LY_ALUNO]").fetchone()[0]
+        row = conn.execute("SELECT COUNT(*) FROM [LY_ALUNO]").fetchone()
+        total_banco = int(row[0]) if row is not None else 0
 
     logger.info("=" * 70)
     logger.info("SINCRONIZAÇÃO FINALIZADA")
