@@ -22,7 +22,6 @@ if ROOT not in sys.path:
 
 from core.database import get_db_connection
 
-
 CHECKS = [
     (
         "IMP-010 com curso inexistente",

@@ -153,7 +153,6 @@ A tabela é completamente limpa antes de cada importação.
 import os
 import sys
 
-
 # =============================================================================
 # PATH
 # =============================================================================
@@ -175,30 +174,25 @@ if ROOT not in sys.path:
 # =============================================================================
 
 from core.database import get_db_connection
-
-from qstione.core.transformacoes import (
-    truncar_texto,
-    converter_minusculas,
-    mapear_turno,
-)
-
-from qstione.core.validacoes import (
-    validar_matricula,
-    validar_nome,
-    validar_codigo_curso,
-)
-
 from qstione.config.filtros import (
     ANO_VIGENTE,
-    PERIODOS_VIGENTES,
     FACULDADES_INCLUIDAS,
+    PERIODOS_VIGENTES,
     SITUACAO_TURMA_VALIDA,
 )
-
+from qstione.core.transformacoes import (
+    converter_minusculas,
+    mapear_turno,
+    truncar_texto,
+)
+from qstione.core.validacoes import (
+    validar_codigo_curso,
+    validar_matricula,
+    validar_nome,
+)
 from qstione.importadores.imp_002_disciplina import (
     MAPEAMENTO_CURSOS,
 )
-
 
 # =============================================================================
 # IMPORTADOR
@@ -223,7 +217,6 @@ class ImportadorAlunos:
         Os filtros são obtidos diretamente de qstione.config.filtros.
         """
 
-        pass
 
     # =========================================================================
     # TABELA

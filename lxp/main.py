@@ -1,11 +1,17 @@
 # lxp/main.py
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from core.logger import logger
-from lxp.exportadores import exp_001_cursos, exp_002_curriculum, exp_003_enrollment, exp_004_desenturmar_alunos_cursos_livres_ead
 import sync.sync_ly_alunos
+from core.logger import logger
+from lxp.exportadores import (
+    exp_001_cursos,
+    exp_002_curriculum,
+    exp_003_enrollment,
+    exp_004_desenturmar_alunos_cursos_livres_ead,
+)
 from models.ly_aluno import AlunoModel
 
 EXPORTADORES = [

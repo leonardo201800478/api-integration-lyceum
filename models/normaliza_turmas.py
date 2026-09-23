@@ -7,14 +7,14 @@ para a mesma disciplina, ano e semestre (pois podem ter cursos distintos).
 Execução direta: python -m models.normaliza_turmas
 """
 
-import sys
-import os
 import logging
+import os
+import sys
 from collections import defaultdict
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.database import get_db_connection, fetch_all, execute_query
+from core.database import fetch_all, get_db_connection
 
 logging.basicConfig(
     level=logging.INFO,

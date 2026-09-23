@@ -89,13 +89,12 @@ import re
 
 import pandas as pd
 
-from core.logger import logger
 from core.database import (
-    get_db_connection,
     execute_query,
     fetch_one,
+    get_db_connection,
 )
-
+from core.logger import logger
 
 # ============================================================================
 # CONFIGURAÇÕES

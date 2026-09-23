@@ -6,8 +6,9 @@ SEM chave primária natural – usa IDENTITY.
 """
 
 import logging
-from typing import List, Dict, Any, Optional
-from core.database import get_db_connection, execute_query, fetch_all, fetch_one
+from typing import Any
+
+from core.database import execute_query, fetch_all, fetch_one, get_db_connection
 
 logger = logging.getLogger(__name__)
 
@@ -187,7 +188,7 @@ class LyDisciplinaModel:
             return False
 
     @classmethod
-    def insert(cls, data: Dict) -> bool:
+    def insert(cls, data: dict) -> bool:
         try:
             disciplina_id = cls._normalize_value(data.get('disciplina'))
             if not disciplina_id:
@@ -216,7 +217,7 @@ class LyDisciplinaModel:
             return False
 
     @classmethod
-    def batch_insert(cls, data_list: List[Dict]) -> int:
+    def batch_insert(cls, data_list: list[dict]) -> int:
         if not data_list:
             return 0
         success = 0
@@ -253,7 +254,7 @@ class LyDisciplinaModel:
         return success
 
     @classmethod
-    def get_summary(cls) -> Dict:
+    def get_summary(cls) -> dict:
         queries = {
             'total_disciplinas': f"SELECT COUNT(*) FROM [{cls.TABLE_NAME}]",
             'disciplinas_distintas': f"SELECT COUNT(DISTINCT [disciplina]) FROM [{cls.TABLE_NAME}]",
@@ -269,7 +270,7 @@ class LyDisciplinaModel:
         return results
 
     @classmethod
-    def get_all_disciplinas(cls) -> List[Dict]:
+    def get_all_disciplinas(cls) -> list[dict]:
         sql = f"SELECT * FROM [{cls.TABLE_NAME}] ORDER BY [disciplina]"
         rows = fetch_all(sql, database_name=cls.DB_NAME)
         if not rows:
@@ -283,7 +284,7 @@ class LyDisciplinaModel:
         return [dict(zip(columns, row)) for row in rows]
 
     @classmethod
-    def get_by_disciplina(cls, disciplina_code: str) -> List[Dict]:
+    def get_by_disciplina(cls, disciplina_code: str) -> list[dict]:
         sql = f"SELECT * FROM [{cls.TABLE_NAME}] WHERE [disciplina] = ? ORDER BY [id]"
         rows = fetch_all(sql, (disciplina_code,), database_name=cls.DB_NAME)
         if not rows:
@@ -297,7 +298,7 @@ class LyDisciplinaModel:
         return [dict(zip(columns, row)) for row in rows]
 
     @classmethod
-    def get_disciplinas_ativas(cls) -> List[Dict]:
+    def get_disciplinas_ativas(cls) -> list[dict]:
         sql = f"SELECT * FROM [{cls.TABLE_NAME}] WHERE [ativo] = 'S' ORDER BY [disciplina]"
         rows = fetch_all(sql, database_name=cls.DB_NAME)
         if not rows:

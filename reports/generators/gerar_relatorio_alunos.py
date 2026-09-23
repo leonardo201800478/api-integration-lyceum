@@ -1,10 +1,13 @@
 # reports/generators/gerar_relatorio_alunos.py
 from pathlib import Path
+
 import pandas as pd
+
 from core.logger import logger
-from reports.exporters.xml_exporter import XMLExporter
 from reports.exporters.pdf_exporter import PDFExporter
+from reports.exporters.xml_exporter import XMLExporter
 from reports.queries.relatorio_alunos import get_dados_alunos
+
 
 def gerar_relatorio_alunos(output_dir: Path, formatos=('xml', 'pdf')):
     """

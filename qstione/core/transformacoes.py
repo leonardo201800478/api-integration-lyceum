@@ -6,6 +6,7 @@ Funções de transformação de dados
 import re
 import unicodedata
 
+
 def extrair_usuario_email(email):
     """
     Extrai a parte do email antes do '@' e converte para minúsculas

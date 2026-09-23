@@ -1,8 +1,11 @@
 # reports/exporters/excel_exporter.py
 
-import pandas as pd
 from pathlib import Path
+
+import pandas as pd
+
 from core.logger import logger
+
 
 class ExcelExporter:
     """Exporta DataFrame para Excel com formatação básica."""

@@ -6,6 +6,7 @@ Utiliza o cliente ProvaDisciplinaAPIClient para obter dados paginados.
 """
 
 import logging
+
 from core.api_client import get_prova_disciplina_client
 from models.ly_prova_discip import LyProvaDiscipModel
 

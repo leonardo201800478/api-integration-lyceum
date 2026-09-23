@@ -6,8 +6,11 @@ COM chave primária composta (codAluno, ano, periodo)
 """
 
 import logging
-from typing import List, Dict, Any, Optional
-from core.database import get_db_connection, execute_query, fetch_all, fetch_one
+from typing import Any, ClassVar
+
+import pyodbc
+
+from core.database import execute_query, fetch_all, fetch_one, get_db_connection
 
 logger = logging.getLogger(__name__)
 
@@ -22,10 +25,13 @@ class LyAceitContratoModel:
     DB_NAME = "lyceum"  # nome do banco no SQL Server
 
     # Campos da fonte de dados (exclui metadados)
-    API_FIELDS = ['codAluno', 'ano', 'periodo', 'existeContratoAceito']
+    API_FIELDS: ClassVar[list[str]] = ['codAluno', 'ano', 'periodo', 'existeContratoAceito']
 
     # Colunas de metadados (não inclusas no MERGE como fonte)
-    META_FIELDS = ['data_importacao', 'data_atualizacao']
+    META_FIELDS: ClassVar[list[str]] = [
+        'data_importacao',
+        'data_atualizacao',
+    ]
 
     @classmethod
     def _normalize_value(cls, value: Any) -> Any:
@@ -89,18 +95,18 @@ class LyAceitContratoModel:
             for idx_sql in indexes:
                 try:
                     execute_query(idx_sql, database_name=cls.DB_NAME)
-                except Exception as e:
+                except (pyodbc.Error, TypeError, ValueError) as e:
                     logger.warning(f"Erro ao criar índice: {e}")
 
             logger.info(f"Tabela {cls.TABLE_NAME} criada com sucesso (chave primária composta).")
             return True
 
-        except Exception as e:
+        except (pyodbc.Error, TypeError, ValueError) as e:
             logger.error(f"Erro ao criar tabela {cls.TABLE_NAME}: {e}")
             return False
 
     @classmethod
-    def upsert(cls, data: Dict) -> bool:
+    def upsert(cls, data: dict) -> bool:
         """
         Insere ou atualiza um único registro usando MERGE.
         Espera um dicionário com as chaves: codAluno, ano, periodo, existeContratoAceito.
@@ -153,12 +159,12 @@ class LyAceitContratoModel:
             logger.debug(f"Registro {cod_aluno}/{ano}/{periodo} upsert realizado com sucesso")
             return True
 
-        except Exception as e:
+        except (pyodbc.Error, TypeError, ValueError) as e:
             logger.error(f"Erro ao upsert registro {data.get('codAluno')}/{data.get('ano')}/{data.get('periodo')}: {e}")
             return False
 
     @classmethod
-    def batch_upsert(cls, data_list: List[Dict]) -> int:
+    def batch_upsert(cls, data_list: list[dict]) -> int:
         """Insere ou atualiza múltiplos registros em lote."""
         if not data_list:
             return 0
@@ -211,7 +217,7 @@ class LyAceitContratoModel:
                     cursor.execute(merge_sql, tuple(values))
                     success_count += 1
 
-                except Exception as e:
+                except (pyodbc.Error, TypeError, ValueError) as e:
                     logger.error(f"Erro ao processar registro {data.get('codAluno')}/{data.get('ano')}/{data.get('periodo')}: {e}")
                     error_count += 1
                     continue
@@ -222,7 +228,7 @@ class LyAceitContratoModel:
         return success_count
 
     @classmethod
-    def get_summary(cls) -> Dict:
+    def get_summary(cls) -> dict:
         """Retorna estatísticas da tabela."""
         try:
             queries = {
@@ -240,12 +246,12 @@ class LyAceitContratoModel:
 
             return results
 
-        except Exception as e:
+        except (pyodbc.Error, TypeError, ValueError) as e:
             logger.error(f"Erro ao obter resumo: {e}")
             return {}
 
     @classmethod
-    def get_by_aluno(cls, codAluno: str) -> List[Dict]:
+    def get_by_aluno(cls, codAluno: str) -> list[dict]:
         """Retorna todos os registros de um determinado aluno."""
         try:
             sql = f"SELECT * FROM [{cls.TABLE_NAME}] WHERE [codAluno] = ? ORDER BY [ano] DESC, [periodo] DESC"
@@ -271,12 +277,12 @@ class LyAceitContratoModel:
                 result.append(item)
             return result
 
-        except Exception as e:
+        except (pyodbc.Error, TypeError, ValueError) as e:
             logger.error(f"Erro ao buscar registros do aluno {codAluno}: {e}")
             return []
 
     @classmethod
-    def get_by_ano_periodo(cls, ano: int, periodo: int) -> List[Dict]:
+    def get_by_ano_periodo(cls, ano: int, periodo: int) -> list[dict]:
         """Retorna todos os registros de um determinado ano/período."""
         try:
             sql = f"SELECT * FROM [{cls.TABLE_NAME}] WHERE [ano] = ? AND [periodo] = ? ORDER BY [codAluno]"
@@ -302,6 +308,6 @@ class LyAceitContratoModel:
                 result.append(item)
             return result
 
-        except Exception as e:
+        except (pyodbc.Error, TypeError, ValueError) as e:
             logger.error(f"Erro ao buscar registros para ano/período {ano}/{periodo}: {e}")
             return []

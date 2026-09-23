@@ -20,7 +20,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from core.database import get_db_connection
-from qstione.api.cliente import ClienteQstione, CAMPOS_API
+from qstione.api.cliente import CAMPOS_API, ClienteQstione
 from qstione.config.qstione_config import (
     QSTIONE_BASE_URL,
     QSTIONE_SSL_VERIFY,

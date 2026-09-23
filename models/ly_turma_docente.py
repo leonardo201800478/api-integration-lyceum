@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python3
 """
 models/ly_turma_docente.py
@@ -23,14 +22,15 @@ Características
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, ClassVar
+
+import pyodbc
 
 from core.database import (
     execute_query,
     fetch_one,
     get_db_connection,
 )
-
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +58,7 @@ class LyTurmaDocenteModel:
     # CAMPOS DA API
     # ========================================================================
 
-    API_FIELDS = [
+    API_FIELDS: ClassVar[list[str]] = [
         "chave",
         "ano",
         "periodo",
@@ -95,7 +95,7 @@ class LyTurmaDocenteModel:
     ]
 
     # Campos existentes na tabela que são comparados com a API.
-    DATA_FIELDS = [
+    DATA_FIELDS: ClassVar[list[str]] = [
         "ano",
         "periodo",
         "turma",
@@ -182,7 +182,7 @@ class LyTurmaDocenteModel:
     @classmethod
     def _table_exists(
         cls,
-        table_name: Optional[str] = None,
+        table_name: str | None = None,
     ) -> bool:
         """
         Verifica se uma tabela existe no banco LYCEUM.
@@ -357,12 +357,11 @@ class LyTurmaDocenteModel:
 
             return cls.create_indexes()
 
-        except Exception as exc:
+        except (pyodbc.Error, TypeError, ValueError):
 
             logger.exception(
-                "Erro ao criar %s: %s",
+                "Erro ao criar %s.",
                 cls.TABLE_NAME,
-                exc,
             )
 
             return False
@@ -460,7 +459,7 @@ class LyTurmaDocenteModel:
                     index_name,
                 )
 
-            except Exception as exc:
+            except (pyodbc.Error, TypeError, ValueError) as exc:
 
                 logger.warning(
                     "Não foi possível criar índice %s: %s",
@@ -656,12 +655,11 @@ class LyTurmaDocenteModel:
 
             return True
 
-        except Exception as exc:
+        except (pyodbc.Error, TypeError, ValueError):
 
             logger.exception(
-                "Erro ao criar/migrar checkpoint %s: %s",
+                "Erro ao criar/migrar checkpoint %s.",
                 cls.CHECKPOINT_TABLE,
-                exc,
             )
 
             return False
@@ -673,7 +671,7 @@ class LyTurmaDocenteModel:
     @classmethod
     def get_checkpoint(
         cls,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Retorna o último checkpoint processado com sucesso.
         """
@@ -786,7 +784,7 @@ class LyTurmaDocenteModel:
 
             return True
 
-        except Exception as exc:
+        except (pyodbc.Error, TypeError, ValueError) as exc:
 
             logger.error(
                 "Erro ao atualizar checkpoint: %s",
@@ -830,7 +828,7 @@ class LyTurmaDocenteModel:
 
             return True
 
-        except Exception as exc:
+        except (pyodbc.Error, TypeError, ValueError) as exc:
 
             logger.error(
                 "Erro ao resetar checkpoint: %s",
@@ -868,7 +866,7 @@ class LyTurmaDocenteModel:
 
             return True
 
-        except Exception as exc:
+        except (pyodbc.Error, TypeError, ValueError) as exc:
 
             logger.error(
                 "Erro ao limpar %s: %s",
@@ -885,8 +883,8 @@ class LyTurmaDocenteModel:
     @classmethod
     def batch_insert(
         cls,
-        data_list: List[Dict],
-    ) -> Dict[str, Any]:
+        data_list: list[dict],
+    ) -> dict[str, Any]:
         """
         Processa uma página da API usando INSERT ou UPDATE.
 
@@ -1117,13 +1115,11 @@ class LyTurmaDocenteModel:
 
                     result["inseridos"] += 1
 
-                    if numeric_chave > result[
-                        "ultima_chave_inserida"
-                    ]:
-
-                        result[
+                    result[
                             "ultima_chave_inserida"
-                        ] = numeric_chave
+                        ] = max(result[
+                        "ultima_chave_inserida"
+                    ], numeric_chave)
 
                     continue
 
@@ -1264,7 +1260,7 @@ class LyTurmaDocenteModel:
     @classmethod
     def get_summary(
         cls,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Retorna estatísticas da tabela LY_TURMA_DOCENTE.
         """
@@ -1314,7 +1310,7 @@ class LyTurmaDocenteModel:
                 """,
         }
 
-        results: Dict[str, Any] = {}
+        results: dict[str, Any] = {}
 
         for key, query in queries.items():
 

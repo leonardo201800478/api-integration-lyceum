@@ -6,10 +6,12 @@ SEM chave primária natural - usa IDENTITY.
 """
 
 import logging
-from typing import List, Dict, Any, Optional
-from core.database import get_db_connection, execute_query, fetch_all, fetch_one
 import sys
 from pathlib import Path
+from typing import Any
+
+from core.database import execute_query, fetch_all, fetch_one, get_db_connection
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 logger = logging.getLogger(__name__)
@@ -228,7 +230,7 @@ class LyDocenteModel:
             return False
 
     @classmethod
-    def insert(cls, data: Dict) -> bool:
+    def insert(cls, data: dict) -> bool:
         try:
             cpf = cls._normalize_value(data.get('cpf'))
             num_func = cls._normalize_value(data.get('num_func'))
@@ -259,7 +261,7 @@ class LyDocenteModel:
             return False
 
     @classmethod
-    def batch_insert(cls, data_list: List[Dict]) -> int:
+    def batch_insert(cls, data_list: list[dict]) -> int:
         if not data_list:
             return 0
 
@@ -304,7 +306,7 @@ class LyDocenteModel:
         return success
 
     @classmethod
-    def get_summary(cls) -> Dict:
+    def get_summary(cls) -> dict:
         queries = {
             'total_docentes': f"SELECT COUNT(*) FROM [{cls.TABLE_NAME}]",
             'ativos': f"SELECT COUNT(*) FROM [{cls.TABLE_NAME}] WHERE [ativo] = 'S'",
@@ -321,7 +323,7 @@ class LyDocenteModel:
         return results
 
     @classmethod
-    def get_all_docentes(cls) -> List[Dict]:
+    def get_all_docentes(cls) -> list[dict]:
         sql = f"SELECT * FROM [{cls.TABLE_NAME}] ORDER BY [nome_compl]"
         rows = fetch_all(sql, database_name=cls.DB_NAME)
         if not rows:
@@ -335,7 +337,7 @@ class LyDocenteModel:
         return [dict(zip(columns, row)) for row in rows]
 
     @classmethod
-    def get_by_cpf(cls, cpf: str) -> List[Dict]:
+    def get_by_cpf(cls, cpf: str) -> list[dict]:
         sql = f"SELECT * FROM [{cls.TABLE_NAME}] WHERE [cpf] = ? ORDER BY [num_func]"
         rows = fetch_all(sql, (cpf,), database_name=cls.DB_NAME)
         if not rows:
@@ -349,7 +351,7 @@ class LyDocenteModel:
         return [dict(zip(columns, row)) for row in rows]
 
     @classmethod
-    def get_by_depto(cls, depto: str) -> List[Dict]:
+    def get_by_depto(cls, depto: str) -> list[dict]:
         sql = f"SELECT * FROM [{cls.TABLE_NAME}] WHERE [depto] = ? ORDER BY [nome_compl]"
         rows = fetch_all(sql, (depto,), database_name=cls.DB_NAME)
         if not rows:

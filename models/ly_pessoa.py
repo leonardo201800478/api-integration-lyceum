@@ -6,8 +6,9 @@ Chave primária: pessoa (código numérico)
 """
 
 import logging
-from typing import List, Dict, Any, Optional
-from core.database import get_db_connection, execute_query, fetch_all, fetch_one
+from typing import Any
+
+from core.database import execute_query, fetch_one, get_db_connection
 
 logger = logging.getLogger(__name__)
 
@@ -287,7 +288,7 @@ class LyPessoaModel:
             return False
 
     @classmethod
-    def upsert(cls, data: Dict) -> bool:
+    def upsert(cls, data: dict) -> bool:
         """Insere ou atualiza uma pessoa usando MERGE."""
         pessoa_id = cls._normalize_value(data.get("pessoa"))
         if pessoa_id is None:
@@ -339,7 +340,7 @@ class LyPessoaModel:
             return False
 
     @classmethod
-    def batch_upsert(cls, data_list: List[Dict], batch_size: int = 1000) -> int:
+    def batch_upsert(cls, data_list: list[dict], batch_size: int = 1000) -> int:
         """
         Insere ou atualiza múltiplas pessoas em lotes.
         """
@@ -427,7 +428,7 @@ class LyPessoaModel:
             return total_success
 
     @classmethod
-    def get_summary(cls) -> Dict:
+    def get_summary(cls) -> dict:
         """Retorna estatísticas da tabela."""
         try:
             queries = {

@@ -18,8 +18,8 @@ REGRAS PRINCIPAIS
    de um curso acadêmico real.
 """
 
-import sys
 import os
+import sys
 
 # Adiciona o diretório raiz do projeto (aluno-sync) ao sys.path
 sys.path.insert(
@@ -32,20 +32,17 @@ sys.path.insert(
 )
 
 from core.database import get_db_connection
-from qstione.core.transformacoes import (
-    valor_fixo_4000000001,
-    truncar_texto
+from qstione.config.filtros import (
+    ANO_VIGENTE,
+    FACULDADES_INCLUIDAS,
+    PERIODOS_VIGENTES,
+    SITUACAO_TURMA_VALIDA,
 )
+from qstione.core.transformacoes import truncar_texto, valor_fixo_4000000001
 from qstione.core.validacoes import (
     validar_codigo_curso,
     validar_nome_curso,
-    validar_quant_periodos
-)
-from qstione.config.filtros import (
-    ANO_VIGENTE,
-    PERIODOS_VIGENTES,
-    FACULDADES_INCLUIDAS,
-    SITUACAO_TURMA_VALIDA,
+    validar_quant_periodos,
 )
 
 # =============================================================================

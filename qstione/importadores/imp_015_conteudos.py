@@ -4,7 +4,6 @@ Importador para tabela imp_015_conteudos (Conteúdos Programáticos)
 [ESQUELETO - LÓGICA A SER IMPLEMENTADA]
 """
 
-import sqlite3
 
 
 class ImportadorConteudos:
@@ -49,7 +48,7 @@ class ImportadorConteudos:
         print(f"📊 Registros encontrados: {len(dados_brutos)}")
         dados_transformados = self.transformar_dados(dados_brutos)
         resultado = self.importar_para_qstione(dados_transformados)
-        print(f"\n📈 RESULTADO DA IMPORTAÇÃO (SIMULADO):")
+        print("\n📈 RESULTADO DA IMPORTAÇÃO (SIMULADO):")
         print(f"  ✓ Inseridos: {resultado['total_inseridos']}")
         print(f"  ↻ Atualizados: {resultado['total_atualizados']}")
         print(f"  ✗ Erros: {resultado['total_erros']}")

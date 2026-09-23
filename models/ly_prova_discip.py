@@ -7,8 +7,9 @@ A API retorna uma lista paginada, sem chave natural óbvia. Vamos usar IDENTITY.
 """
 
 import logging
-from typing import List, Dict, Any, Optional
-from core.database import get_db_connection, execute_query, fetch_all, fetch_one
+from typing import Any
+
+from core.database import execute_query, fetch_all, fetch_one, get_db_connection
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +115,7 @@ class LyProvaDiscipModel:
             return False
 
     @classmethod
-    def batch_insert(cls, data_list: List[Dict]) -> int:
+    def batch_insert(cls, data_list: list[dict]) -> int:
         """Insere múltiplos registros em lote (ignora duplicatas baseado em prova+disciplina)."""
         if not data_list:
             return 0
@@ -181,7 +182,7 @@ class LyProvaDiscipModel:
             return False
 
     @classmethod
-    def get_all_provas_disciplinas(cls) -> List[Dict]:
+    def get_all_provas_disciplinas(cls) -> list[dict]:
         """Retorna todos os registros para serem usados na busca de provas detalhadas."""
         sql = f"SELECT * FROM [{cls.TABLE_NAME}] ORDER BY [prova], [disciplina]"
         rows = fetch_all(sql, database_name=cls.DB_NAME)

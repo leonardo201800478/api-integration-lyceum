@@ -8,8 +8,8 @@ cada endpoint será migrada gradualmente para V2 depois dos testes de contrato.
 from __future__ import annotations
 
 import importlib
-from typing import Any, Callable
-
+from collections.abc import Callable
+from typing import Any
 
 FUNCTION_CANDIDATES = ("run", "sincronizar", "sincronizar_dados", "sincronizar_cursos",
                        "sincronizar_disciplinas", "sincronizar_coordenacoes",

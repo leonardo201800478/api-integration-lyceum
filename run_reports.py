@@ -2,8 +2,9 @@
 # run_reports.py
 import argparse
 from pathlib import Path
-from core.logger import logger
+
 from reports.generators.gerar_relatorio_alunos import gerar_relatorio_alunos
+
 # futuramente: from reports.generators.gerar_relatorio_turmas import gerar_relatorio_turmas
 
 def main():

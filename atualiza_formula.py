@@ -1,5 +1,5 @@
+
 import pyodbc
-from typing import List, Tuple
 
 # ============================================================
 # CONFIGURAÇÕES (ALTERE SE NECESSÁRIO)
@@ -98,7 +98,7 @@ def processar_formula(original: str) -> str:
 # ============================================================
 # FUNÇÃO PARA ATUALIZAR UM LOTE
 # ============================================================
-def atualizar_lote(cursor, lotes: List[Tuple]):
+def atualizar_lote(cursor, lotes: list[tuple]):
     """Executa um UPDATE para cada linha do lote."""
     sql = """
         UPDATE [academico].[dbo].[MD_TBL_CURSO_MATRIZ_24072026]

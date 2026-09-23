@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python3
 """
 sync/sync_ly_turma_docentes.py
@@ -35,10 +34,9 @@ Regras
 import argparse
 import logging
 import os
+import random
 import sys
 import time
-import random
-
 
 # ============================================================================
 # PATH
@@ -64,13 +62,10 @@ if PROJECT_ROOT not in sys.path:
 from core.api_client import (
     get_turma_docente_client,
 )
-
 from core.config import config
-
 from models.ly_turma_docente import (
     LyTurmaDocenteModel,
 )
-
 
 # ============================================================================
 # LOGGING
@@ -231,8 +226,7 @@ def _obter_cliente_com_retry():
             attempt += 1
 
             logger.exception(
-                "Falha ao criar/reabrir conexão com a API: %s",
-                exc,
+                "Falha ao criar/reabrir conexão com a API.",
             )
 
             _sleep_retry(attempt, str(exc))
@@ -277,9 +271,8 @@ def _ler_pagina_com_retry(client, page: int, page_size: int):
             attempt += 1
 
             logger.exception(
-                "Falha ao consultar API na página %d: %s",
+                "Falha ao consultar API na página %d.",
                 page,
-                exc,
             )
 
             # A sessão pode ter ficado em estado inválido após timeout,
@@ -297,7 +290,7 @@ def _ler_pagina_com_retry(client, page: int, page_size: int):
 # ============================================================================
 
 def run(
-    max_pages: int = None,
+    max_pages: int | None = None,
     reset_checkpoint: bool = False,
     checkpoint_pages: int = DEFAULT_CHECKPOINT_PAGES,
 ) -> bool:
@@ -523,19 +516,16 @@ def run(
             items_2026 = []
 
             for item in items:
+                ano = item.get("ano")
 
-                try:
-
-                    item_ano = int(
-                        item.get("ano")
-                    )
-
-                except (
-                    TypeError,
-                    ValueError,
-                ):
-
+                if ano is None:
                     item_ano = None
+                else:
+                    try:
+                        item_ano = int(ano)
+
+                    except (TypeError, ValueError):
+                        item_ano = None
 
                 if item_ano == ANO:
 
@@ -798,12 +788,11 @@ def run(
         )
         return False
 
-    except Exception as exc:
+    except Exception:
 
         logger.exception(
             "Erro não recuperável durante sincronização "
-            "LY_TURMA_DOCENTE: %s",
-            exc,
+            "LY_TURMA_DOCENTE.",
         )
 
         return False

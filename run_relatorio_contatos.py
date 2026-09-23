@@ -1,10 +1,14 @@
 #!/usr/bin/env python
 import argparse
-from pathlib import Path
 import webbrowser
+from pathlib import Path
+
 from core.logger import logger
-from reports.generators.gerar_relatorio_contatos_completo import gerar_relatorio_contatos_completo
+from reports.generators.gerar_relatorio_contatos_completo import (
+    gerar_relatorio_contatos_completo,
+)
 from reports.sync_pessoas import verificar_e_sincronizar_pessoas
+
 
 def obter_filtros_interativo():
     """Captura filtros via input do usuário, incluindo os novos campos de ingresso."""

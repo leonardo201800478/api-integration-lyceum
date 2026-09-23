@@ -5,7 +5,8 @@ Modelo para consulta direta à tabela LY_TURMA no SQL Server (sem API)
 """
 
 import logging
-from typing import List, Dict, Any, Optional
+from typing import Any
+
 from core.database import fetch_all
 
 logger = logging.getLogger(__name__)
@@ -16,7 +17,7 @@ class SQLTurmaModel:
     DB_NAME = "lyceum"
 
     @classmethod
-    def get_turmas_abertas(cls, unidades: List[str] = None) -> List[Dict[str, Any]]:
+    def get_turmas_abertas(cls, unidades: list[str] = None) -> list[dict[str, Any]]:
         """
         Retorna turmas com situação 'Aberta' diretamente da tabela LY_TURMA.
         Opcionalmente, filtra por unidades responsáveis.

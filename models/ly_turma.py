@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python3
 """
 models/ly_turma.py
@@ -19,13 +18,15 @@ Características:
 """
 
 import logging
-from typing import List, Dict, Any
+from typing import Any, ClassVar
+
+import pyodbc
 
 from core.database import (
-    get_db_connection,
     execute_query,
     fetch_all,
     fetch_one,
+    get_db_connection,
 )
 
 logger = logging.getLogger(__name__)
@@ -38,7 +39,7 @@ class LyTurmaModel:
 
     CHECKPOINT_TABLE = "SYNC_CHECKPOINT_TURMA"
 
-    API_FIELDS = [
+    API_FIELDS: ClassVar[list[str]] = [
         "ano",
         "semestre",
         "turma",
@@ -180,7 +181,7 @@ class LyTurmaModel:
     @classmethod
     def _table_exists(
         cls,
-        table_name: str = None,
+        table_name: str | None = None,
     ) -> bool:
         """
         Verifica se uma tabela existe no banco Lyceum.
@@ -365,12 +366,11 @@ class LyTurmaModel:
 
             return True
 
-        except Exception as exc:
+        except (pyodbc.Error, TypeError, ValueError):
 
             logger.exception(
-                "Erro ao criar tabela %s: %s",
+                "Erro ao criar tabela %s.",
                 cls.TABLE_NAME,
-                exc,
             )
 
             return False
@@ -522,7 +522,7 @@ class LyTurmaModel:
                     index_name,
                 )
 
-            except Exception as exc:
+            except (pyodbc.Error, TypeError, ValueError) as exc:
 
                 logger.warning(
                     "Não foi possível criar índice %s: %s",
@@ -590,17 +590,16 @@ class LyTurmaModel:
 
             return True
 
-        except Exception as exc:
+        except (pyodbc.Error, TypeError, ValueError):
 
             logger.exception(
-                "Erro ao criar checkpoint: %s",
-                exc,
+                "Erro ao criar checkpoint.",
             )
 
             return False
 
     @classmethod
-    def get_checkpoint(cls) -> Dict[str, int]:
+    def get_checkpoint(cls) -> dict[str, int]:
         """
         Retorna a última página processada com sucesso.
 
@@ -709,7 +708,7 @@ class LyTurmaModel:
 
             return True
 
-        except Exception as exc:
+        except (pyodbc.Error, TypeError, ValueError) as exc:
 
             logger.error(
                 "Erro ao atualizar checkpoint para página %d: %s",
@@ -754,7 +753,7 @@ class LyTurmaModel:
 
             return True
 
-        except Exception as exc:
+        except (pyodbc.Error, TypeError, ValueError) as exc:
 
             logger.error(
                 "Erro ao reiniciar checkpoint: %s",
@@ -770,7 +769,7 @@ class LyTurmaModel:
     @classmethod
     def insert(
         cls,
-        data: Dict,
+        data: dict,
     ) -> bool:
         """
         Insere uma turma individual.
@@ -880,7 +879,7 @@ class LyTurmaModel:
 
             return True
 
-        except Exception as exc:
+        except (pyodbc.Error, TypeError, ValueError) as exc:
 
             logger.error(
                 "Erro ao inserir turma %s/%s/%s/%s: %s",
@@ -900,8 +899,8 @@ class LyTurmaModel:
     @classmethod
     def batch_insert(
         cls,
-        data_list: List[Dict],
-    ) -> Dict[str, int]:
+        data_list: list[dict],
+    ) -> dict[str, int]:
         """
         Processa uma página/lote em uma única transação.
 
@@ -1124,7 +1123,7 @@ class LyTurmaModel:
 
                 conn.commit()
 
-            except Exception:
+            except (pyodbc.Error, TypeError, ValueError):
 
                 # ============================================================
                 # ROLLBACK
@@ -1138,7 +1137,7 @@ class LyTurmaModel:
                         "ROLLBACK executado para o batch LY_TURMA."
                     )
 
-                except Exception as rollback_exc:
+                except (pyodbc.Error, TypeError, ValueError) as rollback_exc:
 
                     logger.error(
                         "Falha no ROLLBACK LY_TURMA: %s",
@@ -1164,7 +1163,7 @@ class LyTurmaModel:
     # ========================================================================
 
     @classmethod
-    def get_summary(cls) -> Dict:
+    def get_summary(cls) -> dict:
         """
         Retorna estatísticas da LY_TURMA.
 
@@ -1242,7 +1241,7 @@ class LyTurmaModel:
     # ========================================================================
 
     @classmethod
-    def get_all_turmas(cls) -> List[Dict]:
+    def get_all_turmas(cls) -> list[dict]:
         """
         Retorna todas as turmas.
 
@@ -1296,7 +1295,7 @@ class LyTurmaModel:
         cls,
         ano: int,
         semestre: int,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """
         Retorna turmas de determinado ano e semestre.
 
@@ -1357,7 +1356,7 @@ class LyTurmaModel:
     def get_by_disciplina(
         cls,
         disciplina_code: str,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """
         Retorna todas as turmas de uma disciplina.
 

@@ -8,11 +8,10 @@ SINCRONIZAÇÃO LY_COORDENACAO
 - Somente método GET na API Lyceum
 """
 
-import sys
-import os
-import time
 import logging
-from datetime import datetime
+import os
+import sys
+import time
 
 # ---------------------------------------------------------------------
 # Garantir import do projeto
@@ -24,7 +23,6 @@ if PROJECT_ROOT not in sys.path:
 # ---------------------------------------------------------------------
 # Imports internos
 # ---------------------------------------------------------------------
-from core.config import config
 from core.api_client import get_coordenacao_client
 from models.ly_coordenacao import LyCoordenacaoModel
 

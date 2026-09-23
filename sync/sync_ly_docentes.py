@@ -14,15 +14,15 @@ REGRAS DE NEGÓCIO:
 5. Docentes com e-mail inválido são registrados em log, mas NÃO são excluídos (apenas o padrão é excluído).
 """
 
-import sys
-import os
-import time
 import logging
+import os
 import re
-from datetime import datetime
+import sys
+import time
 from collections import Counter
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Dict, Any, Tuple
+from typing import Any
 
 # -----------------------------------------------------------------------------
 # AJUSTE DE PATH PARA IMPORTAÇÃO DOS MÓDULOS INTERNOS
@@ -35,8 +35,8 @@ if str(RAIZ_PROJETO) not in sys.path:
 # -----------------------------------------------------------------------------
 # IMPORTAÇÕES INTERNAS
 # -----------------------------------------------------------------------------
-from core.config import config
 from core.api_client import DocenteAPIClient
+from core.config import config
 from models.ly_docente import LyDocenteModel
 
 # -----------------------------------------------------------------------------
@@ -63,7 +63,7 @@ def normalizar_cpf(cpf: Any) -> str:
     return re.sub(r"\D", "", str(cpf))
 
 
-def validar_email_docente(email: Any) -> Tuple[bool, str]:
+def validar_email_docente(email: Any) -> tuple[bool, str]:
     """
     Valida e-mail de docente: deve terminar com @foa.org.br.
     Retorna (True, email_normalizado) se válido;
@@ -77,7 +77,9 @@ def validar_email_docente(email: Any) -> Tuple[bool, str]:
     return False, email
 
 
-def validar_docentes(docentes: List[Dict[str, Any]]) -> Tuple[List[Dict], int, int, List[Dict]]:
+def validar_docentes(
+    docentes: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], int, list[dict[str, Any]]]:
     """
     Aplica todas as validações e transformações nos docentes.
 
@@ -139,7 +141,7 @@ def validar_docentes(docentes: List[Dict[str, Any]]) -> Tuple[List[Dict], int, i
     return validos, descartados, emails_invalidos
 
 
-def gerar_estatisticas(docentes: List[Dict]) -> None:
+def gerar_estatisticas(docentes: list[dict]) -> None:
     """Registra estatísticas detalhadas para auditoria."""
     if not docentes:
         return
@@ -173,7 +175,9 @@ def gerar_estatisticas(docentes: List[Dict]) -> None:
         logger.warning("   ⚠️  %s duplicatas de chave encontradas!", total_chaves - unicas)
 
 
-def log_emails_invalidos(docentes_com_email_invalido: List[Dict]) -> None:
+def log_emails_invalidos(
+    docentes_com_email_invalido: list[dict[str, Any]],
+) -> None:
     """Registra em log a matrícula e CPF de cada docente com e-mail inválido."""
     if not docentes_com_email_invalido:
         return
@@ -190,7 +194,10 @@ def log_emails_invalidos(docentes_com_email_invalido: List[Dict]) -> None:
 def run() -> bool:
     logger.info("=" * 70)
     logger.info("🔄 INÍCIO DA SINCRONIA: LY_DOCENTE")
-    logger.info("⏱️  %s", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    logger.info(
+        "⏱️  %s",
+        datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+    )
     logger.info("=" * 70)
 
     tempo_inicio = time.time()
@@ -272,7 +279,7 @@ def run() -> bool:
 
         return True
 
-    except Exception as e:
+    except Exception:
         logger.exception("❌ Falha crítica durante a sincronia de docentes")
         return False
 

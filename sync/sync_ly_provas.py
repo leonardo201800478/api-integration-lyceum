@@ -6,20 +6,20 @@ Para cada turma (ano, disciplina, semestre, turma) e para cada prova da lista,
 chama a API e insere/atualiza.
 """
 
-import sys
-import os
-import time
 import logging
-from typing import List, Dict, Any
+import os
+import sys
+import time
+from typing import Any
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from core.config import config
 from core.api_client import get_prova_client
-from models.sql_turma import SQLTurmaModel
+from core.config import config
 from models.ly_prova import LyProvaModel
+from models.sql_turma import SQLTurmaModel
 
 logging.basicConfig(
     level=logging.INFO,
@@ -42,7 +42,7 @@ PAGE_SIZE = 50          # Número de combinações (turma x prova) por lote
 API_DELAY = 0.5          # Delay entre chamadas
 
 
-def gerar_combinacoes(turmas: List[Dict], provas: List[str]) -> List[Dict[str, Any]]:
+def gerar_combinacoes(turmas: list[dict], provas: list[str]) -> list[dict[str, Any]]:
     """
     Gera todas as combinações de turma + prova.
     Cada combinação é um dicionário com: ano, disciplina, prova, semestre, turma.

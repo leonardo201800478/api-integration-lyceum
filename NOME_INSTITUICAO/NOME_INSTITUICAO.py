@@ -1,8 +1,10 @@
-import pandas as pd
-import re
 import os
+import re
+
+import pandas as pd
 from rapidfuzz import fuzz
 from rapidfuzz.utils import default_process
+
 
 def limpar_nome(nome):
     """

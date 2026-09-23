@@ -14,23 +14,27 @@ membros NDE sem turma, o cadastro é localizado diretamente em LY_DOCENTE pelo
 mailbox.
 """
 
+import logging
 import os
 import sys
-import logging
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from core.database import get_db_connection
-from qstione.core.transformacoes import extrair_usuario_email, converter_minusculas, truncar_texto
-from qstione.core.validacoes import validar_email, validar_nome
 from qstione.config.filtros import (
     ANO_VIGENTE,
-    PERIODOS_VIGENTES,
     FACULDADES_INCLUIDAS,
+    PERIODOS_VIGENTES,
     SITUACAO_TURMA_VALIDA,
 )
+from qstione.core.transformacoes import (
+    converter_minusculas,
+    extrair_usuario_email,
+    truncar_texto,
+)
+from qstione.core.validacoes import validar_email, validar_nome
 from qstione.importadores.imp_002_disciplina import MAPEAMENTO_CURSOS
 
 LOG_DIR = os.path.join(ROOT, "logs")

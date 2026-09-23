@@ -7,22 +7,23 @@ Adaptado para SQL Server (sem conexões SQLite)
 import os
 from pathlib import Path
 
-from qstione.config.tabelas import TABELAS_CONFIG, DES_CONFIG
+from core.database import get_db_connection
+from qstione.config.tabelas import TABELAS_CONFIG
+from qstione.exportadores.excel import ExportadorExcel
 from qstione.importadores.imp_001_cursos import ImportadorCursos
 from qstione.importadores.imp_002_disciplina import ImportadorDisciplinas
 from qstione.importadores.imp_005_ofertas import ImportadorOfertas
 from qstione.importadores.imp_006_usuarios import ImportadorUsuarios
 from qstione.importadores.imp_007_usuarios_cursos import ImportadorUsuariosCursos
-from qstione.importadores.imp_008_usuarios_disciplinas import ImportadorUsuariosDisciplinas
-from qstione.importadores.imp_009_professores_ofertas import ImportadorProfessoresOfertas
+from qstione.importadores.imp_008_usuarios_disciplinas import (
+    ImportadorUsuariosDisciplinas,
+)
+from qstione.importadores.imp_009_professores_ofertas import (
+    ImportadorProfessoresOfertas,
+)
 from qstione.importadores.imp_010_alunos import ImportadorAlunos
 from qstione.importadores.imp_011_alunos_ofertas import ImportadorAlunosOfertas
 from qstione.importadores.imp_013_unidades_avaliacao import ImportadorUnidadesAvaliacao
-from qstione.importadores.imp_015_conteudos import ImportadorConteudos
-from qstione.importadores.imp_016_unidades_organizacionais import ImportadorUnidadesOrganizacionais
-from qstione.exportadores.excel import ExportadorExcel
-from qstione.exportadores.sql import ExportadorSQL
-from core.database import get_db_connection
 
 
 class GestorQstione:
@@ -214,7 +215,6 @@ class GestorQstione:
         print("EXPORTAÇÃO PARA ARQUIVO SQL")
         print("="*60)
         print("⚠️  Exportação SQL ainda não adaptada para SQL Server.")
-        return None
         # exportador = ExportadorSQL()
         # arquivo = exportador.exportar_banco_completo('qstione', 'backups')
         # return arquivo
@@ -223,7 +223,7 @@ class GestorQstione:
     # VERIFICAÇÃO DE TABELAS
     # ----------------------------------------------------------------------
     def verificar_tabela(self, nome_tabela):
-        print(f"\n" + "="*60)
+        print("\n" + "="*60)
         print(f"VERIFICAÇÃO DA TABELA: {nome_tabela}")
         print("="*60)
         try:

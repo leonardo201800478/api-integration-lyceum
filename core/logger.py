@@ -3,6 +3,7 @@
 import logging
 from datetime import datetime
 
+
 def setup_logger():
     """Configura o logger para registrar operações"""
     logger = logging.getLogger('lyceum_sync')

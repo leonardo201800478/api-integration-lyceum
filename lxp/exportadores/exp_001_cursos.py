@@ -1,12 +1,15 @@
 # lxp/exportadores/exp_001_cursos.py
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import os
+
 import pandas as pd
-from core.logger import logger
+
 from core.database import execute_query, fetch_one
+from core.logger import logger
 
 logger.info("=== INÍCIO DO SCRIPT ===")
 

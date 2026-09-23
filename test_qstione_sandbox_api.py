@@ -43,7 +43,6 @@ from typing import Any
 import requests
 from dotenv import load_dotenv
 
-
 # ============================================================================
 # LOCALIZAÇÃO DO PROJETO
 # ============================================================================
@@ -368,9 +367,7 @@ def executar_post_teste() -> bool:
 
     if 200 <= response.status_code < 300:
         status(
-            "ATENÇÃO: o endpoint retornou sucesso para {}.".format(
-                response.status_code
-            ),
+            f"ATENÇÃO: o endpoint retornou sucesso para {response.status_code}.",
             YELLOW,
         )
         status(

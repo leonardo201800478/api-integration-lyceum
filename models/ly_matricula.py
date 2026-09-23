@@ -6,8 +6,9 @@ SEM chave primária natural – usa IDENTITY.
 """
 
 import logging
-from typing import List, Dict, Any, Optional
-from core.database import get_db_connection, execute_query, fetch_all, fetch_one
+from typing import Any
+
+from core.database import execute_query, fetch_all, fetch_one, get_db_connection
 
 logger = logging.getLogger(__name__)
 
@@ -145,7 +146,7 @@ class LyMatriculaModel:
             return False
 
     @classmethod
-    def insert(cls, data: Dict) -> bool:
+    def insert(cls, data: dict) -> bool:
         """Insere uma nova matrícula (não verifica duplicatas)."""
         try:
             aluno = cls._normalize_value(data.get('aluno'))
@@ -181,7 +182,7 @@ class LyMatriculaModel:
             return False
 
     @classmethod
-    def batch_insert(cls, data_list: List[Dict]) -> int:
+    def batch_insert(cls, data_list: list[dict]) -> int:
         """Insere múltiplas matrículas em lote (permite duplicatas)."""
         if not data_list:
             return 0
@@ -231,7 +232,7 @@ class LyMatriculaModel:
         return success
 
     @classmethod
-    def get_summary(cls) -> Dict:
+    def get_summary(cls) -> dict:
         """Retorna estatísticas da tabela."""
         queries = {
             'total_matriculas': f"SELECT COUNT(*) FROM [{cls.TABLE_NAME}]",
@@ -250,7 +251,7 @@ class LyMatriculaModel:
         return results
 
     @classmethod
-    def get_all_matriculas(cls) -> List[Dict]:
+    def get_all_matriculas(cls) -> list[dict]:
         """Retorna todas as matrículas da tabela."""
         sql = f"SELECT * FROM [{cls.TABLE_NAME}] ORDER BY [ano] DESC, [semestre] DESC, [aluno], [disciplina]"
         rows = fetch_all(sql, database_name=cls.DB_NAME)
@@ -265,7 +266,7 @@ class LyMatriculaModel:
         return [dict(zip(columns, row)) for row in rows]
 
     @classmethod
-    def get_by_ano_semestre(cls, ano: int, semestre: int) -> List[Dict]:
+    def get_by_ano_semestre(cls, ano: int, semestre: int) -> list[dict]:
         """Retorna todas as matrículas de um ano/semestre específico."""
         sql = f"SELECT * FROM [{cls.TABLE_NAME}] WHERE [ano] = ? AND [semestre] = ? ORDER BY [aluno], [disciplina]"
         rows = fetch_all(sql, (ano, semestre), database_name=cls.DB_NAME)
@@ -280,7 +281,7 @@ class LyMatriculaModel:
         return [dict(zip(columns, row)) for row in rows]
 
     @classmethod
-    def get_by_aluno(cls, aluno_code: str) -> List[Dict]:
+    def get_by_aluno(cls, aluno_code: str) -> list[dict]:
         """Retorna todas as matrículas de um aluno específico."""
         sql = f"SELECT * FROM [{cls.TABLE_NAME}] WHERE [aluno] = ? ORDER BY [ano] DESC, [semestre] DESC, [disciplina]"
         rows = fetch_all(sql, (aluno_code,), database_name=cls.DB_NAME)

@@ -13,14 +13,14 @@ REGRAS DE NEGÓCIO:
 4. FULL REFRESH: limpa a tabela e insere todos os dados válidos.
 """
 
-import sys
-import os
-import time
 import logging
-from datetime import datetime
+import os
+import sys
+import time
 from collections import Counter
+from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Any, Tuple
+from typing import Any
 
 # -----------------------------------------------------------------------------
 # AJUSTE DE PATH PARA IMPORTAÇÃO DOS MÓDULOS INTERNOS
@@ -33,8 +33,8 @@ if str(RAIZ_PROJETO) not in sys.path:
 # -----------------------------------------------------------------------------
 # IMPORTAÇÕES INTERNAS
 # -----------------------------------------------------------------------------
-from core.config import config
 from core.api_client import get_grade_client
+from core.config import config
 from models.ly_grade import LyGradeModel
 
 # -----------------------------------------------------------------------------
@@ -51,7 +51,7 @@ TOP_N = 5  # Quantidade de itens nos rankings
 # -----------------------------------------------------------------------------
 # FUNÇÕES AUXILIARES
 # -----------------------------------------------------------------------------
-def validar_grades(grades: List[Dict[str, Any]]) -> Tuple[List[Dict], int]:
+def validar_grades(grades: list[dict[str, Any]]) -> tuple[list[dict], int]:
     """
     Filtra grades com campos obrigatórios presentes e não vazios.
     Retorna (lista_de_grades_válidas, quantidade_descartadas).
@@ -70,7 +70,7 @@ def validar_grades(grades: List[Dict[str, Any]]) -> Tuple[List[Dict], int]:
     return validas, descartadas
 
 
-def gerar_estatisticas(grades: List[Dict]) -> None:
+def gerar_estatisticas(grades: list[dict]) -> None:
     """Registra estatísticas detalhadas para auditoria."""
     if not grades:
         logger.info("Nenhuma grade válida para análise.")

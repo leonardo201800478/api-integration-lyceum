@@ -1,12 +1,15 @@
 # lxp/exportadores/exp_003_enrollment.py
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import os
+
 import pandas as pd
+
+from core.database import execute_query, fetch_one, get_db_connection
 from core.logger import logger
-from core.database import get_db_connection, execute_query, fetch_one
 
 # Constantes com valores fixos (UUIDs e IDs)
 EXTERNAL_CLASS_SUBJECT_ID = 'd575b0e5-9193-4737-bdc2-567f5bf246f7'

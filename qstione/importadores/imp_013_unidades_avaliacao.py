@@ -40,10 +40,9 @@ REGRAS
 10. A tabela é reconstruída a cada execução.
 """
 
+import logging
 import os
 import sys
-import logging
-
 
 # ============================================================================
 # PATH
@@ -66,24 +65,20 @@ if ROOT not in sys.path:
 # ============================================================================
 
 from core.database import get_db_connection
-
-from qstione.core.transformacoes import (
-    truncar_texto,
-    converter_inteiro,
-    gerar_codigo_disciplina_curso,
-)
-
 from qstione.config.filtros import (
     ANO_VIGENTE,
-    PERIODOS_VIGENTES,
     FACULDADES_INCLUIDAS,
+    PERIODOS_VIGENTES,
     SITUACAO_TURMA_VALIDA,
 )
-
+from qstione.core.transformacoes import (
+    converter_inteiro,
+    gerar_codigo_disciplina_curso,
+    truncar_texto,
+)
 from qstione.importadores.imp_002_disciplina import (
     MAPEAMENTO_CURSOS,
 )
-
 
 # ============================================================================
 # LOG

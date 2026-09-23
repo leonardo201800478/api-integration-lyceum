@@ -1,7 +1,9 @@
 # reports/exporters/base.py
 from abc import ABC, abstractmethod
-import pandas as pd
 from pathlib import Path
+
+import pandas as pd
+
 
 class Exporter(ABC):
     """Classe base para todos os exportadores de relatórios."""
@@ -15,4 +17,3 @@ class Exporter(ABC):
         :param kwargs: Parâmetros adicionais específicos do formato.
         :return: True se sucesso, False caso contrário.
         """
-        pass

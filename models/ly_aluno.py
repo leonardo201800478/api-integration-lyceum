@@ -5,8 +5,10 @@ Gerencia a sincronização de alunos com a API do Lyceum.
 """
 
 import logging
-from datetime import datetime
-from typing import Set, Dict, Any
+from datetime import datetime, timezone
+from typing import Any, ClassVar
+
+import pyodbc
 
 from core.database import execute_query, fetch_all, fetch_one
 
@@ -19,7 +21,7 @@ class AlunoModel:
     TABLE = "LY_ALUNO"
 
     # Campos que devem ser convertidos para inteiro
-    INTEGER_FIELDS = {
+    INTEGER_FIELDS: ClassVar[set[str]] = {
         "ano_ingresso",
         "anoconcl2g",
         "creditos",
@@ -31,12 +33,12 @@ class AlunoModel:
     }
 
     # Campos booleanos armazenados como S/N
-    BOOLEAN_FIELDS = {
+    BOOLEAN_FIELDS: ClassVar[set[str]] = {
         "representante_turma",
     }
 
     # Campos de data/hora
-    DATETIME_FIELDS = {
+    DATETIME_FIELDS: ClassVar[set[str]] = {
         "dt_ingresso",
         "stamp_atualizacao",
     }
@@ -77,10 +79,13 @@ class AlunoModel:
                     # Detecta timestamp em milissegundos
                     timestamp = value / 1000 if value > 1000000000000 else value
 
-                    return datetime.fromtimestamp(timestamp).strftime(
+                    return datetime.fromtimestamp(
+                        timestamp,
+                        tz=timezone.utc,
+                    ).strftime(
                         "%Y-%m-%d %H:%M:%S"
                     )
-                except Exception:
+                except (OverflowError, OSError, TypeError, ValueError):
                     return str(value)
 
             if isinstance(value, str):
@@ -204,7 +209,7 @@ class AlunoModel:
         )
 
     @staticmethod
-    def upsert(data: Dict[str, Any]) -> bool:
+    def upsert(data: dict[str, Any]) -> bool:
         """
         Insere ou atualiza um aluno usando MERGE.
 
@@ -339,7 +344,7 @@ class AlunoModel:
         try:
             execute_query(
                 merge_sql,
-                [params[column] for column in columns],
+                tuple(params[column] for column in columns),
             )
 
             logger.debug(
@@ -349,7 +354,7 @@ class AlunoModel:
 
             return True
 
-        except Exception as exc:
+        except (pyodbc.Error, TypeError, ValueError) as exc:
             logger.error(
                 "Erro no upsert do aluno %s: %s",
                 matricula,
@@ -359,7 +364,7 @@ class AlunoModel:
             return False
 
     @staticmethod
-    def get_all_matriculas() -> Set[str]:
+    def get_all_matriculas() -> set[str]:
         """
         Retorna todas as matrículas existentes no banco.
 
@@ -403,7 +408,7 @@ class AlunoModel:
 
     @staticmethod
     def delete_obsoletos(
-        matriculas_ativas: Set[str],
+        matriculas_ativas: set[str],
     ) -> int:
         """
         Remove alunos que não estão mais presentes na API.

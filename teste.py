@@ -1,4 +1,5 @@
 from core.api_client import get_pessoa_client
+
 client = get_pessoa_client()
 
 # Substitua por um ID que você tem certeza que existe (ex: 4000238433)

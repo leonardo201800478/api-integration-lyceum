@@ -14,19 +14,19 @@ Características:
 - Arquivo de log: validacao_pessoas.log
 """
 
+import logging
 import os
 import sys
 import time
-import logging
-from typing import List, Dict, Any, Optional
+from typing import Any
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 from core.api_client import get_pessoa_client
-from core.database import fetch_all
 from core.config import config
+from core.database import fetch_all
 from models.ly_pessoa import LyPessoaModel
 
 # ------------------------------------------------------------
@@ -50,22 +50,20 @@ UPSERT_BATCH = 1000
 # ------------------------------------------------------------
 # Validação de CPF
 # ------------------------------------------------------------
-def is_cpf_valido(cpf: Optional[str]) -> bool:
+def is_cpf_valido(cpf: str | None) -> bool:
     if not cpf:
         return False
-    cpf_clean = ''.join(filter(str.isdigit, cpf))
-    if len(cpf_clean) != 11:
+    if not isinstance(cpf, str):
         return False
-    if cpf_clean == '0' * 11:
-        return False
-    return True
+    cpf_clean = "".join(filter(str.isdigit, cpf))
+    return len(cpf_clean) == 11 and cpf_clean != "0" * 11
 
-def validar_e_logar_cpfs(registros: List[Dict[str, Any]]) -> None:
+def validar_e_logar_cpfs(registros: list[dict[str, Any]]) -> None:
     logger.info("=" * 60)
     logger.info("INICIANDO VALIDAÇÃO DE CPFs NA TABELA LY_PESSOA")
     logger.info("=" * 60)
 
-    cpf_map: Dict[str, List[tuple]] = {}
+    cpf_map: dict[str, list[tuple]] = {}
     invalidos = []
 
     for reg in registros:
@@ -76,7 +74,7 @@ def validar_e_logar_cpfs(registros: List[Dict[str, Any]]) -> None:
         if not is_cpf_valido(cpf):
             invalidos.append((pessoa, cpf, nome))
         else:
-            cpf_clean = ''.join(filter(str.isdigit, cpf))
+            cpf_clean = "".join(filter(str.isdigit, str(cpf)))
             cpf_map.setdefault(cpf_clean, []).append((pessoa, nome))
 
     if invalidos:
@@ -102,7 +100,7 @@ def validar_e_logar_cpfs(registros: List[Dict[str, Any]]) -> None:
 # ------------------------------------------------------------
 # IDs pendentes (ALUNO + DOCENTE)
 # ------------------------------------------------------------
-def obter_ids_pendentes() -> List[int]:
+def obter_ids_pendentes() -> list[int]:
     """
     Retorna lista de IDs (pessoa) de LY_ALUNO ou LY_DOCENTE que NÃO estão em LY_PESSOA.
     """
@@ -123,7 +121,7 @@ def obter_ids_pendentes() -> List[int]:
 # ------------------------------------------------------------
 # Sincronização principal
 # ------------------------------------------------------------
-def sincronizar_pessoas_pendentes() -> Dict[str, Any]:
+def sincronizar_pessoas_pendentes() -> dict[str, Any]:
     logger.info("=" * 80)
     logger.info("INICIANDO SINCRONIZAÇÃO DE PESSOAS PENDENTES (ALUNOS + DOCENTES)")
     logger.info(f"Coleta em lotes de: {COLETAR_LOTE}")
@@ -178,8 +176,10 @@ def sincronizar_pessoas_pendentes() -> Dict[str, Any]:
 
             time.sleep(config.API_DELAY_BETWEEN_REQUESTS)
 
-            if len(buffer_pessoas) >= COLETAR_LOTE or idx == total_ids:
-                if buffer_pessoas:
+            if buffer_pessoas and (
+                len(buffer_pessoas) >= COLETAR_LOTE
+                or idx == total_ids
+            ):
                     validos = []
                     invalidos = 0
                     for p in buffer_pessoas:
@@ -238,14 +238,14 @@ def sincronizar_pessoas_pendentes() -> Dict[str, Any]:
             "tempo_total": tempo_total,
         }
 
-    except Exception as e:
-        logger.exception(f"Erro durante sincronização: {e}")
-        return {"success": False, "erro": str(e)}
+    except Exception as exc:
+        logger.exception("Erro durante sincronização.")
+        return {"success": False, "erro": str(exc)}
 
 # ------------------------------------------------------------
 # Execução
 # ------------------------------------------------------------
-def run() -> Dict[str, Any]:
+def run() -> dict[str, Any]:
     return sincronizar_pessoas_pendentes()
 
 if __name__ == "__main__":

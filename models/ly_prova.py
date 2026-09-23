@@ -6,8 +6,11 @@ Chave primária composta: (ano, disciplina, prova, semestre, turma)
 """
 
 import logging
-from typing import List, Dict, Any, Optional
-from core.database import get_db_connection, execute_query, fetch_all, fetch_one
+from typing import Any, ClassVar
+
+import pyodbc
+
+from core.database import execute_query, fetch_one, get_db_connection
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +19,7 @@ class LyProvaModel:
     TABLE_NAME = "LY_PROVA"
     DB_NAME = "lyceum"
 
-    API_FIELDS = [
+    API_FIELDS: ClassVar[list[str]] = [
         'ano', 'classificacao', 'complemento', 'data_divulgacao_aol', 'disciplina',
         'dt_divulgacao', 'dt_inicio', 'dt_limite', 'dt_max_revisao', 'dt_prova',
         'e_oficial', 'e_prova_base_rec', 'e_recuperacao', 'fl_field01', 'fl_field02',
@@ -28,7 +31,7 @@ class LyProvaModel:
         'trabalho', 'turma'
     ]
 
-    PK_FIELDS = ['ano', 'disciplina', 'prova', 'semestre', 'turma']
+    PK_FIELDS: ClassVar[list[str]] = ['ano', 'disciplina', 'prova', 'semestre', 'turma']
 
     @classmethod
     def _normalize_value(cls, value: Any) -> Any:
@@ -121,16 +124,16 @@ class LyProvaModel:
             for idx_sql in indexes:
                 try:
                     execute_query(idx_sql, database_name=cls.DB_NAME)
-                except Exception as e:
+                except pyodbc.Error as e:
                     logger.warning(f"Erro ao criar índice: {e}")
             logger.info(f"Tabela {cls.TABLE_NAME} criada com sucesso.")
             return True
-        except Exception as e:
+        except pyodbc.Error as e:
             logger.error(f"Erro ao criar tabela {cls.TABLE_NAME}: {e}")
             return False
 
     @classmethod
-    def upsert(cls, data: Dict) -> bool:
+    def upsert(cls, data: dict) -> bool:
         try:
             pk_values = [cls._normalize_value(data.get(field)) for field in cls.PK_FIELDS]
             if None in pk_values:
@@ -167,12 +170,12 @@ class LyProvaModel:
             """
             execute_query(merge_sql, tuple(values), database_name=cls.DB_NAME)
             return True
-        except Exception as e:
+        except (pyodbc.Error, TypeError, ValueError) as e:
             logger.error(f"Erro ao upsert prova {data.get('prova')}: {e}")
             return False
 
     @classmethod
-    def batch_upsert(cls, data_list: List[Dict]) -> int:
+    def batch_upsert(cls, data_list: list[dict]) -> int:
         if not data_list:
             return 0
         success = 0
@@ -211,7 +214,7 @@ class LyProvaModel:
                     """
                     cursor.execute(merge_sql, tuple(values))
                     success += 1
-                except Exception as e:
+                except (pyodbc.Error, TypeError, ValueError) as e:
                     logger.error(f"Erro ao upsert prova {data.get('prova')}: {e}")
                     errors += 1
             conn.commit()
@@ -219,7 +222,7 @@ class LyProvaModel:
         return success
 
     @classmethod
-    def get_summary(cls) -> Dict:
+    def get_summary(cls) -> dict:
         try:
             queries = {
                 'total_provas': f"SELECT COUNT(*) FROM [{cls.TABLE_NAME}]",
@@ -232,6 +235,6 @@ class LyProvaModel:
                 row = fetch_one(query, database_name=cls.DB_NAME)
                 results[key] = row[0] if row else 0
             return results
-        except Exception as e:
+        except pyodbc.Error as e:
             logger.error(f"Erro ao obter resumo: {e}")
             return {}

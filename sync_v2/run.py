@@ -12,9 +12,21 @@ import logging
 import time
 
 from sync_v2.endpoints import (
-    aceit_contrato, alunos, coordenacoes, curriculos, cursos, disciplinas,
-    docentes, grades, matriculas, pessoas, pessoas_pendentes, provas,
-    provas_disciplinas, turma_docentes, turmas,
+    aceit_contrato,
+    alunos,
+    coordenacoes,
+    curriculos,
+    cursos,
+    disciplinas,
+    docentes,
+    grades,
+    matriculas,
+    pessoas,
+    pessoas_pendentes,
+    provas,
+    provas_disciplinas,
+    turma_docentes,
+    turmas,
 )
 
 STAGES = [

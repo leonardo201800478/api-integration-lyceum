@@ -9,17 +9,15 @@ SINCRONIZAÇÃO LY_DISCIPLINA
 - Sincronização completa (clear + insert)
 """
 
-import sys
-import os
-import time
 import logging
-from collections import Counter
+import os
+import sys
+import time
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from core.config import config
 from core.api_client import DisciplinaAPIClient
 from models.ly_disciplina import LyDisciplinaModel
 

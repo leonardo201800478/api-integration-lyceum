@@ -4,8 +4,6 @@ Importador para tabela imp_003_objetivos (Objetivos de Aprendizagem das Discipli
 [ESQUELETO - LÓGICA A SER IMPLEMENTADA]
 """
 
-import sqlite3
-from qstione.core.validacoes import validar_codigo_disciplina
 
 
 class ImportadorObjetivos:
@@ -54,7 +52,7 @@ class ImportadorObjetivos:
         print(f"📊 Registros encontrados: {len(dados_brutos)}")
         dados_transformados = self.transformar_dados(dados_brutos)
         resultado = self.importar_para_qstione(dados_transformados)
-        print(f"\n📈 RESULTADO DA IMPORTAÇÃO (SIMULADO):")
+        print("\n📈 RESULTADO DA IMPORTAÇÃO (SIMULADO):")
         print(f"  ✓ Inseridos: {resultado['total_inseridos']}")
         print(f"  ↻ Atualizados: {resultado['total_atualizados']}")
         print(f"  ✗ Erros: {resultado['total_erros']}")

@@ -2,8 +2,8 @@
 # Rode na raiz do projeto:
 #   python export_cert.py
 
-import ssl
 import socket
+import ssl
 
 HOST = "unifoa.lyceum.com.br"
 PORT = 443

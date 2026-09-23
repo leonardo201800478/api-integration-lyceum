@@ -232,16 +232,10 @@ from __future__ import annotations
 import logging
 import os
 import sys
-
 from collections import Counter
 from typing import (
     Any,
-    Dict,
-    List,
-    Optional,
-    Tuple,
 )
-
 
 # =============================================================================
 # PATH
@@ -266,24 +260,20 @@ if ROOT not in sys.path:
 from core.database import (
     get_db_connection,
 )
-
+from qstione.config.filtros import (
+    ANO_VIGENTE,
+    FACULDADES_INCLUIDAS,
+    PERIODOS_VIGENTES,
+    SITUACAO_TURMA_VALIDA,
+)
 from qstione.core.transformacoes import (
     converter_inteiro,
     gerar_codigo_disciplina_curso,
     truncar_texto,
 )
-
-from qstione.config.filtros import (
-    ANO_VIGENTE,
-    PERIODOS_VIGENTES,
-    FACULDADES_INCLUIDAS,
-    SITUACAO_TURMA_VALIDA,
-)
-
 from qstione.importadores.imp_002_disciplina import (
     MAPEAMENTO_CURSOS,
 )
-
 
 # =============================================================================
 # LOG
@@ -563,7 +553,7 @@ class ImportadorUnidadesAvaliacaoRegras:
     @staticmethod
     def normalizar_curso(
         curso: Any
-    ) -> Tuple[str, str]:
+    ) -> tuple[str, str]:
         """
         Converte o curso ORIGINAL para o código utilizado pelo Qstione.
 
@@ -756,7 +746,7 @@ class ImportadorUnidadesAvaliacaoRegras:
 
     def obter_turmas(
         self,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Obtém as turmas válidas.
 
@@ -899,10 +889,10 @@ class ImportadorUnidadesAvaliacaoRegras:
 
     def obter_grade_das_ofertas(
         self,
-        turmas: List[Dict[str, Any]],
-    ) -> Dict[
-        Tuple[str, str],
-        List[Dict[str, Any]],
+        turmas: list[dict[str, Any]],
+    ) -> dict[
+        tuple[str, str],
+        list[dict[str, Any]],
     ]:
         """
         Consulta LY_GRADE somente para combinações efetivamente
@@ -921,8 +911,8 @@ class ImportadorUnidadesAvaliacaoRegras:
             lista de registros LY_GRADE
         """
 
-        pares: List[
-            Tuple[str, str]
+        pares: list[
+            tuple[str, str]
         ] = []
 
         vistos = set()
@@ -1068,9 +1058,9 @@ class ImportadorUnidadesAvaliacaoRegras:
 
             raise
 
-        indice: Dict[
-            Tuple[str, str],
-            List[Dict[str, Any]],
+        indice: dict[
+            tuple[str, str],
+            list[dict[str, Any]],
         ] = {}
 
         for (
@@ -1249,7 +1239,7 @@ class ImportadorUnidadesAvaliacaoRegras:
         curso_original: Any,
         disciplina: Any,
         indice_grade,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Resolve os contextos curriculares de uma disciplina.
 
@@ -1301,9 +1291,9 @@ class ImportadorUnidadesAvaliacaoRegras:
         if not registros:
             return []
 
-        contextos: Dict[
-            Tuple[str, str, str],
-            Dict[str, Any],
+        contextos: dict[
+            tuple[str, str, str],
+            dict[str, Any],
         ] = {}
 
         ordem_contextos = []
@@ -1462,7 +1452,7 @@ class ImportadorUnidadesAvaliacaoRegras:
 
     @staticmethod
     def resolver_periodo(
-        serie_ideal: Optional[int]
+        serie_ideal: int | None
     ) -> int:
         """
         Converte serie_ideal para o período utilizado pelo Qstione.
@@ -1497,10 +1487,10 @@ class ImportadorUnidadesAvaliacaoRegras:
     def obter_avaliacoes(
         codigo_curso: str,
         id_curriculo: str,
-    ) -> Tuple[
+    ) -> tuple[
         str,
-        Tuple[
-            Tuple[int, str, str],
+        tuple[
+            tuple[int, str, str],
             ...,
         ],
     ]:
@@ -1666,9 +1656,9 @@ class ImportadorUnidadesAvaliacaoRegras:
 
     def transformar_dados(
         self,
-        turmas: List[Dict[str, Any]],
+        turmas: list[dict[str, Any]],
         indice_grade,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Transforma as ofertas em unidades de avaliação.
 
@@ -1693,8 +1683,8 @@ class ImportadorUnidadesAvaliacaoRegras:
         A ordem das turmas é preservada.
         """
 
-        dados: List[
-            Dict[str, Any]
+        dados: list[
+            dict[str, Any]
         ] = []
 
         # ---------------------------------------------------------------------
@@ -2213,7 +2203,7 @@ class ImportadorUnidadesAvaliacaoRegras:
 
     @staticmethod
     def validar_dados(
-        dados: List[Dict[str, Any]]
+        dados: list[dict[str, Any]]
     ) -> None:
         """
         Valida os dados antes da gravação.
@@ -2358,8 +2348,8 @@ class ImportadorUnidadesAvaliacaoRegras:
 
     def importar_para_qstione(
         self,
-        dados_transformados: List[Dict[str, Any]],
-    ) -> Dict[str, int]:
+        dados_transformados: list[dict[str, Any]],
+    ) -> dict[str, int]:
         """
         Reconstrói a tabela imp_013_unidades_avaliacao.
 

@@ -11,14 +11,13 @@ Características:
     - Paginação de página individual para sincronizações incrementais.
 """
 
-import requests
 import time
+from typing import Any
+
+import requests
 import urllib3
 
-from typing import List, Optional, Any, Dict
-
 from core.config import config
-
 
 # ============================================================================
 # CLIENTE BASE
@@ -37,7 +36,7 @@ class BaseAPIClient:
 
     def __init__(
         self,
-        session: Optional[requests.Session] = None
+        session: requests.Session | None = None
     ):
         """
         Inicializa o cliente da API.
@@ -98,7 +97,7 @@ class BaseAPIClient:
     def get(
         self,
         endpoint: str,
-        params: Optional[dict] = None
+        params: dict | None = None
     ) -> Any:
         """
         Executa uma requisição GET.
@@ -148,8 +147,8 @@ class BaseAPIClient:
     def get_paginated(
         self,
         endpoint: str,
-        params: Optional[Dict] = None
-    ) -> List[dict]:
+        params: dict | None = None
+    ) -> list[dict]:
         """
         Percorre todas as páginas disponíveis.
 
@@ -162,7 +161,7 @@ class BaseAPIClient:
             [...]
         """
 
-        results: List[dict] = []
+        results: list[dict] = []
 
         page = config.API_PAGE_START
 
@@ -363,7 +362,7 @@ class APIClientFactory:
 
 class CursoAPIClient(BaseAPIClient):
 
-    def get_cursos(self) -> List[dict]:
+    def get_cursos(self) -> list[dict]:
         return self.get_paginated(
             "/v2/tabela/cursos"
         )
@@ -375,7 +374,7 @@ class CursoAPIClient(BaseAPIClient):
 
 class CurriculoAPIClient(BaseAPIClient):
 
-    def get_curriculos(self) -> List[dict]:
+    def get_curriculos(self) -> list[dict]:
         return self.get_paginated(
             "/v2/tabela/curriculos"
         )
@@ -383,7 +382,7 @@ class CurriculoAPIClient(BaseAPIClient):
     def get_curriculo(
         self,
         curriculo_code: str
-    ) -> Optional[dict]:
+    ) -> dict | None:
 
         data = self.get(
             "/v2/tabela/curriculos",
@@ -415,7 +414,7 @@ class CurriculoAPIClient(BaseAPIClient):
 
 class AlunoAPIClient(BaseAPIClient):
 
-    def get_alunos(self) -> List[dict]:
+    def get_alunos(self) -> list[dict]:
         return self.get_paginated(
             "/v2/tabela/alunos"
         )
@@ -423,7 +422,7 @@ class AlunoAPIClient(BaseAPIClient):
     def get_aluno(
         self,
         matricula: str
-    ) -> Optional[dict]:
+    ) -> dict | None:
 
         data = self.get(
             "/v2/tabela/alunos",
@@ -455,7 +454,7 @@ class AlunoAPIClient(BaseAPIClient):
 
 class DocenteAPIClient(BaseAPIClient):
 
-    def get_docentes(self) -> List[dict]:
+    def get_docentes(self) -> list[dict]:
         return self.get_paginated(
             "/v2/tabela/docente"
         )
@@ -467,7 +466,7 @@ class DocenteAPIClient(BaseAPIClient):
 
 class DisciplinaAPIClient(BaseAPIClient):
 
-    def get_disciplinas(self) -> List[dict]:
+    def get_disciplinas(self) -> list[dict]:
         return self.get_paginated(
             "/v2/tabela/disciplinas"
         )
@@ -479,7 +478,7 @@ class DisciplinaAPIClient(BaseAPIClient):
 
 class TurmaAPIClient(BaseAPIClient):
 
-    def get_turmas(self) -> List[dict]:
+    def get_turmas(self) -> list[dict]:
 
         return self.get_paginated(
             "/v2/tabela/turmas"
@@ -487,9 +486,9 @@ class TurmaAPIClient(BaseAPIClient):
 
     def get_turmas_filtradas(
         self,
-        ano: Optional[int] = None,
-        semestre: Optional[int] = None
-    ) -> List[dict]:
+        ano: int | None = None,
+        semestre: int | None = None
+    ) -> list[dict]:
         """
         Obtém todas as turmas usando filtros da API.
         """
@@ -511,9 +510,9 @@ class TurmaAPIClient(BaseAPIClient):
         self,
         page: int,
         page_size: int = None,
-        ano: Optional[int] = None,
-        semestre: Optional[int] = None
-    ) -> List[dict]:
+        ano: int | None = None,
+        semestre: int | None = None
+    ) -> list[dict]:
         """
         Obtém somente uma página de turmas.
 
@@ -585,7 +584,7 @@ class TurmaAPIClient(BaseAPIClient):
 
 class TurmaDocenteAPIClient(BaseAPIClient):
 
-    def get_turmas_docentes(self) -> List[dict]:
+    def get_turmas_docentes(self) -> list[dict]:
 
         return self.get_paginated(
             "/v2/tabela/turma-docente"
@@ -593,9 +592,9 @@ class TurmaDocenteAPIClient(BaseAPIClient):
 
     def get_turmas_docentes_filtradas(
         self,
-        ano: Optional[int] = None,
-        semestre: Optional[int] = None
-    ) -> List[dict]:
+        ano: int | None = None,
+        semestre: int | None = None
+    ) -> list[dict]:
 
         params = {}
 
@@ -614,9 +613,9 @@ class TurmaDocenteAPIClient(BaseAPIClient):
         self,
         start_page: int,
         page_size: int = None,
-        ano: Optional[int] = None,
-        semestre: Optional[int] = None
-    ) -> List[dict]:
+        ano: int | None = None,
+        semestre: int | None = None
+    ) -> list[dict]:
         """
         Obtém somente uma página de turma-docente.
 
@@ -672,7 +671,7 @@ class TurmaDocenteAPIClient(BaseAPIClient):
 
 class MatriculaAPIClient(BaseAPIClient):
 
-    def get_matriculas(self) -> List[dict]:
+    def get_matriculas(self) -> list[dict]:
 
         return self.get_paginated(
             "/v2/tabela/matriculas"
@@ -680,9 +679,9 @@ class MatriculaAPIClient(BaseAPIClient):
 
     def get_matriculas_filtradas(
         self,
-        ano: Optional[int] = None,
-        semestre: Optional[int] = None
-    ) -> List[dict]:
+        ano: int | None = None,
+        semestre: int | None = None
+    ) -> list[dict]:
 
         params = {}
 
@@ -700,7 +699,7 @@ class MatriculaAPIClient(BaseAPIClient):
     def get_matriculas_by_aluno(
         self,
         aluno_code: str
-    ) -> List[dict]:
+    ) -> list[dict]:
 
         return self.get_paginated(
             "/v2/tabela/matriculas",
@@ -712,7 +711,7 @@ class MatriculaAPIClient(BaseAPIClient):
     def get_matriculas_by_turma(
         self,
         turma_code: str
-    ) -> List[dict]:
+    ) -> list[dict]:
 
         return self.get_paginated(
             "/v2/tabela/matriculas",
@@ -728,7 +727,7 @@ class MatriculaAPIClient(BaseAPIClient):
 
 class GradeAPIClient(BaseAPIClient):
 
-    def get_grades(self) -> List[dict]:
+    def get_grades(self) -> list[dict]:
 
         return self.get_paginated(
             "/v2/tabela/grades"
@@ -741,7 +740,7 @@ class GradeAPIClient(BaseAPIClient):
 
 class PessoaAPIClient(BaseAPIClient):
 
-    def get_pessoas(self) -> List[dict]:
+    def get_pessoas(self) -> list[dict]:
 
         return self.get_paginated(
             "/v2/tabela/pessoas"
@@ -750,7 +749,7 @@ class PessoaAPIClient(BaseAPIClient):
     def get_pessoa_by_id(
         self,
         cod_pessoa: int
-    ) -> Optional[dict]:
+    ) -> dict | None:
 
         data = self.get(
             "/v2/tabela/pessoas",
@@ -792,7 +791,7 @@ class PessoaAPIClient(BaseAPIClient):
     def get_pessoa_detalhada(
         self,
         id_pessoa: int
-    ) -> Optional[dict]:
+    ) -> dict | None:
 
         data = self.get(
             f"/v2/pessoas/idPessoa/"
@@ -819,7 +818,7 @@ class PessoaAPIClient(BaseAPIClient):
 
 class CoordenacaoAPIClient(BaseAPIClient):
 
-    def get_coordenacoes(self) -> List[dict]:
+    def get_coordenacoes(self) -> list[dict]:
 
         return self.get_paginated(
             "/v2/tabela/coordenacao"
@@ -827,9 +826,9 @@ class CoordenacaoAPIClient(BaseAPIClient):
 
     def get_coordenacoes_filtradas(
         self,
-        ano: Optional[int] = None,
-        semestre: Optional[int] = None
-    ) -> List[dict]:
+        ano: int | None = None,
+        semestre: int | None = None
+    ) -> list[dict]:
 
         params = {}
 
@@ -851,7 +850,7 @@ class CoordenacaoAPIClient(BaseAPIClient):
 
 class ProvaDisciplinaAPIClient(BaseAPIClient):
 
-    def get_provas_disciplinas(self) -> List[dict]:
+    def get_provas_disciplinas(self) -> list[dict]:
 
         return self.get_paginated(
             "/v2/tabela/provas-disciplinas"
@@ -860,7 +859,7 @@ class ProvaDisciplinaAPIClient(BaseAPIClient):
     def get_provas_disciplinas_filtradas(
         self,
         **kwargs
-    ) -> List[dict]:
+    ) -> list[dict]:
 
         return self.get_paginated(
             "/v2/tabela/provas-disciplinas",
@@ -881,7 +880,7 @@ class ProvaAPIClient(BaseAPIClient):
         prova: str,
         semestre: int,
         turma: str
-    ) -> Optional[dict]:
+    ) -> dict | None:
 
         params = {
             "pk[ano]": ano,

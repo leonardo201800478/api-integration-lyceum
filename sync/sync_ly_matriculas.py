@@ -8,18 +8,16 @@ SINCRONIZAÇÃO LY_MATRICULA
 - Apenas método GET na API
 """
 
-import sys
-import os
-import time
 import logging
-from datetime import datetime
+import os
+import sys
+import time
 
 # Garantir import do projeto
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from core.config import config
 from core.api_client import APIClientFactory
 from models.ly_matricula import LyMatriculaModel
 

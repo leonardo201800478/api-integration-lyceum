@@ -14,7 +14,6 @@ from qstione.config.qstione_config import (
     QSTIONE_TIMEOUT,
 )
 
-
 logger = logging.getLogger(__name__)
 
 VERSAO_PROTOCOLO = "1.2.10"
@@ -340,7 +339,7 @@ class ClienteQstione:
     def close(self) -> None:
         self.session.close()
 
-    def __enter__(self) -> "ClienteQstione":
+    def __enter__(self) -> ClienteQstione:
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:

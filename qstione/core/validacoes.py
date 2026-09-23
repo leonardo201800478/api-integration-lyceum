@@ -401,7 +401,7 @@ def validar_registro_docente(registro):
             )
 
     # Validar email
-    if 'email' in registro and registro['email']:
+    if registro.get('email'):
 
         if not validar_email(
             registro['email']
@@ -440,7 +440,7 @@ def validar_registro_aluno(registro):
             )
 
     # Validar email se existir
-    if 'email' in registro and registro['email']:
+    if registro.get('email'):
 
         if not validar_email(
             registro['email']
@@ -452,8 +452,7 @@ def validar_registro_aluno(registro):
 
     # Validar data de nascimento se existir
     if (
-        'data_nascimento' in registro
-        and registro['data_nascimento']
+        registro.get('data_nascimento')
     ):
 
         if not validar_data(

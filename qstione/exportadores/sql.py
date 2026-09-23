@@ -1,8 +1,10 @@
 # qstione/exportadores/sql.py
 
-from core.database import get_db_connection
-from datetime import datetime
 import os
+from datetime import datetime
+
+from core.database import get_db_connection
+
 
 class ExportadorSQL:
     def exportar_banco_completo(self, pasta_saida='backups'):
@@ -15,7 +17,7 @@ class ExportadorSQL:
             with get_db_connection(database_name='qstione.db') as conn:
                 cursor = conn.cursor()
                 with open(caminho_arquivo, 'w', encoding='utf-8') as f:
-                    f.write(f"-- Backup do banco Qstione (SQL Server)\n")
+                    f.write("-- Backup do banco Qstione (SQL Server)\n")
                     f.write(f"-- Gerado em: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
 
                     # Listar tabelas
@@ -52,7 +54,7 @@ class ExportadorSQL:
                                 elif isinstance(valor, datetime):
                                     valores.append(f"'{valor.isoformat()}'")
                                 else:
-                                    valores.append(f"'{str(valor)}'")
+                                    valores.append(f"'{valor!s}'")
                             colunas_sql = ', '.join(colunas)
                             valores_sql = ', '.join(valores)
                             f.write(f"INSERT INTO {tabela} ({colunas_sql}) VALUES ({valores_sql});\n")

@@ -76,10 +76,9 @@ REGRAS PRINCIPAIS
 13. O arquivo pode ser executado diretamente pelo botão PLAY do VS Code.
 """
 
+import logging
 import os
 import sys
-import logging
-
 
 # =============================================================================
 # PATH DO PROJETO
@@ -102,20 +101,17 @@ if ROOT not in sys.path:
 # =============================================================================
 
 from core.database import get_db_connection
-
-from qstione.core.transformacoes import (
-    truncar_texto,
-    converter_inteiro,
-    gerar_codigo_disciplina_curso,
-)
-
 from qstione.config.filtros import (
     ANO_VIGENTE,
-    PERIODOS_VIGENTES,
     FACULDADES_INCLUIDAS,
+    PERIODOS_VIGENTES,
     SITUACAO_TURMA_VALIDA,
 )
-
+from qstione.core.transformacoes import (
+    converter_inteiro,
+    gerar_codigo_disciplina_curso,
+    truncar_texto,
+)
 
 # =============================================================================
 # LOG

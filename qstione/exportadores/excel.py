@@ -6,10 +6,10 @@ Adaptado para funcionar com dados provenientes dos importadores SQL Server.
 
 import os
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import Any
 
 import openpyxl
-from openpyxl.styles import Font, Alignment, PatternFill
+from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 
@@ -25,8 +25,8 @@ class ExportadorExcel:
     def criar_planilha_carga(
         self,
         nome_tabela: str,
-        dados: List[Dict[str, Any]],
-        config_tabela: Dict[str, Any]
+        dados: list[dict[str, Any]],
+        config_tabela: dict[str, Any]
     ) -> str:
         """
         Cria uma planilha Excel para uma tabela de importação.
@@ -140,15 +140,15 @@ class ExportadorExcel:
         if dados:
             print(f"  Total de registros: {len(dados)}")
         else:
-            print(f"  (Planilha vazia – apenas cabeçalho)")
+            print("  (Planilha vazia – apenas cabeçalho)")
 
         return caminho_arquivo
 
     def exportar_todas_tabelas(
         self,
-        dados_por_tabela: Dict[str, List[Dict[str, Any]]],
-        config_tabelas: Dict[str, Any]
-    ) -> List[str]:
+        dados_por_tabela: dict[str, list[dict[str, Any]]],
+        config_tabelas: dict[str, Any]
+    ) -> list[str]:
         """
         Exporta múltiplas tabelas para arquivos Excel separados.
 

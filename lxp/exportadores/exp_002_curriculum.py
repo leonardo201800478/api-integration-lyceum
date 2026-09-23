@@ -1,12 +1,16 @@
 # lxp/exportadores/exp_002_curriculum.py
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import os
+
 import pandas as pd
-from core.logger import logger
+
 from core.database import execute_query, fetch_one
+from core.logger import logger
+
 
 def criar_tabela_curriculum():
     """Cria a tabela lxp_curriculum no banco lxp se ela não existir."""

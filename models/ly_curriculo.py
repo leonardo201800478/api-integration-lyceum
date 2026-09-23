@@ -11,8 +11,9 @@ MIGRAÇÃO AUTOMÁTICA:
 """
 
 import logging
-from typing import List, Dict, Any, Optional
-from core.database import get_db_connection, execute_query, fetch_all, fetch_one
+from typing import Any
+
+from core.database import execute_query, fetch_one, get_db_connection
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +94,7 @@ class LyCurriculoModel:
         return result is not None
 
     @classmethod
-    def _get_id_column_type(cls) -> Optional[str]:
+    def _get_id_column_type(cls) -> str | None:
         """Retorna o DATA_TYPE atual da coluna [id], ou None se não existir."""
         query = """
             SELECT DATA_TYPE
@@ -104,7 +105,7 @@ class LyCurriculoModel:
         return row[0].lower() if row else None
 
     @classmethod
-    def _get_pk_constraint_name(cls) -> Optional[str]:
+    def _get_pk_constraint_name(cls) -> str | None:
         """Retorna o nome da constraint de PK da tabela, se existir."""
         query = """
             SELECT kc.name
@@ -323,7 +324,7 @@ class LyCurriculoModel:
     # ------------------------------------------------------------------
 
     @classmethod
-    def _build_columns_and_values(cls, data: Dict):
+    def _build_columns_and_values(cls, data: dict):
         """
         Monta listas de colunas e valores a partir de um dict de dados da API.
         Retorna (generated_id, columns, values) ou (None, None, None) se inválido.
@@ -351,7 +352,7 @@ class LyCurriculoModel:
         return generated_id, columns, values
 
     @classmethod
-    def insert(cls, data: Dict) -> bool:
+    def insert(cls, data: dict) -> bool:
         """Insere um currículo. Ignora silenciosamente se o id já existir."""
         try:
             generated_id, columns, values = cls._build_columns_and_values(data)
@@ -377,7 +378,7 @@ class LyCurriculoModel:
             return False
 
     @classmethod
-    def batch_insert(cls, data_list: List[Dict]) -> int:
+    def batch_insert(cls, data_list: list[dict]) -> int:
         """Insere múltiplos currículos em lote. Ignora ids já existentes."""
         if not data_list:
             return 0
@@ -426,7 +427,7 @@ class LyCurriculoModel:
     # ------------------------------------------------------------------
 
     @classmethod
-    def get_summary(cls) -> Dict:
+    def get_summary(cls) -> dict:
         """Retorna estatísticas da tabela."""
         try:
             queries = {

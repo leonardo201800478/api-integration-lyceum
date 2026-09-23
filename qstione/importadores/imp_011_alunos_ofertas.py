@@ -35,15 +35,14 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from core.database import get_db_connection
-
-from qstione.core.transformacoes import gerar_codigo_oferta, truncar_texto
-from qstione.core.validacoes import validar_matricula, validar_codigo_curso
 from qstione.config.filtros import (
     ANO_VIGENTE,
-    PERIODOS_VIGENTES,
     FACULDADES_INCLUIDAS,
+    PERIODOS_VIGENTES,
     SITUACAO_TURMA_VALIDA,
 )
+from qstione.core.transformacoes import gerar_codigo_oferta, truncar_texto
+from qstione.core.validacoes import validar_codigo_curso, validar_matricula
 from qstione.importadores.imp_002_disciplina import MAPEAMENTO_CURSOS
 
 

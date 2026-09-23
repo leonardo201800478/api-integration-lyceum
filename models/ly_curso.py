@@ -6,8 +6,9 @@ COM chave primária no campo 'curso' - único por curso
 """
 
 import logging
-from typing import List, Dict, Any, Optional
-from core.database import get_db_connection, execute_query, fetch_all, fetch_one
+from typing import Any
+
+from core.database import execute_query, fetch_all, fetch_one, get_db_connection
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +91,7 @@ class LyCursoModel:
         return result is not None
 
     @classmethod
-    def _get_existing_columns(cls) -> List[str]:
+    def _get_existing_columns(cls) -> list[str]:
         """Retorna lista de colunas existentes na tabela."""
         query = """
             SELECT COLUMN_NAME
@@ -272,7 +273,7 @@ class LyCursoModel:
             return False
 
     @classmethod
-    def upsert(cls, data: Dict) -> bool:
+    def upsert(cls, data: dict) -> bool:
         """Insere ou atualiza um único curso usando MERGE."""
         try:
             curso_id = cls._normalize_value(data.get('curso'))
@@ -324,7 +325,7 @@ class LyCursoModel:
             return False
 
     @classmethod
-    def batch_upsert(cls, data_list: List[Dict]) -> int:
+    def batch_upsert(cls, data_list: list[dict]) -> int:
         """Insere ou atualiza múltiplos cursos em lote."""
         if not data_list:
             return 0
@@ -385,7 +386,7 @@ class LyCursoModel:
         return success_count
 
     @classmethod
-    def get_summary(cls) -> Dict:
+    def get_summary(cls) -> dict:
         """Retorna estatísticas da tabela."""
         try:
             queries = {
@@ -408,7 +409,7 @@ class LyCursoModel:
             return {}
 
     @classmethod
-    def get_all_cursos(cls) -> List[Dict]:
+    def get_all_cursos(cls) -> list[dict]:
         """Retorna todos os cursos da tabela."""
         try:
             sql = f"SELECT * FROM [{cls.TABLE_NAME}] ORDER BY [curso]"
@@ -441,7 +442,7 @@ class LyCursoModel:
             return []
 
     @classmethod
-    def get_by_curso(cls, curso_code: str) -> Optional[Dict]:
+    def get_by_curso(cls, curso_code: str) -> dict | None:
         """Retorna um curso específico pelo código."""
         try:
             sql = f"SELECT * FROM [{cls.TABLE_NAME}] WHERE [curso] = ?"
@@ -470,7 +471,7 @@ class LyCursoModel:
             return None
 
     @classmethod
-    def get_cursos_ativos(cls) -> List[Dict]:
+    def get_cursos_ativos(cls) -> list[dict]:
         """Retorna todos os cursos ativos."""
         try:
             sql = f"SELECT * FROM [{cls.TABLE_NAME}] WHERE [ativo] = 'S' ORDER BY [curso]"

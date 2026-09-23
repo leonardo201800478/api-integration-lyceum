@@ -1,7 +1,9 @@
 # reports/queries/relatorio_alunos.py
 import pandas as pd
+
 from core.database import get_db_connection
 from core.logger import logger
+
 
 def get_dados_alunos():
     """

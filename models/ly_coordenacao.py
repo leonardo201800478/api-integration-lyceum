@@ -5,9 +5,9 @@ Sem constraints NOT NULL - aceita todos os dados da API.
 """
 
 import logging
-from typing import List, Dict, Any, Optional
+from typing import Any
 
-from core.database import get_db_connection, execute_query, fetch_all, fetch_one
+from core.database import execute_query, fetch_all, fetch_one, get_db_connection
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +52,7 @@ class LyCoordenacaoModel:
         return result is not None
 
     @classmethod
-    def _get_existing_columns(cls) -> List[str]:
+    def _get_existing_columns(cls) -> list[str]:
         """Retorna lista de colunas existentes na tabela."""
         query = """
             SELECT COLUMN_NAME
@@ -136,7 +136,7 @@ class LyCoordenacaoModel:
             return cls.drop_and_recreate_table()
 
     @classmethod
-    def batch_insert(cls, data_list: List[Dict]) -> int:
+    def batch_insert(cls, data_list: list[dict]) -> int:
         """
         Insere múltiplos registros em lote.
         Utiliza apenas os campos definidos em API_FIELDS.
@@ -209,7 +209,7 @@ class LyCoordenacaoModel:
             return False
 
     @classmethod
-    def get_summary(cls) -> Dict:
+    def get_summary(cls) -> dict:
         """Retorna estatísticas da tabela."""
         try:
             queries = {

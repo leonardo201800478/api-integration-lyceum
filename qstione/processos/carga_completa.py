@@ -16,9 +16,9 @@ from core.database import get_db_connection
 from qstione.api.cliente import CAMPOS_API, ClienteQstione
 from qstione.config.qstione_config import (
     QSTIONE_BASE_URL,
-    QSTIONE_TOKEN,
     QSTIONE_SSL_VERIFY,
     QSTIONE_TIMEOUT,
+    QSTIONE_TOKEN,
     validar_configuracao_qstione,
 )
 

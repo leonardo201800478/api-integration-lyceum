@@ -95,10 +95,9 @@ REGRAS
 14. Não existe dependência de LY_DISCIPLINA.faculdade.
 """
 
+import logging
 import os
 import sys
-import logging
-
 
 # =============================================================================
 # PATH
@@ -121,30 +120,25 @@ if ROOT not in sys.path:
 # =============================================================================
 
 from core.database import get_db_connection
-
-from qstione.core.transformacoes import (
-    gerar_codigo_oferta,
-    converter_minusculas,
-    truncar_texto,
-)
-
-from qstione.core.validacoes import (
-    validar_email,
-    validar_codigo_disciplina,
-)
-
 from qstione.config.filtros import (
     ANO_VIGENTE,
-    PERIODOS_VIGENTES,
-    FACULDADES_INCLUIDAS,
     AREAS_CONHECIMENTO_INCLUIDAS,
+    FACULDADES_INCLUIDAS,
+    PERIODOS_VIGENTES,
     SITUACAO_TURMA_VALIDA,
 )
-
+from qstione.core.transformacoes import (
+    converter_minusculas,
+    gerar_codigo_oferta,
+    truncar_texto,
+)
+from qstione.core.validacoes import (
+    validar_codigo_disciplina,
+    validar_email,
+)
 from qstione.importadores.imp_002_disciplina import (
     MAPEAMENTO_CURSOS,
 )
-
 
 # =============================================================================
 # LOGGING

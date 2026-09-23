@@ -1,6 +1,7 @@
 # qstione/importadores/imp_nde.py
 import os
 import sys
+
 import pandas as pd
 
 # Adiciona a raiz do projeto (ALUNO-SYNC) ao sys.path
@@ -402,11 +403,11 @@ class ImportadorNDE:
         print("💾 Importando para Qstione (com atualização de status)...")
         resultado = self.importar_para_qstione(cursos_data, membros_data)
 
-        print(f"\n📈 RESULTADO DA IMPORTAÇÃO:")
-        print(f"  Cursos:")
+        print("\n📈 RESULTADO DA IMPORTAÇÃO:")
+        print("  Cursos:")
         print(f"    ✓ Inseridos: {resultado['total_inseridos_cursos']}")
         print(f"    ↻ Atualizados: {resultado['total_atualizados_cursos']}")
-        print(f"  Membros:")
+        print("  Membros:")
         print(f"    ✓ Inseridos: {resultado['total_inseridos_membros']}")
         print(f"    ↻ Atualizados: {resultado['total_atualizados_membros']}")
         print(f"  ✗ Erros totais: {resultado['total_erros']}")

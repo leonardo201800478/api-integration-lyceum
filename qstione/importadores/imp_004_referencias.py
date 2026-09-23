@@ -4,7 +4,6 @@ Importador para tabela imp_004_referencias (Referências Bibliográficas das Dis
 [ESQUELETO - LÓGICA A SER IMPLEMENTADA]
 """
 
-import sqlite3
 
 
 class ImportadorReferencias:
@@ -49,7 +48,7 @@ class ImportadorReferencias:
         print(f"📊 Registros encontrados: {len(dados_brutos)}")
         dados_transformados = self.transformar_dados(dados_brutos)
         resultado = self.importar_para_qstione(dados_transformados)
-        print(f"\n📈 RESULTADO DA IMPORTAÇÃO (SIMULADO):")
+        print("\n📈 RESULTADO DA IMPORTAÇÃO (SIMULADO):")
         print(f"  ✓ Inseridos: {resultado['total_inseridos']}")
         print(f"  ↻ Atualizados: {resultado['total_atualizados']}")
         print(f"  ✗ Erros: {resultado['total_erros']}")

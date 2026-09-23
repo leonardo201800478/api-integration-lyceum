@@ -1,10 +1,14 @@
 # reports/exporters/xml_exporter.py
 import xml.etree.ElementTree as ET
-from xml.dom import minidom
-import pandas as pd
 from pathlib import Path
+from xml.dom import minidom
+
+import pandas as pd
+
 from core.logger import logger
+
 from .base import Exporter
+
 
 class XMLExporter(Exporter):
     def __init__(self, root_name="dados", encoding="utf-8"):

@@ -28,9 +28,9 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from core.api_client import BaseAPIClient
+from core.config import config
 from core.database import fetch_all
 from models.ly_aceit_contrato import LyAceitContratoModel
-from qstione import config
 
 logger = logging.getLogger(__name__)
 

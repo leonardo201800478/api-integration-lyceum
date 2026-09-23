@@ -37,13 +37,13 @@ para obter diretamente uma conexão pyodbc.
 
 
 import logging
+from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Any, Iterator, Optional
+from typing import Any
 
 import pyodbc
 
 from core.config import config
-
 
 # ============================================================================
 # LOGGING
@@ -57,7 +57,7 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 def _resolve_database_name(
-    database_name: Optional[str],
+    database_name: str | None,
 ) -> str:
     """
     Resolve o nome do banco de dados que será utilizado.
@@ -108,7 +108,7 @@ def _resolve_database_name(
 # ============================================================================
 
 def _build_connection_string(
-    database_name: Optional[str] = None,
+    database_name: str | None = None,
 ) -> str:
     """
     Monta a connection string do SQL Server.
@@ -189,7 +189,7 @@ def _build_connection_string(
 
 @contextmanager
 def get_db_connection(
-    database_name: Optional[str] = None,
+    database_name: str | None = None,
 ) -> Iterator[pyodbc.Connection]:
     """
     Abre uma conexão com o SQL Server e controla a transação.
@@ -238,7 +238,7 @@ def get_db_connection(
         database_name
     )
 
-    conn: Optional[pyodbc.Connection] = None
+    conn: pyodbc.Connection | None = None
 
     try:
 
@@ -321,7 +321,7 @@ def get_db_connection(
 def execute_query(
     query: str,
     params: tuple = (),
-    database_name: Optional[str] = None,
+    database_name: str | None = None,
 ) -> None:
     """
     Executa um comando SQL sem retornar registros.
@@ -397,7 +397,7 @@ def execute_query(
 def fetch_all(
     query: str,
     params: tuple = (),
-    database_name: Optional[str] = None,
+    database_name: str | None = None,
 ) -> list[Any]:
     """
     Executa uma consulta SQL e retorna todos os registros.
@@ -469,8 +469,8 @@ def fetch_all(
 def fetch_one(
     query: str,
     params: tuple = (),
-    database_name: Optional[str] = None,
-) -> Optional[Any]:
+    database_name: str | None = None,
+) -> Any | None:
     """
     Executa uma consulta SQL e retorna somente o primeiro registro.
 

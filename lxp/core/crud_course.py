@@ -3,9 +3,10 @@
 Operações de banco para a tabela lxp_course (SQL Server).
 Funções para criar tabela, inserir, atualizar e buscar cursos.
 """
-import pyodbc
 from core.database_sqlserver import get_sqlserver_connection
+
 from core.logger import logger
+
 
 def criar_tabela_course(conn=None):
     """

@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python3
 """
 sync/sync_ly_turmas.py
@@ -21,12 +20,11 @@ Regras:
     - Falha ao salvar checkpoint interrompe a execução.
 """
 
-import sys
-import os
-import time
-import logging
 import argparse
-
+import logging
+import os
+import sys
+import time
 
 # ============================================================================
 # PATH
@@ -46,10 +44,9 @@ if BASE_DIR not in sys.path:
 # IMPORTS
 # ============================================================================
 
-from core.config import config
 from core.api_client import TurmaAPIClient
+from core.config import config
 from models.ly_turma import LyTurmaModel
-
 
 # ============================================================================
 # LOGGING
@@ -163,7 +160,7 @@ def get_resume_page(
 # ============================================================================
 
 def run(
-    max_pages: int = None,
+    max_pages: int | None = None,
     reset_checkpoint: bool = False,
     checkpoint_pages: int = DEFAULT_CHECKPOINT_PAGES,
 ) -> bool:
@@ -386,19 +383,16 @@ def run(
             valid_items = []
 
             for item in items:
+                ano = item.get("ano")
 
-                try:
-
-                    item_ano = int(
-                        item.get("ano")
-                    )
-
-                except (
-                    TypeError,
-                    ValueError,
-                ):
-
+                if ano is None:
                     item_ano = None
+                else:
+                    try:
+                        item_ano = int(ano)
+
+                    except (TypeError, ValueError):
+                        item_ano = None
 
                 if item_ano == ANO:
 
@@ -615,11 +609,10 @@ def run(
 
         return True
 
-    except Exception as exc:
+    except Exception:
 
         logger.exception(
-            "Erro durante sincronização LY_TURMA: %s",
-            exc,
+            "Erro durante sincronização LY_TURMA."
         )
 
         return False

@@ -6,20 +6,18 @@ em execuções sucessivas (estabilidade de paginação).
 Guarda as chaves de cada página em um arquivo JSON para comparação.
 """
 
-import sys
-import os
 import json
-import hashlib
+import os
+import sys
 from datetime import datetime
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, PROJECT_ROOT)
 
-from core.config import config
 from core.api_client import get_turma_docente_client
-from models.ly_turma_docente import LyTurmaDocenteModel
+from core.config import config
 
-PAGES_TO_TEST = list(range(0, 21))  # 0 a 20
+PAGES_TO_TEST = list(range(21))  # 0 a 20
 OUTPUT_FILE = "teste_paginas_estabilidade.json"
 
 

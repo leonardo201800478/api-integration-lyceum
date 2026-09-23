@@ -7,15 +7,15 @@ RUNNER UNIFICADO DE SINCRONIZAÇÕES LYCEUM
 - Compatível com todos os syncs que expõem função run() → bool
 """
 
-import sys
-import os
-import time
+import importlib
 import json
 import logging
-import importlib
-from datetime import datetime
+import os
+import sys
+import time
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Any
 
 # =============================================================================
 # CONFIGURAÇÃO DOS SYNCs
@@ -59,7 +59,10 @@ class LogCaptureHandler(logging.Handler):
 
     def emit(self, record):
         self.records.append({
-            "timestamp": datetime.fromtimestamp(record.created).isoformat(),
+            "timestamp": datetime.fromtimestamp(
+                record.created,
+                tz=timezone.utc,
+            ).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
@@ -82,7 +85,7 @@ def setup_environment() -> Path:
 # =============================================================================
 # EXECUÇÃO DE UM MÓDULO DE SINCRONIA COM CAPTURA DE LOGS
 # =============================================================================
-def execute_sync(module_path: str, func_name: str) -> Dict[str, Any]:
+def execute_sync(module_path: str, func_name: str) -> dict[str, Any]:
     """
     Importa dinamicamente um módulo e executa sua função 'run'.
     Captura todos os logs de nível WARNING ou superior emitidos durante a execução.
@@ -112,7 +115,7 @@ def execute_sync(module_path: str, func_name: str) -> Dict[str, Any]:
         success = getattr(module, func_name)()
         result["success"] = success is not False
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         result["error"] = str(e)
         logger.error(f"❌ Erro em {module_path}: {e}")
         import traceback
@@ -144,8 +147,7 @@ def setup_logging(log_dir: Path) -> logging.Logger:
     root_logger.setLevel(logging.INFO)
 
     # Força UTF-8 no console para evitar UnicodeEncodeError no Windows (cp1252)
-    stdout_utf8 = open(sys.stdout.fileno(), mode="w", encoding="utf-8", buffering=1, closefd=False)
-    console_handler = logging.StreamHandler(stdout_utf8)
+    console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setFormatter(logging.Formatter(log_format, date_format))
     root_logger.addHandler(console_handler)
 
@@ -168,7 +170,7 @@ def main() -> bool:
 
     root = setup_environment()
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     log_dir = root / "logs" / "execucoes" / timestamp
     log_dir.mkdir(parents=True, exist_ok=True)
 
@@ -233,7 +235,7 @@ def main() -> bool:
         validation_stats["by_module"][mod][log["level"]] += 1
 
     report = {
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "execucao": timestamp,
         "total_modulos": len(results),
         "sucessos": success_count,

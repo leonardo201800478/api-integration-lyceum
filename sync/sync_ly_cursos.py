@@ -9,10 +9,10 @@ SINCRONIZAÇÃO LY_CURSO
 - Upsert (insert/update)
 """
 
-import sys
-import os
-import time
 import logging
+import os
+import sys
+import time
 
 # ---------------------------------------------------------------------
 # Garantir import do projeto
@@ -24,8 +24,8 @@ if PROJECT_ROOT not in sys.path:
 # ---------------------------------------------------------------------
 # Imports internos
 # ---------------------------------------------------------------------
-from core.config import config
 from core.api_client import CursoAPIClient
+from core.config import config
 from models.ly_curso import LyCursoModel
 
 # ---------------------------------------------------------------------

@@ -16,17 +16,17 @@ Características:
 import sys
 import time
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from core.api_client import get_pessoa_client, get_aluno_client
+from core.api_client import get_aluno_client, get_pessoa_client
+from core.config import config
 from core.database import fetch_one, get_db_connection
 from core.logger import logger
-from models.ly_pessoa import LyPessoaModel
 from models.ly_aluno import AlunoModel
-from core.config import config
+from models.ly_pessoa import LyPessoaModel
 
 
 def pessoa_existe_no_banco(cod_pessoa: int) -> bool:
@@ -36,7 +36,7 @@ def pessoa_existe_no_banco(cod_pessoa: int) -> bool:
     return result is not None
 
 
-def buscar_e_salvar_pessoa_por_id(cod_pessoa: int, buscar_alunos: bool = True) -> Optional[Dict[str, Any]]:
+def buscar_e_salvar_pessoa_por_id(cod_pessoa: int, buscar_alunos: bool = True) -> dict[str, Any] | None:
     """
     1. Verifica se a pessoa já existe no banco local.
     2. Se não existir, consulta a API Lyceum via endpoint específico.
@@ -155,7 +155,7 @@ def buscar_e_salvar_pessoa_por_id(cod_pessoa: int, buscar_alunos: bool = True) -
         pessoa_client.close()
 
 
-def _buscar_pessoas_pendentes() -> List[int]:
+def _buscar_pessoas_pendentes() -> list[int]:
     """
     Retorna os cod_pessoa presentes em LY_ALUNO que ainda não existem em LY_PESSOA.
     Centraliza a query que antes ficava duplicada em reports/sync_pessoas.py,

@@ -21,20 +21,20 @@ import logging
 import os
 import sys
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from core.database import get_db_connection
-from qstione.core.transformacoes import converter_minusculas
 from qstione.config.filtros import (
     ANO_VIGENTE,
-    PERIODOS_VIGENTES,
     FACULDADES_INCLUIDAS,
+    PERIODOS_VIGENTES,
     SITUACAO_TURMA_VALIDA,
 )
+from qstione.core.transformacoes import converter_minusculas
 from qstione.importadores.imp_002_disciplina import MAPEAMENTO_CURSOS
 
 logger = logging.getLogger("imp_007_usuarios_cursos")
@@ -93,7 +93,7 @@ class ImportadorUsuariosCursos:
         return papel is not None and str(papel).strip().upper() in PAPEIS_VALIDOS
 
     @staticmethod
-    def _curso_unificado(curso: Any) -> Tuple[str, str]:
+    def _curso_unificado(curso: Any) -> tuple[str, str]:
         if curso is None:
             return CURSO_COMPARTILHADO, "Turma Compartilhada"
         curso = str(curso).strip()
@@ -107,7 +107,7 @@ class ImportadorUsuariosCursos:
         nome = str(nome).strip()
         return (codigo or curso), (nome or codigo or curso)
 
-    def _normalizar_email(self, email: Any) -> Optional[str]:
+    def _normalizar_email(self, email: Any) -> str | None:
         if email is None:
             return None
         email = converter_minusculas(str(email).strip())
@@ -200,7 +200,7 @@ class ImportadorUsuariosCursos:
             except Exception as exc:
                 logger.warning("Não foi possível criar índice %s: %s", nome, exc)
 
-    def obter_coordenadores(self) -> Dict[Tuple[str, str], bool]:
+    def obter_coordenadores(self) -> dict[tuple[str, str], bool]:
         sql = f"""
             SELECT DISTINCT co.num_func, co.curso
             FROM LY_COORDENACAO co
@@ -222,7 +222,7 @@ class ImportadorUsuariosCursos:
         logger.info("👤 Coordenadores encontrados: %d", len(resultado))
         return resultado
 
-    def obter_docentes_turmas(self) -> List[Tuple[Any, Any, Any]]:
+    def obter_docentes_turmas(self) -> list[tuple[Any, Any, Any]]:
         sql = f"""
             SELECT DISTINCT td.num_func, d.mailbox, t.curso
             FROM LY_TURMA_DOCENTE td
@@ -249,7 +249,7 @@ class ImportadorUsuariosCursos:
         logger.info("👨‍🏫 Vínculos docente/turma encontrados: %d", len(rows))
         return rows
 
-    def obter_membros_nde(self) -> List[Tuple[Any, Any]]:
+    def obter_membros_nde(self) -> list[tuple[Any, Any]]:
         """Retorna somente NDE ativos, normalizando status, curso e e-mail."""
         sql = """
             SELECT DISTINCT
@@ -269,7 +269,7 @@ class ImportadorUsuariosCursos:
             logger.exception("Erro ao consultar imp_nde_membros.")
             return []
 
-        validos: List[Tuple[Any, Any]] = []
+        validos: list[tuple[Any, Any]] = []
         invalidos = 0
         for curso, email in rows:
             email_normalizado = self._normalizar_email(email)
@@ -287,7 +287,7 @@ class ImportadorUsuariosCursos:
         logger.info("👥 NDE ativos encontrados: %d | válidos: %d | descartados: %d", len(rows), len(validos), invalidos)
         return validos
 
-    def _obter_email_docente(self, num_func: Any) -> Optional[str]:
+    def _obter_email_docente(self, num_func: Any) -> str | None:
         try:
             with get_db_connection(database_name="lyceum") as conn:
                 row = conn.execute("SELECT mailbox FROM LY_DOCENTE WHERE num_func = ?", (num_func,)).fetchone()
@@ -298,7 +298,7 @@ class ImportadorUsuariosCursos:
 
     def _adicionar_candidato(
         self,
-        candidatos: Dict[str, Dict[str, Set[str]]],
+        candidatos: dict[str, dict[str, set[str]]],
         email: Any,
         papel: str,
         curso: Any,
@@ -319,11 +319,11 @@ class ImportadorUsuariosCursos:
 
     def transformar_dados(
         self,
-        docentes_turmas: List[Tuple[Any, Any, Any]],
-        coordenadores: Dict[Tuple[str, str], bool],
-        membros_nde: List[Tuple[Any, Any]],
-    ) -> List[Dict[str, str]]:
-        candidatos: Dict[str, Dict[str, Set[str]]] = defaultdict(
+        docentes_turmas: list[tuple[Any, Any, Any]],
+        coordenadores: dict[tuple[str, str], bool],
+        membros_nde: list[tuple[Any, Any]],
+    ) -> list[dict[str, str]]:
+        candidatos: dict[str, dict[str, set[str]]] = defaultdict(
             lambda: {
                 PAPEL_COORDENADOR: set(),
                 PAPEL_AVALIADOR: set(),
@@ -351,7 +351,7 @@ class ImportadorUsuariosCursos:
 
         # IMPORTANTE: NDE é registrado separadamente e ANTES da consolidação.
         # Isso garante que A nunca seja perdido para P.
-        emails_nde: Set[str] = set()
+        emails_nde: set[str] = set()
         for curso, email in membros_nde:
             email_normalizado = self._normalizar_email(email)
             if not email_normalizado:
@@ -380,7 +380,7 @@ class ImportadorUsuariosCursos:
             if cursos_coord:
                 candidatos[email_coord_especial][PAPEL_COORDENADOR].update(cursos_coord)
 
-        registros: List[Dict[str, str]] = []
+        registros: list[dict[str, str]] = []
         estatisticas = defaultdict(int)
         nde_promovidos = 0
 
@@ -420,7 +420,7 @@ class ImportadorUsuariosCursos:
                 estatisticas[papel_efetivo] += 1
 
         # Integridade: nenhum NDE ativo pode terminar como P.
-        resultado_por_email: Dict[str, str] = {}
+        resultado_por_email: dict[str, str] = {}
         for registro in registros:
             resultado_por_email[registro["emailUsuario"]] = registro["papelUsuario"]
         nde_com_p = [email for email in emails_nde if resultado_por_email.get(email) == PAPEL_PROFESSOR]
@@ -443,7 +443,7 @@ class ImportadorUsuariosCursos:
         logger.info("=" * 80)
         return registros
 
-    def importar_para_qstione(self, dados_transformados: List[Dict[str, str]]) -> Dict[str, int]:
+    def importar_para_qstione(self, dados_transformados: list[dict[str, str]]) -> dict[str, int]:
         self._criar_tabela()
         inseridos = 0
         erros = 0
@@ -483,7 +483,7 @@ class ImportadorUsuariosCursos:
             "total_processados": len(dados_transformados),
         }
 
-    def executar_importacao(self) -> List[Dict[str, str]]:
+    def executar_importacao(self) -> list[dict[str, str]]:
         logger.info("=" * 100)
         logger.info("🚀 INÍCIO DA IMPORTAÇÃO imp_007_usuarios_cursos")
         logger.info("=" * 100)

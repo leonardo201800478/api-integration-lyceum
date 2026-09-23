@@ -14,19 +14,19 @@ Características:
 - Resumo final da execução
 """
 
+import logging
 import os
 import sys
 import time
-import logging
-from typing import List, Dict, Any
+from typing import Any
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 from core.api_client import PessoaAPIClient
-from core.database import fetch_all
 from core.config import config
+from core.database import fetch_all
 from models.ly_pessoa import LyPessoaModel
 
 logging.basicConfig(
@@ -42,7 +42,7 @@ COLETAR_LOTE = 100
 UPSERT_BATCH = 1000
 
 
-def obter_ids_pendentes() -> List[int]:
+def obter_ids_pendentes() -> list[int]:
     """
     Retorna lista de IDs (pessoa) de LY_ALUNO que NÃO estão em LY_PESSOA.
     """
@@ -56,7 +56,7 @@ def obter_ids_pendentes() -> List[int]:
     return [row[0] for row in rows] if rows else []
 
 
-def sincronizar_pessoas() -> Dict[str, Any]:
+def sincronizar_pessoas() -> dict[str, Any]:
     logger.info("=" * 80)
     logger.info("INICIANDO SINCRONIZAÇÃO LY_PESSOA (via endpoint específico)")
     logger.info(f"Coleta em lotes de: {COLETAR_LOTE}")
@@ -193,7 +193,7 @@ def sincronizar_pessoas() -> Dict[str, Any]:
         }
 
 
-def run() -> Dict[str, Any]:
+def run() -> dict[str, Any]:
     return sincronizar_pessoas()
 
 

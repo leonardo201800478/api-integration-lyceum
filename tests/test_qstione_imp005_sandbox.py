@@ -34,7 +34,6 @@ from qstione.config.qstione_config import (
     validar_configuracao_qstione,
 )
 
-
 TABELA_CURSO = "imp_001_cursos"
 TABELA_DISCIPLINA = "imp_002_disciplina"
 TABELA_OFERTA = "imp_005_ofertas"

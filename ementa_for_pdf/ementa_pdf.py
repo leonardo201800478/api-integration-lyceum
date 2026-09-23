@@ -1,18 +1,14 @@
 import os
 import re
-import pandas as pd
 
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT
-from reportlab.lib.styles import ParagraphStyle
+import pandas as pd
 from reportlab.lib.colors import black
+from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.lib.utils import ImageReader
-from reportlab.platypus import (
-    SimpleDocTemplate,
-    Paragraph,
-    Spacer
-)
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 
 # =========================
 # CONFIGURAÇÕES

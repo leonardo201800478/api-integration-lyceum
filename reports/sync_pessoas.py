@@ -15,9 +15,9 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from core.logger import logger
-from core.database import get_db_connection
 from core.config import config
+from core.database import get_db_connection
+from core.logger import logger
 from models.ly_pessoa import LyPessoaModel
 from sync.sync_ly_pessoa_by_id import (
     _buscar_pessoas_pendentes,

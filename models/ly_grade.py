@@ -6,8 +6,9 @@ SEM chave primária natural – usa IDENTITY.
 """
 
 import logging
-from typing import List, Dict, Any, Optional
-from core.database import get_db_connection, execute_query, fetch_all, fetch_one
+from typing import Any
+
+from core.database import execute_query, fetch_all, fetch_one, get_db_connection
 
 logger = logging.getLogger(__name__)
 
@@ -139,7 +140,7 @@ class LyGradeModel:
             return False
 
     @classmethod
-    def insert(cls, data: Dict) -> bool:
+    def insert(cls, data: dict) -> bool:
         """Insere uma nova grade (não verifica duplicatas)."""
         try:
             curriculo = cls._normalize_value(data.get('curriculo'))
@@ -173,7 +174,7 @@ class LyGradeModel:
             return False
 
     @classmethod
-    def batch_insert(cls, data_list: List[Dict]) -> int:
+    def batch_insert(cls, data_list: list[dict]) -> int:
         """Insere múltiplas grades em lote (permite duplicatas)."""
         if not data_list:
             return 0
@@ -221,7 +222,7 @@ class LyGradeModel:
         return success
 
     @classmethod
-    def get_summary(cls) -> Dict:
+    def get_summary(cls) -> dict:
         """Retorna estatísticas da tabela."""
         queries = {
             'total_grades': f"SELECT COUNT(*) FROM [{cls.TABLE_NAME}]",
@@ -239,7 +240,7 @@ class LyGradeModel:
         return results
 
     @classmethod
-    def get_all_grades(cls) -> List[Dict]:
+    def get_all_grades(cls) -> list[dict]:
         """Retorna todas as grades da tabela."""
         sql = f"SELECT * FROM [{cls.TABLE_NAME}] ORDER BY [curriculo], [curso], [serie_ideal], [disciplina]"
         rows = fetch_all(sql, database_name=cls.DB_NAME)
@@ -254,7 +255,7 @@ class LyGradeModel:
         return [dict(zip(columns, row)) for row in rows]
 
     @classmethod
-    def get_by_curriculo_curso(cls, curriculo: str, curso: str) -> List[Dict]:
+    def get_by_curriculo_curso(cls, curriculo: str, curso: str) -> list[dict]:
         """Retorna todas as grades de um currículo e curso específicos."""
         sql = f"SELECT * FROM [{cls.TABLE_NAME}] WHERE [curriculo] = ? AND [curso] = ? ORDER BY [serie_ideal], [disciplina]"
         rows = fetch_all(sql, (curriculo, curso), database_name=cls.DB_NAME)
@@ -269,7 +270,7 @@ class LyGradeModel:
         return [dict(zip(columns, row)) for row in rows]
 
     @classmethod
-    def get_by_curso(cls, curso: str) -> List[Dict]:
+    def get_by_curso(cls, curso: str) -> list[dict]:
         """Retorna todas as grades de um curso específico."""
         sql = f"SELECT * FROM [{cls.TABLE_NAME}] WHERE [curso] = ? ORDER BY [curriculo], [serie_ideal], [disciplina]"
         rows = fetch_all(sql, (curso,), database_name=cls.DB_NAME)
@@ -284,7 +285,7 @@ class LyGradeModel:
         return [dict(zip(columns, row)) for row in rows]
 
     @classmethod
-    def get_by_disciplina(cls, disciplina: str) -> List[Dict]:
+    def get_by_disciplina(cls, disciplina: str) -> list[dict]:
         """Retorna todas as grades de uma disciplina específica."""
         sql = f"SELECT * FROM [{cls.TABLE_NAME}] WHERE [disciplina] = ? ORDER BY [curriculo], [curso], [serie_ideal]"
         rows = fetch_all(sql, (disciplina,), database_name=cls.DB_NAME)
