@@ -1,42 +1,86 @@
-#!/usr/bin/env python3
-"""
-core/api_client.py
-
-Clientes para a API Lyceum.
-
-Características:
-    - Autenticação Basic Auth.
-    - Somente GET.
-    - Paginação automática.
-    - Paginação de página individual para sincronizações incrementais.
-"""
-
+import logging
+import random
 import time
-from typing import Any
+from typing import Any, cast
 
 import requests
 import urllib3
+from requests.adapters import HTTPAdapter
 
 from core.config import config
 
+logger = logging.getLogger("lyceum_sync.api")
+
 # ============================================================================
-# CLIENTE BASE
+# RETENTATIVA DA API
 # ============================================================================
+
+# Execução unattended: falhas transitórias não devem derrubar o processo.
+RETRY_INITIAL_DELAY = 5.0
+RETRY_MAX_DELAY = 300.0
+RETRY_BACKOFF_FACTOR = 2.0
+RETRY_JITTER = 3.0
+
+# Respostas que normalmente indicam indisponibilidade transitória.
+RETRYABLE_STATUS_CODES = frozenset({
+    408, 429,
+    500, 502, 503, 504, 520, 521, 522, 523, 524,
+})
+
+HTTP_POOL_CONNECTIONS = 4
+HTTP_POOL_MAXSIZE = 4
+
+
+def _retry_delay(attempt: int) -> float:
+    """
+    Calcula o intervalo de espera entre tentativas.
+
+    O backoff cresce de forma exponencial até o limite de 5 minutos,
+    com pequeno jitter para evitar reconexões rígidas.
+
+    Parameters
+    ----------
+    attempt:
+        Número da tentativa que falhou.
+
+    Returns
+    -------
+    float
+        Intervalo em segundos.
+    """
+    delay = min(
+        RETRY_MAX_DELAY,
+        RETRY_INITIAL_DELAY
+        * (RETRY_BACKOFF_FACTOR ** max(0, attempt - 1)),
+    )
+
+    return min(
+        RETRY_MAX_DELAY,
+        delay + random.uniform(0, RETRY_JITTER),
+    )
+
 
 class BaseAPIClient:
     """
-    Cliente base da API Lyceum.
+    Cliente base resiliente da API Lyceum.
 
     Responsabilidades:
-        - autenticação;
+        - autenticação Basic Auth;
         - requisições GET;
+        - retry indefinido em falhas transitórias;
+        - recriação da sessão após falha de transporte;
         - paginação automática;
-        - controle da sessão HTTP.
+        - paginação individual;
+        - fechamento seguro da sessão.
+
+    A chamada get() não retorna None para uma falha transitória. Ela
+    permanece tentando a mesma requisição até obter uma resposta válida
+    ou até o operador interromper o processo.
     """
 
     def __init__(
         self,
-        session: requests.Session | None = None
+        session: requests.Session | None = None,
     ):
         """
         Inicializa o cliente da API.
@@ -46,7 +90,6 @@ class BaseAPIClient:
         session:
             Sessão requests opcional.
         """
-
         missing = []
 
         if not config.LYCEUM_BASE_URL:
@@ -59,36 +102,99 @@ class BaseAPIClient:
             missing.append("LYCEUM_PASSWORD")
 
         if missing:
-
             raise RuntimeError(
                 "Credenciais da API Lyceum incompletas. "
                 "Variáveis faltando no .env: "
                 + ", ".join(missing)
             )
 
-        self.base_url = (
-            config.LYCEUM_BASE_URL.rstrip("/")
-        )
+        base_url = cast(str, config.LYCEUM_BASE_URL)
+        username = cast(str, config.LYCEUM_USERNAME)
+        password = cast(str, config.LYCEUM_PASSWORD)
 
-        self.auth = (
-            config.LYCEUM_USERNAME,
-            config.LYCEUM_PASSWORD
-        )
-
+        self.base_url = base_url.rstrip("/")
+        self.auth: tuple[str, str] = (username, password)
         self.headers = {
-            "Accept": "application/json"
+            "Accept": "application/json",
         }
 
-        self.session = (
-            session
-            or requests.Session()
-        )
+        self.session = session or self._create_session()
 
         if config.LYCEUM_SSL_VERIFY is False:
-
             urllib3.disable_warnings(
                 urllib3.exceptions.InsecureRequestWarning
             )
+
+    def _create_session(self) -> requests.Session:
+        """
+        Cria uma nova sessão HTTP com pool de conexões.
+
+        O adapter não executa retries finitos. A política de retry infinito
+        fica centralizada em get(), permitindo também recriar a Session
+        quando a conexão persistente fica em estado inválido.
+        """
+        session = requests.Session()
+
+        adapter = HTTPAdapter(
+            pool_connections=HTTP_POOL_CONNECTIONS,
+            pool_maxsize=HTTP_POOL_MAXSIZE,
+            max_retries=0,
+        )
+
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
+
+        session.auth = self.auth
+        session.headers.update(self.headers)
+
+        return session
+
+    def _close_session(self) -> None:
+        """Fecha a sessão HTTP atual sem propagar erro de fechamento."""
+        session = getattr(self, "session", None)
+
+        if session is None:
+            return
+
+        try:
+            session.close()
+        except Exception:
+            logger.debug(
+                "Falha ao fechar sessão HTTP.",
+                exc_info=True,
+            )
+
+    def _recreate_session(self) -> None:
+        """Descarta a sessão atual e cria uma nova sessão HTTP."""
+        self._close_session()
+        self.session = self._create_session()
+
+    def _sleep_before_retry(
+        self,
+        attempt: int,
+        reason: str,
+        endpoint: str,
+    ) -> None:
+        """
+        Aguarda antes da próxima tentativa e registra o motivo.
+        """
+        delay = _retry_delay(attempt)
+
+        logger.warning(
+            "API indisponível | endpoint=%s | tentativa=%d | "
+            "nova tentativa em %.1fs | motivo=%s",
+            endpoint,
+            attempt,
+            delay,
+            reason,
+        )
+
+        time.sleep(delay)
+
+    @staticmethod
+    def _is_retryable_status(status_code: int) -> bool:
+        """Retorna True quando o status HTTP representa falha transitória."""
+        return status_code in RETRYABLE_STATUS_CODES
 
     # ------------------------------------------------------------------------
     # GET
@@ -97,48 +203,140 @@ class BaseAPIClient:
     def get(
         self,
         endpoint: str,
-        params: dict | None = None
+        params: dict | None = None,
     ) -> Any:
         """
-        Executa uma requisição GET.
+        Executa uma requisição GET com recuperação indefinida.
 
-        Retorna:
-            JSON retornado pela API ou None em caso de erro.
+        São repetidos indefinidamente:
+            - erro de conexão;
+            - timeout;
+            - reset da conexão;
+            - erro de transporte;
+            - HTTP 408/429;
+            - HTTP 5xx transitório;
+            - resposta 200 cujo JSON esteja inválido.
+
+        Erros HTTP não transitórios, como 401, 403 e 404, são propagados
+        para não mascarar problemas permanentes de configuração ou endpoint.
+
+        Parameters
+        ----------
+        endpoint:
+            Endpoint relativo.
+
+        params:
+            Parâmetros da query string.
+
+        Returns
+        -------
+        Any
+            JSON retornado pela API.
+
+        Raises
+        ------
+        requests.HTTPError
+            Para respostas HTTP não transitórias.
+        KeyboardInterrupt
+            Para interrupção manual do operador.
         """
+        url = f"{self.base_url}{endpoint}"
+        attempt = 0
 
-        url = (
-            f"{self.base_url}{endpoint}"
-        )
-
-        try:
-
-            response = self.session.get(
-                url,
-                auth=self.auth,
-                headers=self.headers,
-                params=params,
-                timeout=config.API_TIMEOUT,
-                verify=config.LYCEUM_SSL_VERIFY
-            )
-
-            if response.status_code != 200:
-
-                print(
-                    f"⚠️ HTTP {response.status_code} → {url}"
+        while True:
+            try:
+                response = self.session.get(
+                    url,
+                    auth=self.auth,
+                    headers=self.headers,
+                    params=params,
+                    timeout=config.API_TIMEOUT,
+                    verify=config.LYCEUM_SSL_VERIFY,
                 )
 
-                return None
+                status = response.status_code
 
-            return response.json()
+                if status == 200:
+                    try:
+                        return response.json()
+                    except ValueError as exc:
+                        attempt += 1
 
-        except Exception as exc:
+                        logger.warning(
+                            "JSON inválido | endpoint=%s | tentativa=%d | "
+                            "erro=%s",
+                            endpoint,
+                            attempt,
+                            exc,
+                        )
 
-            print(
-                f"⚠️ Erro na requisição → "
-                f"{url}: {exc}"
-            )
+                        self._recreate_session()
+                        self._sleep_before_retry(
+                            attempt,
+                            f"JSON inválido: {exc}",
+                            endpoint,
+                        )
+                        continue
 
-            return None
+                if self._is_retryable_status(status):
+                    attempt += 1
+
+                    reason = (
+                        f"HTTP {status} "
+                        f"({response.reason or 'sem descrição'})"
+                    )
+
+                    logger.warning(
+                        "Resposta transitória do servidor | endpoint=%s | "
+                        "HTTP=%d | tentativa=%d",
+                        endpoint,
+                        status,
+                        attempt,
+                    )
+
+                    self._recreate_session()
+                    self._sleep_before_retry(
+                        attempt,
+                        reason,
+                        endpoint,
+                    )
+                    continue
+
+                # Não tratar 401/403/404 etc. como página vazia.
+                response.raise_for_status()
+
+                raise requests.HTTPError(
+                    f"HTTP inesperado {status} para {url}",
+                    response=response,
+                )
+
+            except KeyboardInterrupt:
+                raise
+
+            except requests.HTTPError:
+                # Erro HTTP não transitório: propaga para o importador.
+                # Isso evita transformar credenciais inválidas, endpoint
+                # inexistente etc. em um retry infinito.
+                raise
+
+            except requests.RequestException as exc:
+                attempt += 1
+
+                logger.warning(
+                    "Falha de comunicação com a API | endpoint=%s | "
+                    "tentativa=%d | erro=%s",
+                    endpoint,
+                    attempt,
+                    exc,
+                    exc_info=True,
+                )
+
+                self._recreate_session()
+                self._sleep_before_retry(
+                    attempt,
+                    str(exc),
+                    endpoint,
+                )
 
     # ------------------------------------------------------------------------
     # PAGINAÇÃO AUTOMÁTICA
@@ -147,135 +345,117 @@ class BaseAPIClient:
     def get_paginated(
         self,
         endpoint: str,
-        params: dict | None = None
+        params: dict | None = None,
     ) -> list[dict]:
         """
         Percorre todas as páginas disponíveis.
 
-        A API pode retornar:
+        Uma falha transitória não encerra a paginação porque get() somente
+        retorna após obter uma resposta válida.
 
-            {"data": [...]}
-
-        ou diretamente:
-
-            [...]
+        A API pode retornar {"data": [...]} ou diretamente [...].
         """
-
         results: list[dict] = []
-
         page = config.API_PAGE_START
 
-        print(
-            f"  🔄 Iniciando paginação: {endpoint}"
+        logger.info(
+            "Iniciando paginação | endpoint=%s",
+            endpoint,
         )
 
         if params:
-
-            print(
-                f"  📋 Parâmetros: {params}"
+            logger.info(
+                "Parâmetros da paginação | %s",
+                params,
             )
 
         while True:
-
             request_params = {
                 "page": page,
-                "size": config.API_PAGE_SIZE
+                "size": config.API_PAGE_SIZE,
             }
 
             if params:
+                request_params.update(params)
 
-                request_params.update(
-                    params
-                )
-
-            print(
-                f"    📄 Página {page} "
-                f"(size={config.API_PAGE_SIZE})..."
+            logger.info(
+                "Consultando página | endpoint=%s | page=%d | size=%d",
+                endpoint,
+                page,
+                config.API_PAGE_SIZE,
             )
 
             data = self.get(
                 endpoint,
-                params=request_params
+                params=request_params,
             )
 
-            if not data:
-
-                print(
-                    f"    ⏹️ Página {page} retornou None"
+            # Nunca interpretar None como fim da API.
+            if data is None:
+                raise RuntimeError(
+                    f"API retornou None inesperadamente para "
+                    f"{endpoint}, página {page}."
                 )
 
-                break
-
-            if (
-                isinstance(data, dict)
-                and "data" in data
-            ):
-
+            if isinstance(data, dict) and "data" in data:
                 items = data["data"]
 
                 if not isinstance(items, list):
-
-                    print(
-                        "    ⚠️ 'data' não é uma lista: "
-                        f"{type(items)}"
+                    raise RuntimeError(
+                        "Campo 'data' não é uma lista: "
+                        f"{type(items).__name__}"
                     )
 
-                    break
-
-                if len(items) == 0:
-
-                    print(
-                        f"    ✅ Página {page} vazia."
+                if not items:
+                    logger.info(
+                        "Paginação finalizada | página=%d vazia.",
+                        page,
                     )
-
                     break
 
                 results.extend(items)
 
-                print(
-                    f"    📊 Página {page}: "
-                    f"{len(items)} registros "
-                    f"(total: {len(results)})"
+                logger.info(
+                    "Página=%d | registros=%d | acumulado=%d",
+                    page,
+                    len(items),
+                    len(results),
                 )
 
             elif isinstance(data, list):
-
-                if len(data) == 0:
-
-                    print(
-                        f"    ✅ Página {page} vazia."
+                if not data:
+                    logger.info(
+                        "Paginação finalizada | página=%d vazia.",
+                        page,
                     )
-
                     break
 
                 results.extend(data)
 
-                print(
-                    f"    📊 Página {page}: "
-                    f"{len(data)} registros "
-                    f"(total: {len(results)})"
+                logger.info(
+                    "Página=%d | registros=%d | acumulado=%d",
+                    page,
+                    len(data),
+                    len(results),
                 )
 
             else:
-
-                print(
-                    "    ⚠️ Formato inesperado: "
-                    f"{type(data)}"
+                raise RuntimeError(
+                    "Formato inesperado retornado pela API: "
+                    f"{type(data).__name__}"
                 )
-
-                break
 
             page += 1
 
             if config.API_DELAY_BETWEEN_REQUESTS > 0:
-
                 time.sleep(
                     config.API_DELAY_BETWEEN_REQUESTS
                 )
 
-        print(
-            f"  ✅ Paginação completa: "
-            f"{len(results)} registros."
+        logger.info(
+            "Paginação completa | endpoint=%s | registros=%d",
+            endpoint,
+            len(results),
         )
 
         return results
@@ -285,13 +465,9 @@ class BaseAPIClient:
     # ------------------------------------------------------------------------
 
     def close(self):
-        """
-        Fecha a sessão HTTP.
-        """
+        """Fecha a sessão HTTP atual de forma segura."""
+        self._close_session()
 
-        if hasattr(self, "session"):
-
-            self.session.close()
 
 
 # ============================================================================
@@ -509,7 +685,7 @@ class TurmaAPIClient(BaseAPIClient):
     def get_turmas_from_page(
         self,
         page: int,
-        page_size: int = None,
+        page_size: int | None = None,
         ano: int | None = None,
         semestre: int | None = None
     ) -> list[dict]:
@@ -612,7 +788,7 @@ class TurmaDocenteAPIClient(BaseAPIClient):
     def get_turmas_docentes_from_page(
         self,
         start_page: int,
-        page_size: int = None,
+        page_size: int | None = None,
         ano: int | None = None,
         semestre: int | None = None
     ) -> list[dict]:
